@@ -31,10 +31,10 @@ Submitted code goes through the pull request process for evaluation and comments
 
 #### Steps to Contribute
 
-1. Fork the repository to your personal GitHub account by clicking the "Fork" button on the project [main page](https://github.com/SmithB/surfaceChange).  This creates your own server-side copy of the repository.
-2. Create a work environment to make your changes by cloning to your local system.
-3. Add your fork as the `origin` remote and the original project repository as the `upstream` remote.  While this step isn't a necessary, it allows you to keep your fork up to date in the future.
-4. Create a new branch to do your work.
-5. Make your changes on the new branch and add yourself to the list of [project contributors](./CONTRIBUTORS.md).
-6. Push your work to GitHub under your fork of the project.
-7. Submit a [Pull Request](https://github.com/SmithB/surfaceChange/pulls) from your forked branch to the project repository.
+1. Fork the repository to your personal GitHub account by clicking the "Fork" button on the project [main page](https://github.com/SmithB/ATL1415).  This creates your own server-side copy of the repository.
+3. Create a work environment to make your changes by cloning to your local system.
+4. Add your fork as the `origin` remote and the original project repository as the `upstream` remote.  While this step isn't a necessary, it allows you to keep your fork up to date in the future.
+5. Create a new branch to do your work.
+6. Make your changes on the new branch and add yourself to the list of [project contributors](./CONTRIBUTORS.md).
+7. Push your work to GitHub under your fork of the project.
+8. Submit a [Pull Request](https://github.com/SmithB/ATL1415/pulls) from your forked branch to the project repository.
