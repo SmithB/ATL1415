@@ -1,0 +1,4 @@
+--ATL11_index=ATL11_rel004_0311/north/index/GeoIndex.h5
+--mask_file=RGI_reduced/04_rgi60_ArcticCanadaSouth_reduced.db
+--Hemisphere=1
+--region=CS

@@ -1,0 +1,7 @@
+--ATL11_index=/home/besmith4/nobackup/ATL14_processing/ATL11_004_0311/north/index/GeoIndex.h5
+--tide_mask_file=Arctic/BedMachineGreenland-2021-04-20_shelf_125m.tif
+--tide_model=Gr1km-v2
+--mask_file=Arctic/U_Texas_ice_mask_2019_100m.tif
+--region=GL
+--Hemisphere=1
+

@@ -1,0 +1,6 @@
+
+--ATL11_index=ATL11_004/north/index/GeoIndex.h5
+--mask_file=RGI_reduced/07_rgi60_Svalbard_reduced.db
+--Hemisphere=1
+--region=SV
+--DEM_tol=200

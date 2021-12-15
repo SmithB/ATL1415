@@ -1,0 +1,15 @@
+name: ATL14
+channels:
+  - defaults
+dependencies:
+  - suitesparse
+  - pip
+  - scipy
+  - numpy
+  - h5py
+  - matplotlib
+  - gdal
+  - ipykernel
+  - cython
+  - tmux
+prefix: /home/besmith4/.conda/envs/ATL14

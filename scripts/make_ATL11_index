@@ -1,0 +1,60 @@
+#! /usr/bin/env bash 
+
+
+env_str='source activate IS2;'
+#prog='/home/besmith4/git_repos/pointCollection/pointCollection/index_glob.py'
+prog='index_glob.py'
+#env_str=''
+
+ATL14_dir=$1 
+version=$2
+ATL11_north=$3
+ATL11_south=$4
+
+> index_queue.txt
+> post_queue.txt
+
+echo "ATL11_north is "$ATL11_north
+echo "ATL11_south is "$ATL11_south
+
+for hemi in 'north' 'south'; do
+    echo $hemi
+    if [ $hemi == 'north' ]; then
+        [ $ATL11_north == 'None' ] && continue
+        echo "NORTH!"
+        ATL11_source=$ATL11_north
+        hemisphere=1
+        the_digit=0
+    else
+        [ $ATL11_south == 'None' ] && continue
+        echo "SOUTH!"
+        ATL11_source=$ATL11_south
+        hemisphere=-1
+        the_digit=1
+    fi
+
+    hemi_dir=$ATL14_dir/$AT$hemi
+    
+    ATL11_sub=$ATL14_dir/ATL11_$version
+    hemi_dir=$ATL11_sub/$hemi
+    index_dir=$hemi_dir/index
+
+    
+    [ -d $ATL11_sub ] || mkdir $ATL11_sub
+    [ -d $hemi_dir ] || mkdir $hemi_dir
+    [ -d $index_dir ] || mkdir $index_dir 
+
+    for file in `ls $ATL11_source/ATL11_????$the_digit?_????_???_??.h5`; do
+	base=`basename $file`
+	[ -L $hemi_dir/$base ] || ln -s $file $hemi_dir
+	
+	index_file=$index_dir"/"$base
+	[ -f $index_file ] && continue
+	echo "$env_str pushd $index_dir; $prog  --hemisphere $hemisphere --type ATL11 -g ../$base --index_file $index_file --Relative" >> index_queue.txt    
+    done
+
+    echo "pushd $index_dir; $prog --hemisphere $hemisphere --type h5_geoindex -g 'ATL11*.h5' --index_file GeoIndex.h5 --Relative; popd" >> post_queue.txt
+
+done
+
+

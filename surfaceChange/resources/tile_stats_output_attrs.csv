@@ -1,0 +1,13 @@
+group,field,units,dimensions,datatype,coordinates,description,long_name,source
+tile_stats,x,meters,x,float64,x,"tile-center x-coordinate, in projected coordinates",x,4.1.2.1
+tile_stats,y,meters,y,float64,y,"tile-center y-coordinate, in projected coordinates",y,4.1.2.1
+tile_stats,N_data,counts,"y, x",int32,y x,number of data used in fit,N_data,4.1.2.1
+tile_stats,RMS_data,meters,"y, x",float32,y x,"root mean of squared, scaled data misfits",RMS_data,4.1.2.1
+tile_stats,RMS_bias,meters,"y, x",float32,y x,"root mean of squared, scaled bias values",RMS_bias,4.1.2.1
+tile_stats,N_bias,counts,"y, x",int32,y x,number of bias values solved for,N_bias,4.1.2.1
+tile_stats,RMS_d2z0dx2,meters^-1,"y, x",float32,y x,root mean square of the constraint equation residuals for the second spatial derivative of z0,RMS_d2z0dx2,4.1.2.1
+tile_stats,RMS_d2zdt2,meters years^2,"y, x",float32,y x,root mean square of the constraint equation residuals for the second temporal derivative of dz,RMS_d2zdt2,4.1.2.1
+tile_stats,RMS_d2zdx2dt,meters^-1 years^-1,"y, x",float32,y x,root mean square of the constraint equation residuals for the second temporal derivative of dz/dt,RMS_d2zdx2dt,4.1.2.1
+tile_stats,sigma_xx0,meters^-1,"y, x",float32,y x,weighting values for the constraint equations on the second spatial derivatives of the DEM,sigma_xx0,4.1.2.1
+tile_stats,sigma_tt,meters years^-2,"y, x",float32,y x,weighting values for the constraint equations on the second temporal derivatives of the surface height,sigma_tt,4.1.2.1
+tile_stats,sigma_xxt,meters^-1 years^-1,"y, x",float32,y x,weighting values for the constraint equations on the second spatial derivatives of the height-change rate,sigma_xxt,4.1.2.1

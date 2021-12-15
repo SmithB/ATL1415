@@ -1,0 +1,7 @@
+--ATL11_index=ATL11_rel004_0311/south/index/GeoIndex.h5
+--mask_file=Antarctic/updates/bedmap2_thickness_gt_50_plus_sio_shelves_edited.tif
+--tide_mask_file=Antarctic/scripps_antarctica_IceShelves1km_v1.tif
+--tide_model=CATS2008
+--Hemisphere=-1
+--region=AA
+--d2z0_file=Antarctic/AA_Ed2z0dx2.tif

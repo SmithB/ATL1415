@@ -1,0 +1,30 @@
+#! /usr/bin/env bash
+
+source activate IS2
+
+defaults_file=$1
+rm -rf par_run/logs/* par_run/queue/* par_run/running/* par_run/done/* par_run/last_task par_run/boss_status*
+
+[ -z "$2" ] || region_string="-R $2"
+    
+for step in centers edges corners; do
+
+    queue_file=`make_ATL1415_queue.py $step $defaults_file $region_string --skip_errors | grep Wrote | awk '{print $NF}'`
+
+
+
+    [ -s $queue_file ] || continue
+    
+    pboss.py -s $queue_file
+    
+    pboss.py -r -p -w
+
+    #move the log files to the output directory
+
+    log_dir=`grep "b=" $defaults_file  | awk '{FS="="; print $2}' | tail -1`/$step/logs
+    [ -d $log_dir/logs ] || mkdir $log_dir
+    mv par_run/logs/* $log_dir
+   
+done
+
+

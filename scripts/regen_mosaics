@@ -1,0 +1,82 @@
+#! /usr/bin/env bash
+
+source activate IS2
+
+base=$1
+
+rm $base/*.h5
+
+
+pad=10000
+feather=10000
+
+compute_sigma='True'
+
+field=dz
+if [ $compute_sigma == 'True' ]; then
+   field="dz sigma_dz"
+fi
+
+glob_str='centers/*.h5 edges/*.h5 corners/*.h5'
+
+python3 ~/git_repos/pointCollection/scripts/make_mosaic.py  -w  -d $base  -g $glob_str  -p $pad -f $feather -O $base/dz.h5 --in_group dz/ -F count misfit_rms misfit_scaled_rms mask cell_area $field
+
+for lag in _lag1 _lag4 _lag8; do
+        echo "lag=$lag"
+        field=dzdt$lag
+        if [ $compute_sigma == 'True' ]; then
+             field="$field sigma_$field"
+        fi
+        python3 ~/git_repos/pointCollection/scripts/make_mosaic.py -w  -d $base  -g  $glob_str  -p $pad -f $feather -O $base/dz$lag.h5 --in_group dzdt$lag/ -F $field
+done
+
+for group in avg_dz_40000m avg_dz_20000m avg_dz_10000m; do
+    field=$group
+    if [ $compute_sigma == 'True' ]; then
+        field="$group sigma_$group"
+    fi
+    echo "$group $field"
+    this_pad=$pad
+    this_feather=$feather
+    this_S=""
+    this_w="-w"
+    if [ $group=='avg_dz_40000m' ] ; then
+        this_pad=0
+        this_feather=0
+        this_S="-S 40000 40000"
+	this_w=""
+    fi
+    out=`echo $group | sed s/000m/km/ | sed s/avg_//`
+    
+    python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $this_w  -d $base  -g  $glob_str  -p $this_pad -f $this_feather $this_S -O $base/$out.h5 --in_group $group/ -F $field cell_area
+    
+    group=`echo $group | sed s/dz/dzdt/`
+    for lag in _lag1 _lag4 _lag8; do
+        echo "lag=$lag"
+        field=$group$lag
+	field_list=$field
+	if [ $compute_sigma == 'True' ]; then 
+             field_list="$field_list sigma_$field"
+        fi
+
+        python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $this_w  -d $base  -g  $glob_str  -p $this_pad -f $this_feather $this_S -O $base/$out$lag.h5 --in_group $field/ -F $field_list
+    done
+done
+
+#echo "z0"
+field_list="z0 misfit_rms misfit_scaled_rms mask cell_area count"
+if [ $compute_sigma == 'True' ]; then
+    field_list="$field_list sigma_z0"
+fi
+
+this_replace="-R"
+for field in $field_list; do
+    echo $field
+    if [ -d $base/200km_tiles/z0 ] ; then
+	echo "200km"
+	python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $this_replace  -d ${base}/200km_tiles/z0  -g "*.h5" -O $base/z0.h5 --in_group z0/ -F  $field 
+    else
+	python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $this_replace -w -d $base  -g "*/*.h5"  -p $pad -f $feather -O $base/z0.h5 --in_group z0/ -F  $field 
+    fi
+    this_replace=""
+done

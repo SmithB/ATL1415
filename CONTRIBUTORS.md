@@ -1,0 +1,4 @@
+- [Suzanne Dickinson (University of Washington)](http://psc.apl.uw.edu/people/research-staff/suzanne-dickinson/)
+- [Benjamin Jelley (KBRwyle, NASA Goddard Space Flight Center)](https://science.gsfc.nasa.gov/sed/bio/benjamin.p.jelley)
+- [Benjamin Smith (University of Washington)](http://psc.apl.uw.edu/people/investigators/ben-smith/)
+- [Tyler Sutterley (University of Washington)](http://psc.apl.uw.edu/people/investigators/tyler-sutterley/)
