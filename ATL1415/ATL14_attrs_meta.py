@@ -7,6 +7,7 @@ import netCDF4
 import h5py
 from osgeo import osr, ogr
 import csv
+import json
 import re
 import glob
 import uuid
@@ -187,9 +188,22 @@ def set_geobounds(dst,fileout,root_info):
 #    print('lonmin,lonmax,latmin,latmax:',lonmin,lonmax,latmin,latmax)
 
 # set variables and attributes
-    dst['/orbit_info'].variables['bounding_polygon_dim1'][:] = np.arange(1,4+1)
-    dst['/orbit_info'].variables['bounding_polygon_lon1'][:] = np.array([lonmin,lonmax,lonmax,lonmin])[:]
-    dst['/orbit_info'].variables['bounding_polygon_lat1'][:] = np.array([latmax,latmax,latmin,latmin])[:]
+    try:
+      with open ('region_extent_polygons.dict') as poly_f
+        poly_data = poly_f.read()
+      reg_poly = region+'_poly'
+      poly = json.loads(poly_data)
+      x = [row[0] for row in poly[reg_poly]]
+      y = [row[1] for row in poly[reg_poly]]
+      dst['/orbit_info'].variables['bounding_polygon_dim1'][:] = np.arange(1,np.size(x)+1)
+      dst['/orbit_info'].variables['bounding_polygon_lon1'][:] = np.array(x)[:]
+      dst['/orbit_info'].variables['bounding_polygon_lat1'][:] = np.array(y)[:]
+    except:
+      warnings.filterwarnings("always")
+      warnings.warn("Deprecated. Use polygon from dict file", DeprecationWarning)
+      dst['/orbit_info'].variables['bounding_polygon_dim1'][:] = np.arange(1,4+1)
+      dst['/orbit_info'].variables['bounding_polygon_lon1'][:] = np.array([lonmin,lonmax,lonmax,lonmin])[:]
+      dst['/orbit_info'].variables['bounding_polygon_lat1'][:] = np.array([latmax,latmax,latmin,latmin])[:]
     dst['/METADATA/Extent'].setncattr('westBoundLongitude',lonmin)
     dst['/METADATA/Extent'].setncattr('eastBoundLongitude',lonmax)
     dst['/METADATA/Extent'].setncattr('northBoundLatitude',latmax)
