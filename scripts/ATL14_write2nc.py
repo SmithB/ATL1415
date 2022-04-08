@@ -16,7 +16,7 @@ import pkg_resources
 from netCDF4 import Dataset
 #import matplotlib.pyplot as plt
 
-from surfaceChange import write_atl14meta
+from ATL1415 import write_atl14meta
 #from ATL11.h5util import create_attribute
 
 def ATL14_write2nc(args):    
@@ -77,7 +77,7 @@ def ATL14_write2nc(args):
 
         # make tile_stats group (ATBD 4.1.2.1, Table 3)
         tilegrp = nc.createGroup('tile_stats')   
-        tileFile = pkg_resources.resource_filename('surfaceChange','resources/tile_stats_output_attrs.csv')
+        tileFile = pkg_resources.resource_filename('ATL1415','resources/tile_stats_output_attrs.csv')
         with open(tileFile,'r', encoding='utf-8-sig') as tilefile:
             tile_reader=list(csv.DictReader(tilefile))
     
@@ -174,7 +174,7 @@ def ATL14_write2nc(args):
         else:
             print('Reading file:',args.base_dir.rstrip('/')+'/z0.h5')
             
-        attrFile = pkg_resources.resource_filename('surfaceChange','resources/ATL14_output_attrs.csv') 
+        attrFile = pkg_resources.resource_filename('ATL1415','resources/ATL14_output_attrs.csv') 
         with open(attrFile,'r', encoding='utf-8-sig') as attrfile:
             reader=list(csv.DictReader(attrfile))
     
@@ -247,7 +247,7 @@ def ATL14_write2nc(args):
                 dsetvar.setncattr(attr,field_attrs[field][attr])
             dsetvar.setncattr('grid_mapping','Polar_Stereographic')
 
-        ncTemplate = pkg_resources.resource_filename('surfaceChange','resources/atl14_metadata_template.nc')
+        ncTemplate = pkg_resources.resource_filename('ATL1415','resources/atl14_metadata_template.nc')
         write_atl14meta(nc, fileout, ncTemplate, args)
 
         FH.close()

@@ -15,7 +15,7 @@ from netCDF4 import Dataset
 #import cartopy.crs as ccrs
 #import cartopy.feature
 from scipy import stats
-from surfaceChange import write_atl14meta
+from ATL1415 import write_atl14meta
 
 def projection_variable(region,group):
     if region in ['AK','CN','CS','GL','IS','SV','RA']:
@@ -121,7 +121,7 @@ def ATL15_write2nc(args):
            }
     avgs = ['','_10km','_20km','_40km']
     # open data attributes file
-    attrFile = pkg_resources.resource_filename('surfaceChange','resources/ATL15_output_attrs.csv')
+    attrFile = pkg_resources.resource_filename('ATL1415','resources/ATL15_output_attrs.csv')
     with open(attrFile,'r',encoding='utf-8-sig') as attrfile:
         reader=list(csv.DictReader(attrfile))
 
@@ -141,7 +141,7 @@ def ATL15_write2nc(args):
             
             # make tile_stats group (ATBD 4.1.2.1, Table 3)
             tilegrp = nc.createGroup('tile_stats')   
-            tileFile = pkg_resources.resource_filename('surfaceChange','resources/tile_stats_output_attrs.csv')
+            tileFile = pkg_resources.resource_filename('ATL1415','resources/tile_stats_output_attrs.csv')
             with open(tileFile,'r', encoding='utf-8-sig') as tilefile:
                 tile_reader=list(csv.DictReader(tilefile))
         
@@ -350,7 +350,7 @@ def ATL15_write2nc(args):
                 except:
                     pass
         
-            ncTemplate=pkg_resources.resource_filename('surfaceChange','resources/atl15_metadata_template.nc')
+            ncTemplate=pkg_resources.resource_filename('ATL1415','resources/atl15_metadata_template.nc')
             write_atl14meta(nc, fileout, ncTemplate, args)
 
     return fileout
