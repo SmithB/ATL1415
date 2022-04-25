@@ -7,9 +7,12 @@ import netCDF4
 import h5py
 from osgeo import osr, ogr
 import csv
+import json
 import re
 import glob
 import uuid
+import pkg_resources
+import warnings
 from datetime import datetime
 
 def write_atl14meta(dst,fileout,ncTemplate,args):
@@ -73,12 +76,7 @@ def walktree(top):
         yield from walktree(value)
 
 def set_lineage(dst,root_info,args):
-# BPJbpj: Need dynamic paths!
-#    tilepath = '/att/nobackup/project/icesat-2/ATL14_processing/rel001/north/CN/centers'
-#    atl11path = '/att/nobackup/project/icesat-2/ATL14_processing/ATL11_rel004/north'
     tilepath = args.tiles_dir
-#    print('line 76',tilepath)
-#    print()
     atl11path = args.ATL11_lineage_dir
 # list of lineage attributes
     lineage = []
@@ -184,12 +182,25 @@ def set_geobounds(dst,fileout,root_info):
     root_info.update({'geospatial_lat_min': latmin})
     root_info.update({'geospatial_lat_max': latmax})
 
-#    print('lonmin,lonmax,latmin,latmax:',lonmin,lonmax,latmin,latmax)
-
-# set variables and attributes
-    dst['/orbit_info'].variables['bounding_polygon_dim1'][:] = np.arange(1,4+1)
-    dst['/orbit_info'].variables['bounding_polygon_lon1'][:] = np.array([lonmin,lonmax,lonmax,lonmin])[:]
-    dst['/orbit_info'].variables['bounding_polygon_lat1'][:] = np.array([latmax,latmax,latmin,latmin])[:]
+# set variables and attributes, from JSON polygons, if present
+    try:
+      region = os.path.basename(fileout).split("_")[1]
+      polyfile = pkg_resources.resource_filename('ATL1415','resources/region_extent_polygons.json')
+      with open (polyfile) as poly_f:
+        poly_data = poly_f.read()
+      reg_poly = region+'_poly'
+      poly = json.loads(poly_data)
+      x = [row[0] for row in poly[reg_poly]]
+      y = [row[1] for row in poly[reg_poly]]
+      dst['/orbit_info'].variables['bounding_polygon_dim1'][:] = np.arange(1,np.size(x)+1)
+      dst['/orbit_info'].variables['bounding_polygon_lon1'][:] = np.array(x)[:]
+      dst['/orbit_info'].variables['bounding_polygon_lat1'][:] = np.array(y)[:]
+    except:
+      warnings.filterwarnings("always")
+      warnings.warn("Deprecated. Use polygon from json file", DeprecationWarning)
+      dst['/orbit_info'].variables['bounding_polygon_dim1'][:] = np.arange(1,4+1)
+      dst['/orbit_info'].variables['bounding_polygon_lon1'][:] = np.array([lonmin,lonmax,lonmax,lonmin])[:]
+      dst['/orbit_info'].variables['bounding_polygon_lat1'][:] = np.array([latmax,latmax,latmin,latmin])[:]
     dst['/METADATA/Extent'].setncattr('westBoundLongitude',lonmin)
     dst['/METADATA/Extent'].setncattr('eastBoundLongitude',lonmax)
     dst['/METADATA/Extent'].setncattr('northBoundLatitude',latmax)

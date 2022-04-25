@@ -18,7 +18,7 @@ import sys
 import h5py
 import traceback
 import matplotlib.pyplot as plt
-from surfaceChange.reread_data_from_fits import reread_data_from_fits
+from ATL1415.reread_data_from_fits import reread_data_from_fits
 import pyTMD
 import scipy.optimize
 import pdb

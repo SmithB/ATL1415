@@ -1,0 +1,6 @@
+numpy
+netcdf4
+h5py
+pytmd
+pointCollection @ https://github.com/SmithB/pointCollection/tarball/master
+LSsurf @ https://github.com/SmithB/LSsurf/tarball/master
