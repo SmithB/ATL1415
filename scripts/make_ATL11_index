@@ -1,7 +1,7 @@
 #! /usr/bin/env bash 
 
 
-env_str='source activate IS2;'
+env_str='';#source activate IS2;'
 #prog='/home/besmith4/git_repos/pointCollection/pointCollection/index_glob.py'
 prog='index_glob.py'
 #env_str=''
