@@ -48,7 +48,7 @@ def manual_edits(D):
     D.index(~bad)
     return
 
-def read_ATL11(xy0, Wxy, index_file, SRS_proj4, sigma_geo=6.5):
+def read_ATL11(xy0, Wxy, index_file, SRS_proj4, sigma_geo=6.5, sigma_radial=0.03):
     '''
     read ATL11 data from an index file
 
@@ -88,7 +88,7 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, sigma_geo=6.5):
         if D11.size==0:
             continue
         sigma_corr=np.sqrt((sigma_geo*np.abs(np.median(D11.n_slope)))**2+\
-                           (sigma_geo*np.abs(np.median(D11.e_slope)))**2+0.03**2)
+                           (sigma_geo*np.abs(np.median(D11.e_slope)))**2+sigma_radial**2)
         # fix for early ATL11 versions that had some zero error estimates.
         bad=np.any(D11.h_corr_sigma==0, axis=1)
         D11.h_corr_sigma[bad,:]=np.NaN
@@ -463,6 +463,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
             t_span=[2019.25, 2020.5], \
             spacing={'z0':2.5e2, 'dz':5.e2, 'dt':0.25},  \
             sigma_geo=6.5,\
+            sigma_radial=0.03,\
             dzdt_lags=[1, 4],\
             hemisphere=1, reference_epoch=None,\
             region=None, reread_dirs=None, \
@@ -485,6 +486,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
             edge_pad=None,\
             error_res_scale=None,\
             calc_error_file=None,\
+            bias_params=['rgt','cycle'],\
             verbose=False,\
             write_data_only=False):
     '''
@@ -545,7 +547,8 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
     elif reread_dirs is not None:
         data = reread_data_from_fits(xy0, Wxy, reread_dirs, template='E%d_N%d.h5')
     else:
-        data, file_list = read_ATL11(xy0, Wxy, ATL11_index, SRS_proj4, sigma_geo=sigma_geo)
+        data, file_list = read_ATL11(xy0, Wxy, ATL11_index, SRS_proj4, 
+                                     sigma_geo=sigma_geo, sigma_radial=sigma_radial)
         if sigma_tol is not None and data is not None:
             data.index(data.sigma < sigma_tol)
         if data is not None:
@@ -614,7 +617,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
     # call smooth_xytb_fitting
     S=smooth_xytb_fit(data=data, ctr=ctr, W=W, spacing=spacing, E_RMS=E_RMS0,
                      reference_epoch=reference_epoch, N_subset=N_subset, compute_E=compute_E,
-                     bias_params=['rgt','cycle'],  max_iterations=max_iterations,
+                     bias_params=bias_params,  max_iterations=max_iterations,
                      srs_proj4=SRS_proj4, VERBOSE=True, dzdt_lags=dzdt_lags,
                      mask_file=mask_file, mask_data=mask_data, mask_scale={0:10, 1:1},
                      converge_tol_frac_edit=0.001,
@@ -751,6 +754,7 @@ def main(argv):
     parser.add_argument('--E_d2z0dx2_file', type=str, help='file from which to read the expected d2z0dx2 values')
     parser.add_argument('--data_gap_scale', type=float,  default=2500)
     parser.add_argument('--sigma_geo', type=float,  default=6.5)
+    parser.add_argument('--sigma_radial', type=float,  default=0.03)
     parser.add_argument('--dzdt_lags', type=str, default='1,4', help='lags for which to calculate dz/dt, comma-separated list, no spaces')
     parser.add_argument('--avg_scales', type=str, default='10000,40000', help='scales at which to report average errors, comma-separated list, no spaces')
     parser.add_argument('--N_subset', type=int, default=None, help="number of pieces into which to divide the domain for (cheap) editing iterations.")
@@ -770,6 +774,7 @@ def main(argv):
     parser.add_argument('--calc_error_file','-c', type=str, help='file containing data for which errors will be calculated')
     parser.add_argument('--calc_error_for_xy', action='store_true', help='calculate the errors for the file specified by the x0, y0 arguments')
     parser.add_argument('--error_res_scale','-s', type=float, nargs=2, default=[4, 2], help='if the errors are being calculated (see calc_error_file), scale the grid resolution in x and y to be coarser')
+    parser.add_argument('--bias_params', type=str, default="rgt,cycle", help='one bias parameter will be assigned for each unique combination of these ATL11 parameters (comma-separated list with no spaces)')
     parser.add_argument('--region', type=str, help='region for which calculation is being performed')
     parser.add_argument('--verbose','-v', action="store_true")
     parser.add_argument('--write_data_only', action='store_true', help='save data without processing')
@@ -835,6 +840,8 @@ def main(argv):
         if args.calc_error_file is not None:
             for ii, key in enumerate(['z0','dz']):
                 spacing[key] *= args.error_res_scale[ii]
+                
+    args.bias_params=args.bias_params.split(',')
 
     if not os.path.isdir(args.base_directory):
         os.mkdir(args.base_directory)
@@ -845,6 +852,7 @@ def main(argv):
     S=ATL11_to_ATL15(args.xy0, ATL11_index=args.ATL11_index,
            Wxy=args.Width, E_RMS=E_RMS, t_span=args.time_span, spacing=spacing, \
            sigma_geo=args.sigma_geo, \
+           sigma_radial=args.sigma_radial, \
            hemisphere=args.Hemisphere, reread_dirs=reread_dirs, \
            data_file=args.data_file, \
            out_name=args.out_name,
