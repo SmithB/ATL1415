@@ -1,4 +1,4 @@
---ATL11_index=ATL11_rel004_0311/south/index/GeoIndex.h5
+--ATL11_index=ATL11_005_0313/south/index/GeoIndex.h5
 --mask_file=Antarctic/updates/bedmap2_thickness_gt_50_plus_sio_shelves_edited.tif
 --tide_mask_file=Antarctic/scripps_antarctica_IceShelves1km_v1.tif
 --tide_model=CATS2008
