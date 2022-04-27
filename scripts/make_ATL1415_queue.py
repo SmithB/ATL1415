@@ -31,7 +31,6 @@ def pad_mask_canvas(D, N):
 # define the script.  This is assumed to be in the path of the environment
 # that is running 
 prog = "ATL11_to_ATL15.py"
-environment = "IS2"
 
 # account for a bug in argparse that misinterprets negative agruents
 argv=sys.argv
@@ -45,6 +44,7 @@ parser.add_argument('defaults_files', nargs='+', type=str)
 parser.add_argument('--region_file', '-R', type=str)
 parser.add_argument('--skip_errors','-s', action='store_true')
 parser.add_argument('--tile_spacing', type=int)
+parser.add_argument('--environment','-e', type=str)
 args = parser.parse_args()
 
 if args.step not in ['centers', 'edges','corners']:
@@ -189,7 +189,9 @@ with open(queue_file,'w') as qh:
                 cmd='%s --xy0 %d %d --%s @%s ' % (prog, xy1[0], xy1[1], args.step, defaults_file)
                 if calc_errors:
                     cmd += '; '+cmd+' --calc_error_for_xy'
-                qh.write(f'source activate {environment}; '+cmd+'; echo COMPLETE\n')
+                if args.environment is not None:
+                    cmd = f'source activate {args.environment}; '+cmd
+                qh.write( cmd+'; echo COMPLETE\n')
 print("Wrote commands to "+queue_file)
 
 
