@@ -851,6 +851,7 @@ def main(argv):
         pass
     S=ATL11_to_ATL15(args.xy0, ATL11_index=args.ATL11_index,
            Wxy=args.Width, E_RMS=E_RMS, t_span=args.time_span, spacing=spacing, \
+           bias_params=args.bias_params,\
            sigma_geo=args.sigma_geo, \
            sigma_radial=args.sigma_radial, \
            hemisphere=args.Hemisphere, reread_dirs=reread_dirs, \
