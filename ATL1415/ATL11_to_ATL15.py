@@ -10,7 +10,7 @@ os.environ["MKL_NUM_THREADS"]="1"  # multiple threads don't help that much and t
 os.environ["OPENBLAS_NUM_THREADS"]="1"  # multiple threads don't help that much and tend to eat resources
 
 import numpy as np
-from LSsurf.smooth_xytb_fit import smooth_xytb_fit
+from LSsurf.smooth_xytb_fit_aug import smooth_xytb_fit_aug
 import pointCollection as pc
 
 import re
@@ -18,7 +18,7 @@ import sys
 import h5py
 import traceback
 import matplotlib.pyplot as plt
-from surfaceChange.reread_data_from_fits import reread_data_from_fits
+from ATL1415.reread_data_from_fits import reread_data_from_fits
 import pyTMD
 import scipy.optimize
 import pdb
@@ -130,11 +130,11 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, sigma_geo=6.5, sigma_radial=0.03
         # fit_quality and dem_h D11 apply to all cycles, but are mapped only to some specific
         # cycle of the reference cycle
         temp={'fit_quality':np.nanmax(D_x.fit_quality[:,:,0], axis=1),
-              'dem_h':np.nanmax(D_x.dem_h[:,:,0], axis=1)}       
+              'dem_h':np.nanmax(D_x.dem_h[:,:,0], axis=1)}
         for cycle in range(D_x.shape[1]):
             D_x.fit_quality[:,cycle,1]=temp['fit_quality']
             D_x.dem_h[:,cycle,1]=temp['dem_h']
-        
+
         D_x.get_xy(proj4_string=SRS_proj4)
 
         good=np.isfinite(D_x.h_corr)[:,0:2,1].ravel()
@@ -175,7 +175,7 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, sigma_geo=6.5, sigma_radial=0.03
     try:
         D=pc.data().from_list(D_list+XO_list).ravel_fields()
         D.index(np.isfinite(D.z))
-        
+
     except ValueError:
         # catch empty data
         return None, file_list
@@ -435,7 +435,7 @@ def set_three_sigma_edit_with_DEM(data, xy0, Wxy, DEM_file, DEM_tol, W_med=None)
 
     outputs:  None (modifies data.three_sigma_edit)
     '''
-    
+
     if DEM_tol is None:
         return
 
@@ -443,22 +443,22 @@ def set_three_sigma_edit_with_DEM(data, xy0, Wxy, DEM_file, DEM_tol, W_med=None)
         W_med=Wxy/8
     if 'three_sigma_edit' not in data.fields:
         data.assign({'three_sigma_edit':np.ones_like(data.z, dtype=bool)})
-    
+
     if DEM_file is None:
         r_DEM = data.z-data.dem_h
     else:
          r_DEM = data.z - pc.grid.data()\
                 .from_geotif(DEM_file, bounds=[xy+0.6*np.array([-Wxy, Wxy]) for xy in xy0])\
                 .interp(data.x, data.y)
-        
-    good = np.ones_like(data.z, dtype=bool)   
+
+    good = np.ones_like(data.z, dtype=bool)
     for x0 in np.arange(xy0[0]-Wxy/2, xy0[0]+Wxy/2, W_med):
         for y0 in np.arange(xy0[1]-Wxy/2, xy0[1]+Wxy/2, W_med):
             ii = (data.x>=x0) & (data.x <= x0+W_med) &\
                 (data.y>=y0) & (data.y <= y0+W_med)
             good[ii] &= (np.abs(r_DEM[ii] - np.nanmedian(r_DEM[ii])) < DEM_tol)
     data.three_sigma_edit &= good
-    
+
 def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
             t_span=[2019.25, 2020.5], \
             spacing={'z0':2.5e2, 'dz':5.e2, 'dt':0.25},  \
@@ -467,6 +467,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
             dzdt_lags=[1, 4],\
             hemisphere=1, reference_epoch=None,\
             region=None, reread_dirs=None, \
+            prior_edge_args=None,\
             data_file=None, \
             max_iterations=5, \
             N_subset=8,  \
@@ -535,7 +536,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
 
     # initialize file_list to empty in case we're rereading the data
     file_list=[]
-    
+
     # figure out where to get the data
     if data_file is not None:
         data=pc.data().from_h5(data_file, group='data')
@@ -547,7 +548,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
     elif reread_dirs is not None:
         data = reread_data_from_fits(xy0, Wxy, reread_dirs, template='E%d_N%d.h5')
     else:
-        data, file_list = read_ATL11(xy0, Wxy, ATL11_index, SRS_proj4, 
+        data, file_list = read_ATL11(xy0, Wxy, ATL11_index, SRS_proj4,
                                      sigma_geo=sigma_geo, sigma_radial=sigma_radial)
         if sigma_tol is not None and data is not None:
             data.index(data.sigma < sigma_tol)
@@ -598,7 +599,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
 
     # new 8/11/2021: use a DEM (if provided) to reject ATL06/11 blunders
     set_three_sigma_edit_with_DEM(data, xy0, Wxy, DEM_file, DEM_tol)
-    
+
     # apply the tides if a directory has been provided
     # NEW 2/19/2021: apply the tides only if we have not read the data from first-round fits.
     if (tide_mask_file is not None or tide_mask_data is not None) and reread_dirs is None and calc_error_file is None and data_file is None:
@@ -615,14 +616,19 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
         return {'data':data}
 
     # call smooth_xytb_fitting
-    S=smooth_xytb_fit(data=data, ctr=ctr, W=W, spacing=spacing, E_RMS=E_RMS0,
-                     reference_epoch=reference_epoch, N_subset=N_subset, compute_E=compute_E,
-                     bias_params=bias_params,  max_iterations=max_iterations,
-                     srs_proj4=SRS_proj4, VERBOSE=True, dzdt_lags=dzdt_lags,
-                     mask_file=mask_file, mask_data=mask_data, mask_scale={0:10, 1:1},
-                     converge_tol_frac_edit=0.001,
-                     error_res_scale=error_res_scale,
-                     avg_scales=avg_scales)
+    S=smooth_xytb_fit_aug(data=data,
+                      ctr=ctr, W=W,
+                      spacing=spacing, E_RMS=E_RMS0,
+                      reference_epoch=reference_epoch,
+                      compute_E=compute_E,
+                      prior_edge_args=prior_edge_args,
+                      bias_params=bias_params,  max_iterations=max_iterations,
+                      srs_proj4=SRS_proj4, VERBOSE=True,
+                      dzdt_lags=dzdt_lags,
+                      mask_file=mask_file, mask_data=mask_data, mask_scale={0:10, 1:1},
+                      converge_tol_frac_edit=0.001,
+                      error_res_scale=error_res_scale,
+                      avg_scales=avg_scales)
     S['file_list'] = file_list
     return S
 
@@ -659,8 +665,8 @@ def save_fit_to_file(S,  filename, dzdt_lags=None, reference_epoch=0):
 def mask_components_by_time(dz):
     """
     identify the connected components in the data, mark unconstrained epochs as invalid
-    
-    inputs 
+
+    inputs
     dz: pc.grid.data() instance containing fields dz, cell_area
     outputs:
     modified inputs
@@ -747,6 +753,9 @@ def main(argv):
     parser.add_argument('--centers', action="store_true")
     parser.add_argument('--edges', action="store_true")
     parser.add_argument('--corners', action="store_true")
+    parser.add_argument('--matched', action="store_true")
+    parser.add_argument('--prior_edge_include', type=float, help='include prior constraints over this width at the edge of each tile')
+    parser.add_argument('--tile_spacing', type=float, default=60000.)
     parser.add_argument('--W_edit', type=int)
     parser.add_argument('--E_d2zdt2', type=float, default=5000)
     parser.add_argument('--E_d2z0dx2', type=float, default=0.02)
@@ -805,20 +814,37 @@ def main(argv):
 
     if args.centers:
         dest_dir += '/centers'
+        prior_dirs=None
         W_edit=None
     if args.edges or args.corners:
         reread_dirs=[args.base_directory+'/centers']
         if args.edges:
             dest_dir += '/edges'
+        prior_dirs=reread_dirs
     if args.corners:
         reread_dirs += [args.base_directory+'/edges']
         dest_dir +='/corners'
+        prior_dirs=reread_dirs
+    if args.matched:
+        dest_dir += '/matched'
+        prior_dirs = [args.base_directory+'/'+ii for ii in ['centers','edges','corners']]
+
+    prior_edge_args=None
+    if args.prior_edge_include is not None:
+        prior_edge_args={'prior_dir': prior_dirs,
+                         'edge_include':args.prior_edge_include,
+                         'tile_spacing':args.tile_spacing}
+
+    if args.xy0 is None and args.calc_error_file is not None or args.data_file is not None:
+        # get xy0 from the filename
+        if args.calc_error_file is not None:
+            re_match=re.compile('E(.*)_N(.*).h5').search(args.calc_error_file)
+        elif args.data_file is not None:
+            re_match=re.compile('E(.*)_N(.*).h5').search(args.data_file)
+        args.xy0=[float(re_match.group(ii))*1000 for ii in [1, 2]]
 
     if args.calc_error_file is not None:
         dest_dir=os.path.dirname(args.calc_error_file)
-        # get xy0 from the filename
-        re_match=re.compile('E(.*)_N(.*).h5').search(args.calc_error_file)
-        args.xy0=[float(re_match.group(ii))*1000 for ii in [1, 2]]
         args.out_name=args.calc_error_file
         with h5py.File(args.calc_error_file) as h5f:
             args.E_d2z0dx2 = h5f['E_RMS']['d2z0_dx2'][()]
@@ -840,7 +866,7 @@ def main(argv):
         if args.calc_error_file is not None:
             for ii, key in enumerate(['z0','dz']):
                 spacing[key] *= args.error_res_scale[ii]
-                
+
     args.bias_params=args.bias_params.split(',')
 
     if not os.path.isdir(args.base_directory):
@@ -852,6 +878,7 @@ def main(argv):
     S=ATL11_to_ATL15(args.xy0, ATL11_index=args.ATL11_index,
            Wxy=args.Width, E_RMS=E_RMS, t_span=args.time_span, spacing=spacing, \
            bias_params=args.bias_params,\
+           prior_edge_args=prior_edge_args, \
            sigma_geo=args.sigma_geo, \
            sigma_radial=args.sigma_radial, \
            hemisphere=args.Hemisphere, reread_dirs=reread_dirs, \
