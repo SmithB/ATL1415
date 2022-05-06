@@ -60,6 +60,9 @@ def reread_data_from_fits(xy0, W, dir_list, single_file=False,  template='E%d_N%
         W: box width
         dir_glob: glob pointing to directories to search
         template: template for file format
+    returns:
+        pointCollection.data object containing all data read
+        list of tile center coordinates for files that were read
     For a directory of files, find the files overlapping the requested box, and 
     select the data closest to the nearest file's center
     """
@@ -74,6 +77,7 @@ def reread_data_from_fits(xy0, W, dir_list, single_file=False,  template='E%d_N%
     data_list=[]
  
     index_list=[]
+    tile_center_list=[]
     for thedir in dir_list:
         if not os.path.isdir(thedir):
             continue
@@ -81,6 +85,7 @@ def reread_data_from_fits(xy0, W, dir_list, single_file=False,  template='E%d_N%
             this_xy=[xy0[0]+W/2*ii, xy0[1]+W/2*jj]
             this_file=thedir+'/'+template % (this_xy[0]/1000, this_xy[1]/1000)
             if os.path.isfile(this_file):
+                tile_center_list += [this_xy]
                 with h5py.File(this_file,'r') as h5f:
                     this_data=dict()
                     for key in h5f['data'].keys():
@@ -118,7 +123,7 @@ def reread_data_from_fits(xy0, W, dir_list, single_file=False,  template='E%d_N%
         data_sub_list.append(data_list[this][index_list[this]['xyb']==this_bin])
     # return data and sensor key
     fields=data_list[0].fields
-    return pc.data(fields=fields).from_list(data_sub_list)
+    return pc.data(fields=fields).from_list(data_sub_list), file_center_list
 
 #def main():
 #    import matplotlib.pyplot as plt

@@ -17,11 +17,10 @@ import re
 import sys
 import h5py
 import traceback
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 from ATL1415.reread_data_from_fits import reread_data_from_fits
 import pyTMD
 import scipy.optimize
-import pdb
 
 def get_SRS_info(hemisphere):
     if hemisphere==1:
@@ -48,7 +47,9 @@ def manual_edits(D):
     D.index(~bad)
     return
 
-def read_ATL11(xy0, Wxy, index_file, SRS_proj4, sigma_geo=6.5, sigma_radial=0.03):
+
+def read_ATL11(xy0, Wxy, index_file, SRS_proj4, \
+               sigma_geo=6.5, sigma_radial=0.03):
     '''
     read ATL11 data from an index file
 
@@ -68,6 +69,7 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, sigma_geo=6.5, sigma_radial=0.03
                         '__calc_internal__' : ['rgt'],
                         'cycle_stats' : {'tide_ocean','dac'},
                         'ref_surf':['e_slope','n_slope', 'x_atc', 'fit_quality', 'dem_h']}
+
     try:
         # catch empty data
         D11_list=pc.geoIndex().from_file(index_file).query_xy_box(
@@ -544,9 +546,8 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
         data=pc.data().from_h5(calc_error_file, group='data')
         max_iterations=0
         compute_E=True
-        N_subset=None
     elif reread_dirs is not None:
-        data = reread_data_from_fits(xy0, Wxy, reread_dirs, template='E%d_N%d.h5')
+        data, tile_reread_list = reread_data_from_fits(xy0, Wxy, reread_dirs, template='E%d_N%d.h5')
     else:
         data, file_list = read_ATL11(xy0, Wxy, ATL11_index, SRS_proj4,
                                      sigma_geo=sigma_geo, sigma_radial=sigma_radial)
@@ -597,7 +598,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
         if region=='GL' and mask_file.endswith('.nc'):
             mask_data, tide_mask_data = read_bedmachine_greenland(mask_file, xy0, Wxy)
 
-    # new 8/11/2021: use a DEM (if provided) to reject ATL06/11 blunders
+    # to reject ATL06/11 blunders
     set_three_sigma_edit_with_DEM(data, xy0, Wxy, DEM_file, DEM_tol)
 
     # apply the tides if a directory has been provided
@@ -750,6 +751,7 @@ def main(argv):
     parser.add_argument('--Hemisphere','-H', type=int, default=1, help='hemisphere: -1=Antarctica, 1=Greenland')
     parser.add_argument('--base_directory','-b', type=str, help='base directory')
     parser.add_argument('--out_name', '-o', type=str, help="output file name")
+    parser.add_argument('--prelim', action='store_true')
     parser.add_argument('--centers', action="store_true")
     parser.add_argument('--edges', action="store_true")
     parser.add_argument('--corners', action="store_true")
@@ -816,18 +818,22 @@ def main(argv):
         dest_dir += '/centers'
         prior_dirs=None
         W_edit=None
-    if args.edges or args.corners:
+    elif args.centers:
+        dest_dir += '/prelim'
+        prior_dirs=None
+        W_edit=None
+    elif args.edges or args.corners:
         reread_dirs=[args.base_directory+'/centers']
         if args.edges:
             dest_dir += '/edges'
         prior_dirs=reread_dirs
-    if args.corners:
+    elif args.corners:
         reread_dirs += [args.base_directory+'/edges']
         dest_dir +='/corners'
         prior_dirs=reread_dirs
-    if args.matched:
+    elif args.matched:
         dest_dir += '/matched'
-        prior_dirs = [args.base_directory+'/'+ii for ii in ['centers','edges','corners']]
+        prior_dirs = [args.base_directory+'/'+ii for ii in ['prelim','centers','edges','corners']]
 
     prior_edge_args=None
     if args.prior_edge_include is not None:
