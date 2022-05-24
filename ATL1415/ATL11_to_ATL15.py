@@ -757,6 +757,7 @@ def main(argv):
     parser.add_argument('--corners', action="store_true")
     parser.add_argument('--matched', action="store_true")
     parser.add_argument('--prior_edge_include', type=float, help='include prior constraints over this width at the edge of each tile')
+    parser.add_argument('--prior_sigma_scale', type=float, default=1, help='scale prior error estimates by this value')
     parser.add_argument('--tile_spacing', type=float, default=60000.)
     parser.add_argument('--W_edit', type=int)
     parser.add_argument('--E_d2zdt2', type=float, default=5000)
@@ -839,6 +840,7 @@ def main(argv):
     if args.prior_edge_include is not None:
         prior_edge_args={'prior_dir': prior_dirs,
                          'edge_include':args.prior_edge_include,
+                         'sigma_scale':args.prior_sigma_scale,
                          'tile_spacing':args.tile_spacing}
 
     if args.xy0 is None and args.calc_error_file is not None or args.data_file is not None:
