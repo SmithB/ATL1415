@@ -1,5 +1,6 @@
 name: ATL14
 channels:
+  - conda_forge
   - defaults
 dependencies:
   - suitesparse
@@ -12,4 +13,4 @@ dependencies:
   - ipykernel
   - cython
   - tmux
-prefix: /home/besmith4/.conda/envs/ATL14
+  - netcdf4
