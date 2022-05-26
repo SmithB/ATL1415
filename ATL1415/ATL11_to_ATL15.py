@@ -467,10 +467,14 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
             sigma_geo=6.5,\
             sigma_radial=0.03,\
             dzdt_lags=[1, 4],\
-            hemisphere=1, reference_epoch=None,\
-            region=None, reread_dirs=None, \
+            hemisphere=1, 
+            reference_epoch=None,\
+            region=None, 
+            reread_dirs=None, \
+            sigma_extra_bin_spacing=None,\
             prior_edge_args=None,\
             data_file=None, \
+            restart_edit=False, \
             max_iterations=5, \
             N_subset=8,  \
             W_edit=None, \
@@ -509,6 +513,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
         data_file: (string) output file from which to reread data (alternative to reread_dirs)
         max_iterations: (int) maximum number of iterations in three-sigma edit of the solution
         N_subset: (int) If specified, the domain is subdivided into this number of divisions in x and y, and a three-sigma edit is calculated for each
+        sigma_extra_bin_spacing: (float) grid spacing that will be used to calculate extra geophysical errors
         W_edit: (float) Only data within this distance of the grid center can be editied in the iterative step
         out_name: (string) Name of the output file
         compute_E: (bool) If true, errors will be calculated
@@ -607,6 +612,21 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
         # the three-sigma edit
         data.assign({'editable':  (np.abs(data.x-xy0[0])<=W_edit/2) & (np.abs(data.y-xy0[1])<=W_edit/2)})
 
+    # work out which mask to use based on the region
+    tide_mask_data=None
+    mask_data=None
+    if region is not None:
+        if region=='AA':
+            mask_data=pc.grid.data().from_geotif(mask_file, bounds=[xy0[0]+np.array([-1.2, 1.2])*Wxy/2, xy0[1]+np.array([-1.2, 1.2])*Wxy/2])
+            import scipy.ndimage as snd
+            mask_data.z=snd.binary_erosion(snd.binary_erosion(mask_data.z, np.ones([1,3])), np.ones([3,1]))
+            mask_file=None
+        if region=='GL' and mask_file.endswith('.nc'):
+            mask_data, tide_mask_data = read_bedmachine_greenland(mask_file, xy0, Wxy)
+    if restart_edit:
+        if 'three_sigma_edit' in data.fields:
+            data.three_sigma_edit[:]=True
+
     # to reject ATL06/11 blunders
     set_three_sigma_edit_with_DEM(data, xy0, Wxy, DEM_file, DEM_tol)
 
@@ -631,8 +651,10 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
                       spacing=spacing, E_RMS=E_RMS0,
                       reference_epoch=reference_epoch,
                       compute_E=compute_E,
+                      sigma_extra_bin_spacing=sigma_extra_bin_spacing,
                       prior_edge_args=prior_edge_args,
-                      bias_params=bias_params,  max_iterations=max_iterations,
+                      bias_params=bias_params,
+                      max_iterations=max_iterations,
                       srs_proj4=SRS_proj4, VERBOSE=True,
                       dzdt_lags=dzdt_lags,
                       mask_file=mask_file, mask_data=mask_data, mask_scale={0:10, 1:1},
@@ -768,6 +790,7 @@ def main(argv):
     parser.add_argument('--prior_edge_include', type=float, help='include prior constraints over this width at the edge of each tile')
     parser.add_argument('--prior_sigma_scale', type=float, default=1, help='scale prior error estimates by this value')
     parser.add_argument('--tile_spacing', type=float, default=60000.)
+    parser.add_argument('--sigma_extra_bin_spacing', type=float, default=None, help='width over which data are collected to calculate the extra error estimates')
     parser.add_argument('--W_edit', type=int)
     parser.add_argument('--E_d2zdt2', type=float, default=5000)
     parser.add_argument('--E_d2z0dx2', type=float, default=0.02)
@@ -792,6 +815,7 @@ def main(argv):
     parser.add_argument('--tide_model', type=str)
     parser.add_argument('--reference_epoch', type=int, default=0, help="Reference epoch number, for which dz=0")
     parser.add_argument('--data_file', type=str, help='read data from this file alone')
+    parser.add_argument('--restart_edit', action='store_true')
     parser.add_argument('--calc_error_file','-c', type=str, help='file containing data for which errors will be calculated')
     parser.add_argument('--calc_error_for_xy', action='store_true', help='calculate the errors for the file specified by the x0, y0 arguments')
     parser.add_argument('--error_res_scale','-s', type=float, nargs=2, default=[4, 2], help='if the errors are being calculated (see calc_error_file), scale the grid resolution in x and y to be coarser')
@@ -828,7 +852,7 @@ def main(argv):
         dest_dir += '/centers'
         prior_dirs=None
         W_edit=None
-    elif args.centers:
+    elif args.prelim:
         dest_dir += '/prelim'
         prior_dirs=None
         W_edit=None
@@ -900,6 +924,7 @@ def main(argv):
            sigma_radial=args.sigma_radial, \
            hemisphere=args.Hemisphere, reread_dirs=reread_dirs, \
            data_file=args.data_file, \
+           restart_edit=args.restart_edit, \
            out_name=args.out_name,
            dzdt_lags=args.dzdt_lags, \
            N_subset=args.N_subset,\
@@ -911,6 +936,7 @@ def main(argv):
            tide_adjustment_file=args.tide_adjustment_file, \
            tide_model=args.tide_model, \
            max_iterations=args.max_iterations, \
+           sigma_extra_bin_spacing=args.sigma_extra_bin_spacing,\
            reference_epoch=args.reference_epoch, \
            W_edit=W_edit,\
            calc_error_file=args.calc_error_file, \
