@@ -3,8 +3,8 @@
 
 
 ATL14_dir=/home/besmith4/nobackup/ATL14_processing/
-version=005_0313
-ATL11_north=/discover/nobackup/bjelley/ATL11_processing/Arctic_005_cycle_03_13/005/
-ATL11_south=/discover/nobackup/bjelley/ATL11_processing/Antarctic_005_cycle_03_13/005/
+version=005_0314
+ATL11_north=/discover/nobackup/bjelley/ATL11_processing/Arctic_005_cycle_03_14/005/
+ATL11_south=/discover/nobackup/bjelley/ATL11_processing/Antarctic_005_cycle_03_14/005/
 
 make_ATL11_index $ATL14_dir $version $ATL11_north $ATL11_south
