@@ -1,6 +1,6 @@
 --tile_spacing=40000
 -W=60000 
--t=2018.75,2022.00
+-t=2018.75,2022.5
 -g=100,1000,0.25
 --dzdt_lags=1,4,8,12
 --E_d3zdx2dt=0.00005 
@@ -9,9 +9,10 @@
 --reference_epoch=5
 --avg_scales=40000,20000,10000
 --max_iterations=6
---cycles=0313
+--cycles=0314
 --Release=002
 --version=01
 --ATL11_release=005
 --DEM_tol=50
 --sigma_tol=8
+--bias_params=rgt,cycle,pair
