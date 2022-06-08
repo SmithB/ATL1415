@@ -47,8 +47,8 @@ parser.add_argument('--tile_spacing', type=int)
 parser.add_argument('--environment','-e', type=str)
 args = parser.parse_args()
 
-if args.step not in ['centers', 'edges','corners']:
-    raise(ValueError('step argument not known: must be one of : centers, edges, corners'))
+if args.step not in ['centers', 'edges','corners','prelim']:
+    raise(ValueError('step argument not known: must be one of : prelim, centers, edges, corners'))
     sys.exit()
 
 if args.skip_errors:
@@ -111,6 +111,13 @@ for this in [release_dir, hemi_dir, region_dir]:
         print("missing directory: "+ this)
         sys.exit(1)
 
+if not os.path.isfile(defaults['--ATL11_index']):
+    original_index_file = defaults['--ATL11_index']
+    defaults['--ATL11_index'] = os.path.join(defaults['--ATL14_root'], defaults['--ATL11_index'])
+    if not os.path.isfile(defaults['--ATL11_index']):
+        print("could not find ATL11 index in " + defaults['--ATL11_index'] + " or " + original_index_file)
+        sys.exit(1)
+
 # write out the composite defaults file
 defaults_file=os.path.join(region_dir, f'input_args_{defaults["--region"]}.txt')
 with open(defaults_file, 'w') as fh:
@@ -131,9 +138,11 @@ else:
 Hxy=Wxy/2
 
 mask_base, mask_ext = os.path.splitext(defaults['--mask_file'])
-if mask_ext in ('.tif'):
-    
-    tif_1km=defaults['--mask_file'].replace('100m','1km').replace('125m','1km')
+if mask_ext in ('.tif','.h5'):
+    if mask_ext=='.h5':
+        tif_1km=defaults['--mask_file'].replace('.h5', '_1km.tif')
+    else:
+        tif_1km=defaults['--mask_file'].replace('100m','1km').replace('125m','1km')
     temp=pc.grid.data().from_geotif(tif_1km)
         
     mask_G=pad_mask_canvas(temp, 200)
@@ -163,7 +172,7 @@ if XR is not None:
 xg=xg[good]
 yg=yg[good]
 
-if args.step=='centers':
+if args.step=='centers' or args.step=='prelim':
     delta_x=[0]
     delta_y=[0]
 elif args.step=='edges':
