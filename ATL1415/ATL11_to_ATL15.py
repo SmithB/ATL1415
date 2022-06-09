@@ -553,8 +553,8 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
                                             bands=np.arange(17, 24))
             while mask_data.t[-1] < ctr['t']+W['t']/2:
                 # append a copy of the last field in the mask data to the end of the mask data
-                mask_data.z = np.concatenate([mask_data.z,mask_data.z[:,:,-1]], axis=2)
-                mask_data.t = np.concatenate([mask_data.t,[mask_data.t[-1]+1]], axis=0)
+                mask_data.z = np.concatenate([mask_data.z,mask_data.z[:,:,-1:]], axis=2)
+                mask_data.t = np.concatenate([mask_data.t,mask_data.t[-1:]+1], axis=0)
             mask_data.__update_size_and_shape__()
             #mask_data=pc.grid.data().from_geotif(mask_file, bounds=[xy0[0]+np.array([-1.2, 1.2])*Wxy/2, xy0[1]+np.array([-1.2, 1.2])*Wxy/2])
             #import scipy.ndimage as snd
@@ -612,17 +612,6 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
         # the three-sigma edit
         data.assign({'editable':  (np.abs(data.x-xy0[0])<=W_edit/2) & (np.abs(data.y-xy0[1])<=W_edit/2)})
 
-    # work out which mask to use based on the region
-    tide_mask_data=None
-    mask_data=None
-    if region is not None:
-        if region=='AA':
-            mask_data=pc.grid.data().from_geotif(mask_file, bounds=[xy0[0]+np.array([-1.2, 1.2])*Wxy/2, xy0[1]+np.array([-1.2, 1.2])*Wxy/2])
-            import scipy.ndimage as snd
-            mask_data.z=snd.binary_erosion(snd.binary_erosion(mask_data.z, np.ones([1,3])), np.ones([3,1]))
-            mask_file=None
-        if region=='GL' and mask_file.endswith('.nc'):
-            mask_data, tide_mask_data = read_bedmachine_greenland(mask_file, xy0, Wxy)
     if restart_edit:
         if 'three_sigma_edit' in data.fields:
             data.three_sigma_edit[:]=True
