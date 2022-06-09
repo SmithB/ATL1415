@@ -131,7 +131,10 @@ if not os.path.isdir(step_dir):
 
 # generate the center locations
 if args.tile_spacing is None:
-    Wxy=float(defaults['-W'])
+    if '--tile_spacing' in defaults:
+        Wxy=float(defaults['--tile_spacing'])
+    else:
+        Wxy=float(defaults['-W'])
 else:
     Wxy=args.tile_spacing
 
