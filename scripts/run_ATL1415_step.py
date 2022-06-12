@@ -30,9 +30,11 @@ def pad_mask_canvas(D, N):
 
 def get_xy_from_mask(args, Hxy, XR, YR):
     mask_base, mask_ext = os.path.splitext(args.mask_file)
-    if mask_ext in ('.tif'):
- 
-        tif_1km=args.mask_file.replace('100m','1km').replace('125m','1km')
+    if mask_ext in ('.tif','.h5'): 
+        if mask_ext=='.h5':
+            tif_1km=defaults['--mask_file'].replace('.h5', '_1km.tif')
+        else:
+            tif_1km=defaults['--mask_file'].replace('100m','1km').replace('125m','1km')
         temp=pc.grid.data().from_geotif(tif_1km)
     
         mask_G=pad_mask_canvas(temp, 200)
@@ -99,6 +101,8 @@ parser.add_argument('--Hemisphere', type=str)
 parser.add_argument('--mask_file', type=str)
 parser.add_argument('--d2z0_file', type=str)
 parser.add_argument('--slurm', action='store_true')
+parser.add_argument('--dry_run','-d', action='store_true')
+
 args, _ = parser.parse_known_args()
 
 
@@ -136,6 +140,13 @@ if args.mask_dir is not None:
     if args.tide_mask_file is not None and not os.path.isfile(args.mask_file):
         args.tide_mask_file=os.path.join(args.mask_dir, args.tide_mask_file)
 
+if not os.path.isfile(defaults['--ATL11_index']):
+    original_index_file = defaults['--ATL11_index']
+    defaults['--ATL11_index'] = os.path.join(defaults['--ATL14_root'], defaults['--ATL11_index'])                                                     
+    if not os.path.isfile(defaults['--ATL11_index'])  
+        print("could not find ATL11 index in " + defaults['--ATL11_index'] + " or " + original_index_file)
+        sys.exit(1)
+
 E_d2z0=None
 if args.d2z0_file is not None:
     if not os.path.isfile(args.d2z0_file):
@@ -166,7 +177,7 @@ else:
 Hxy=Wxy/2
 xg, yg  = get_xy_from_mask(args, Hxy, XR, YR)
 
-if args.step=='centers':
+if args.step=='centers' or args.step=='prelim':
     delta_x=[0]
     delta_y=[0]
 elif args.step=='edges':
@@ -202,13 +213,6 @@ for xy0 in zip(xg, yg):
         else:
             queued.append(tuple(xy1))
         
-        if E_d2z0 is not None:
-            c = np.argmin(np.abs(E_d2z0.x-xy1[0]))
-            r = np.argmin(np.abs(E_d2z0.y-xy1[1]))
-            E_d2z0dx2 = np.minimum(1.e-2, np.maximum(1.e-4, E_d2z0.z[r,c]))
-            if np.isnan(E_d2z0dx2):
-                E_d2z0dx2=1.e-2
-            xyE.write(f'{xy1[0]} {xy1[1]} {E_d2z0dx2}\n')
         out_file='%s/E%d_N%d.h5' % (step_dir, xy1[0]/1000, xy1[1]/1000)  
         if os.path.isfile(out_file):
             continue
@@ -238,8 +242,8 @@ with open('/home/besmith4/slurm_files/templates/worker','r') as temp:
                 line=line.replace(search, replace)
             out.write(line)
 
-if args.slurm:
-    if args.step=='centers':
+if args.slurm and not args.dry_run:
+    if args.step=='centers' or args.step=='prelim':
         os.system(f'cd {run_dir}; sbatch slurm_tile_run > dependents')
     else:
         if args.step=='edges':
