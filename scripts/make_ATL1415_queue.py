@@ -44,10 +44,11 @@ parser.add_argument('defaults_files', nargs='+', type=str)
 parser.add_argument('--region_file', '-R', type=str)
 parser.add_argument('--skip_errors','-s', action='store_true')
 parser.add_argument('--tile_spacing', type=int)
+parser.add_argument('--prior_edge_include', type=float, default=1000)
 parser.add_argument('--environment','-e', type=str)
 args = parser.parse_args()
 
-if args.step not in ['centers', 'edges','corners','prelim']:
+if args.step not in ['centers', 'edges','corners','prelim', 'matched']:
     raise(ValueError('step argument not known: must be one of : prelim, centers, edges, corners'))
     sys.exit()
 
@@ -175,7 +176,7 @@ if XR is not None:
 xg=xg[good]
 yg=yg[good]
 
-if args.step=='centers' or args.step=='prelim':
+if args.step=='centers' or args.step=='prelim' or args.step=='matched':
     delta_x=[0]
     delta_y=[0]
 elif args.step=='edges':
@@ -184,6 +185,7 @@ elif args.step=='edges':
 elif args.step=='corners':
     delta_x=[-1, 1, -1, 1.]
     delta_y=[-1, -1, 1, 1.]
+
 
 queued=[];
 queue_file=f"1415_queue_{defaults['--region']}_{args.step}.txt"
@@ -196,14 +198,25 @@ with open(queue_file,'w') as qh:
                 continue
             else:
                 queued.append(tuple(xy1))
-            out_file='%s/E%d_N%d.h5' % (step_dir, xy1[0]/1000, xy1[1]/1000)  
-            if not os.path.isfile(out_file):
+            if not args.step=='matched':
+                out_file='%s/E%d_N%d.h5' % (step_dir, xy1[0]/1000, xy1[1]/1000)
+                if os.path.isfile(out_file):
+                    continue
                 cmd='%s --xy0 %d %d --%s @%s ' % (prog, xy1[0], xy1[1], args.step, defaults_file)
                 if calc_errors:
                     cmd += '; '+cmd+' --calc_error_for_xy'
-                if args.environment is not None:
-                    cmd = f'source activate {args.environment}; '+cmd
-                qh.write( cmd+'; echo COMPLETE\n')
+            else:
+                prelim_file='%s/prelim/E%d_N%d.h5' % (region_dir, xy1[0]/1000, xy1[1]/1000)
+
+                matched_file=prelim_file.replace('prelim','matched')
+                if not os.path.isfile(prelim_file):
+                    print(prelim_file)
+                    continue
+                cmd=f'{prog} --matched --data_file {prelim_file} --out_name {matched_file}'+\
+                 f' --prior_edge_include {args.prior_edge_include} @{defaults_file}'
+            if args.environment is not None:
+                cmd = f'source activate {args.environment}; '+cmd
+            qh.write( cmd+'; echo COMPLETE\n')
 print("Wrote commands to "+queue_file)
 
 
