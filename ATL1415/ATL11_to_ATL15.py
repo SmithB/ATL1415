@@ -68,7 +68,7 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, \
                         'h_corr','h_corr_sigma','h_corr_sigma_systematic', 'ref_pt'],\
                         '__calc_internal__' : ['rgt'],
                         'cycle_stats' : {'tide_ocean','dac'},
-                        'ref_surf':['e_slope','n_slope', 'x_atc', 'fit_quality', 'dem_h']}
+                        'ref_surf':['e_slope','n_slope', 'x_atc', 'fit_quality', 'dem_h', 'geoid_h']}
 
     try:
         # catch empty data
@@ -116,6 +116,7 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, \
            'dem_h': D11.dem_h,
            'tide_ocean': D11.tide_ocean,
            'dac': D11.dac,
+           'geoid_h':D11.geoid_h,
            'delta_time': D11.delta_time,
            'time':D11.delta_time/24/3600/365.25+2018,
            'n_slope':D11.n_slope,
@@ -129,13 +130,19 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, \
         D_x = pc.ATL11.crossover_data().from_h5(D11.filename, pair=D11.pair, D_at=D11)
         if D_x is None:
             continue
-        # fit_quality and dem_h D11 apply to all cycles, but are mapped only to some specific
-        # cycle of the reference cycle
-        temp={'fit_quality':np.nanmax(D_x.fit_quality[:,:,0], axis=1),
-              'dem_h':np.nanmax(D_x.dem_h[:,:,0], axis=1)}
-        for cycle in range(D_x.shape[1]):
-            D_x.fit_quality[:,cycle,1]=temp['fit_quality']
-            D_x.dem_h[:,cycle,1]=temp['dem_h']
+        # constant fields in D11 apply to all cycles, but are mapped 
+        # only to some specific cycle of the reference cycle
+        constant_fields = ['fit_quality', 'dem_h', 'geoid_h']
+        for field in constant_fields:
+            temp=getattr(D_x, field)
+            val=np.nanmax(temp[:,:,0], axis=1)
+            for cycle in range(D_x.shape[1]):
+                temp[:, cycle, 1] = val
+        #temp={'fit_quality':np.nanmax(D_x.fit_quality[:,:,0], axis=1),
+        #      'dem_h':np.nanmax(D_x.dem_h[:,:,0], axis=1)}
+        #for cycle in range(D_x.shape[1]):
+        #    D_x.fit_quality[:,cycle,1]=temp['fit_quality']
+        #    D_x.dem_h[:,cycle,1]=temp['dem_h']
 
         D_x.get_xy(proj4_string=SRS_proj4)
 
@@ -161,6 +168,7 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, \
             'latitude':D_x.latitude,
             'longitude':D_x.longitude,
             'dem_h':D_x.dem_h,
+            'geoid_h':D_x.geoid_h,
             'rgt':D_x.rgt,
             'pair':np.zeros_like(D_x.x)+D_x.pair,
             'ref_pt':blank,
@@ -482,6 +490,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
             compute_E=False, \
             DEM_file=None,\
             DEM_tol=None,\
+            geoid_tol=None, \
             sigma_tol=None,\
             mask_file=None,\
             tide_mask_file=None,\
@@ -630,6 +639,9 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
                     tide_adjustment=tide_adjustment,
                     tide_adjustment_file=tide_adjustment_file,
                     EPSG=EPSG, verbose=verbose)
+
+    if geoid_tol is not None:
+        data.index((data.z - data.geoid_h) > geoid_tol)
 
     if write_data_only:
         return {'data':data}
@@ -795,6 +807,7 @@ def main(argv):
     parser.add_argument('--map_dir','-m', type=str)
     parser.add_argument('--DEM_file', type=str, help='DEM file to use with the DEM_tol parameter')
     parser.add_argument('--DEM_tol', type=float, default=50, help='points different from the DEM by more than this value will be edited in the first iteration')
+    parser.add_argument('--geoid_tol', type=float, help='points closer than this to the geoid will be rejected')
     parser.add_argument('--sigma_tol', type=float, help='points with sigma greater than this value will be edited')
     parser.add_argument('--mask_file', type=str)
     parser.add_argument('--tide_mask_file', type=str)
@@ -856,6 +869,7 @@ def main(argv):
         prior_dirs=reread_dirs
     elif args.matched:
         dest_dir += '/matched'
+        args.max_iterations=1
         prior_dirs = [args.base_directory+'/'+ii for ii in ['prelim','centers','edges','corners']]
 
     prior_edge_args=None
@@ -934,6 +948,7 @@ def main(argv):
            verbose=args.verbose, \
            DEM_file=args.DEM_file, \
            DEM_tol=args.DEM_tol, \
+           geoid_tol=args.geoid_tol,\
            sigma_tol=args.sigma_tol, \
            write_data_only=args.write_data_only)
 
