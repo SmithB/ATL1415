@@ -480,6 +480,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
             region=None, 
             reread_dirs=None, \
             sigma_extra_bin_spacing=None,\
+            sigma_extra_max=None,\
             prior_edge_args=None,\
             data_file=None, \
             restart_edit=False, \
@@ -653,6 +654,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
                       reference_epoch=reference_epoch,
                       compute_E=compute_E,
                       sigma_extra_bin_spacing=sigma_extra_bin_spacing,
+                      sigma_extra_max=sigma_extra_max,
                       prior_edge_args=prior_edge_args,
                       bias_params=bias_params,
                       max_iterations=max_iterations,
@@ -792,6 +794,7 @@ def main(argv):
     parser.add_argument('--prior_sigma_scale', type=float, default=1, help='scale prior error estimates by this value')
     parser.add_argument('--tile_spacing', type=float, default=60000.)
     parser.add_argument('--sigma_extra_bin_spacing', type=float, default=None, help='width over which data are collected to calculate the extra error estimates')
+    parser.add_argument('--sigma_extra_max', type=float, default=None, help='maximum value for sigma_extra,')
     parser.add_argument('--W_edit', type=int)
     parser.add_argument('--E_d2zdt2', type=float, default=5000)
     parser.add_argument('--E_d2z0dx2', type=float, default=0.02)
@@ -940,6 +943,7 @@ def main(argv):
            tide_model=args.tide_model, \
            max_iterations=args.max_iterations, \
            sigma_extra_bin_spacing=args.sigma_extra_bin_spacing,\
+           sigma_extra_max=args.sigma_extra_max,\
            reference_epoch=args.reference_epoch, \
            W_edit=W_edit,\
            calc_error_file=args.calc_error_file, \
