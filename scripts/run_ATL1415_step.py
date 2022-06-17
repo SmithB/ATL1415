@@ -32,9 +32,9 @@ def get_xy_from_mask(args, Hxy, XR, YR):
     mask_base, mask_ext = os.path.splitext(args.mask_file)
     if mask_ext in ('.tif','.h5'): 
         if mask_ext=='.h5':
-            tif_1km=defaults['--mask_file'].replace('.h5', '_1km.tif')
+            tif_1km=args.mask_file.replace('.h5', '_1km.tif')
         else:
-            tif_1km=defaults['--mask_file'].replace('100m','1km').replace('125m','1km')
+            tif_1km=args.mask_file.replace('100m','1km').replace('125m','1km')
         temp=pc.grid.data().from_geotif(tif_1km)
     
         mask_G=pad_mask_canvas(temp, 200)
@@ -95,6 +95,7 @@ parser.add_argument('-W', type=float)
 parser.add_argument('--skip_errors','-s', action='store_true')
 parser.add_argument('--tile_spacing', type=int)
 parser.add_argument('--ATL14_root', type=str)
+parser.add_argument('--ATL11_index', type=str)
 parser.add_argument('--region', type=str)
 parser.add_argument('--Release', type=str)
 parser.add_argument('--Hemisphere', type=str)
@@ -106,7 +107,7 @@ parser.add_argument('--dry_run','-d', action='store_true')
 args, _ = parser.parse_known_args()
 
 
-if args.step not in ['centers', 'edges','corners']:
+if args.step not in ['centers', 'edges','corners', 'prelim','matched']:
     raise(ValueError('step argument not known: must be one of : centers, edges, corners'))
     sys.exit()
 
@@ -140,11 +141,11 @@ if args.mask_dir is not None:
     if args.tide_mask_file is not None and not os.path.isfile(args.mask_file):
         args.tide_mask_file=os.path.join(args.mask_dir, args.tide_mask_file)
 
-if not os.path.isfile(defaults['--ATL11_index']):
-    original_index_file = defaults['--ATL11_index']
-    defaults['--ATL11_index'] = os.path.join(defaults['--ATL14_root'], defaults['--ATL11_index'])                                                     
-    if not os.path.isfile(defaults['--ATL11_index'])  
-        print("could not find ATL11 index in " + defaults['--ATL11_index'] + " or " + original_index_file)
+if not os.path.isfile(args.ATL11_index):
+    original_index_file = args.ATL11_index
+    args.ATL11_index = os.path.join(args.ATL14_root, args.ATL11_index)
+    if not os.path.isfile(defaults['--ATL11_index']):
+        print("could not find ATL11 index in " + args.ATL11_index + " or " + original_index_file)
         sys.exit(1)
 
 E_d2z0=None
@@ -177,7 +178,7 @@ else:
 Hxy=Wxy/2
 xg, yg  = get_xy_from_mask(args, Hxy, XR, YR)
 
-if args.step=='centers' or args.step=='prelim':
+if args.step=='centers' or args.step=='prelim' or args.step=='matched':
     delta_x=[0]
     delta_y=[0]
 elif args.step=='edges':
@@ -221,16 +222,10 @@ for xy0 in zip(xg, yg):
         with open(task_file,'w') as fh_out:
             fh_out.write(f'source activate {environment}\n')
             cmd = '%s --xy0 %d %d --%s @%s ' % (prog, xy1[0], xy1[1], args.step, defaults_file)
-            if E_d2z0 is not None:
-                cmd += f' --E_d2z0dx2={E_d2z0dx2:.6f}'
             fh_out.write(cmd+'\n')
-        calc_sigma_file=f'{queue_dir}/calc_sigma_{count}'
-        if calc_errors:
-            calc_sigma_file=f'{queue_dir}/calc_sigma_{count}'
-            with open(calc_sigma_file,'w') as fh_out:
-                cmd += ' --calc_error_for_xy'
-                fh_out.write(f'source activate {environment}\n')
-                fh_out.write(cmd+'\n')
+
+            if calc_errors:
+                fh_out.write(cmd+' --calc_error_for_xy'+'\n')
 print("Wrote commands to "+queue_dir)
 
 replacements={"[[JOB_NAME]]":run_name+'_dh', "[[TIME]]":"04:00:00", '[[NUM_TASKS]]':'3', "[[JOB_DIR]]":queue_dir, "[[JOB_NUMBERS]]":f"1-{count}", "[[PREFIX]]":"calc_dh"}
@@ -252,18 +247,4 @@ if args.slurm and not args.dry_run:
             last_dir=run_dir.replace('corners','edges')
         dep_job=os.popen(f'tail -1 {last_dir}/dependents').read().rstrip().split()[-1]
         os.system(f'cd {run_dir}; sbatch --dependency=afterany:{dep_job} slurm_tile_run > dependents')
-
-    replacements={"[[JOB_NAME]]":run_name+'_sigma', "[[TIME]]":"03:00:00", '[[NUM_TASKS]]':'3', "[[JOB_DIR]]":queue_dir, "[[JOB_NUMBERS]]":f"1-{count}", "[[PREFIX]]":"calc_sigma"}
-
-    with open('/home/besmith4/slurm_files/templates/worker','r') as temp:
-        with open(run_dir+'/slurm_sigma_run','w') as out:
-            for line in temp:
-                for search, replace in replacements.items():
-                    line=line.replace(search, replace)
-            out.write(line)
-
-
-    dep_job=os.popen(f'tail -1 {run_dir}/dependents').read().rstrip().split()[-1]
-    os.system(f'cd {run_dir}; sbatch --dependency=afterany:{dep_job} slurm_sigma_run >> dependents')
-
 
