@@ -6,8 +6,19 @@ Created on Fri Nov 15 17:15:08 2019
 @author: ben
  """
 import os
-os.environ["MKL_NUM_THREADS"]="1"  # multiple threads don't help that much and tend to eat resources
-os.environ["OPENBLAS_NUM_THREADS"]="1"  # multiple threads don't help that much and tend to eat resources
+import sys
+import re
+
+threads_re=re.compile("THREADS=(\S+)")
+n_threads="1"
+for arg in sys.argv:
+    try:
+        n_threads=str(threads_re.search(arg).group(1))
+    except Exception:
+        pass
+
+os.environ["MKL_NUM_THREADS"]=n_threads 
+os.environ["OPENBLAS_NUM_THREADS"]=n_threads 
 
 import numpy as np
 from LSsurf.smooth_xytb_fit_aug import smooth_xytb_fit_aug
