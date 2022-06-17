@@ -1,4 +1,4 @@
---ATL11_index=ATL11/south/rel005_0314/index/GeoIndex.h5
+--ATL11_index=ATL11/rel005_0314/south/index/GeoIndex.h5
 --mask_file=Antarctic/Greene_22_shelf_plus_10m_mask.h5
 --tide_mask_file=Antarctic/scripps_antarctica_IceShelves1km_v1.tif
 --tide_model=CATS2008
