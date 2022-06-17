@@ -17,5 +17,5 @@
 --sigma_tol=8
 --bias_params=rgt,cycle,pair
 --geoid_tol=5
---sigma_extra_bin_spacing=20000
+--sigma_extra_bin_spacing=10000
 --sigma_extra_max=3
