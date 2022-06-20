@@ -209,7 +209,7 @@ else:
 Hxy=Wxy/2
 
 print(f"Wxy={Wxy}")
-sys.exit()
+
 
 xg, yg  = get_xy_from_mask(args, Hxy, XR, YR)
 
