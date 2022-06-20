@@ -53,10 +53,14 @@ def get_xy_from_mask(args, Hxy, XR, YR):
         good=(np.abs(mask_G.interp(xg, yg)-1)<0.1) & (np.mod(xg, Wxy)==0) & (np.mod(yg, Wxy)==0)
     elif mask_ext in ['.shp','.db']:
         # the mask is a shape.
+        if Hxy==20000:
+            grid_str='_40km.tif'
+        elif Hxy==40000:
+            grid_str='_80km.tif'
         # We require that an 80-km grid based on the mask exists
-        if not os.path.isfile(mask_base+'_80km.tif'):
-            raise(OSError(f"gridded mask file {mask_base+'_80km.tif'} not found"))
-        mask_G=pc.grid.data().from_geotif(mask_base+'_80km.tif')
+        if not os.path.isfile(mask_base+grid_str):
+            raise(OSError(f"gridded mask file {mask_base+grid_str} not found"))
+        mask_G=pc.grid.data().from_geotif(mask_base+grid_str)
         xg, yg = np.meshgrid(mask_G.x, mask_G.y)
         xg=xg.ravel()[mask_G.z.ravel()==1]
         yg=yg.ravel()[mask_G.z.ravel()==1]
@@ -71,19 +75,47 @@ def get_xy_from_mask(args, Hxy, XR, YR):
 
     return xg, yg
 
+def rewrite_args_file(args_file, args):
+    out_file=args_file.replace('.txt', f'_{args.step}.txt')
+    arg_re=re.compile('(.*)=(.*)')
+    arg_dict={}
+    skip_args=['--region_file', '--slurm','--dry_run']
+    with open(args_file,'r') as fh:
+        for line in fh:
+            m=arg_re.search(line)
+            if m is None:
+                continue
+            arg_dict[m.group(1)]=m.group(2)
+    for key, val in vars(args).items():
+        if '-'+key in arg_dict:
+            arg_dict['-'+key]=val
+        else:
+            arg_dict['--'+key]=val
+    
+    with open(out_file,'w') as fh:
+        for key, val in arg_dict.items():
+            if val is None:
+                continue
+            if key in skip_args:
+                continue
+            fh.write(f'{key}={val}\n')
+    return out_file
+
 
 # define the script.  This is assumed to be in the path of the environment
 # that is running 
 prog = "ATL11_to_ATL15.py"
 environment = "IS2"
 
+replacement_args=''
+
 # account for a bug in argparse that misinterprets negative agruents
 argv=sys.argv
 for i, arg in enumerate(argv):
     if (arg[0] == '-') and arg[1].isdigit(): argv[i] = ' ' + arg
-                                                                                                                                                                              
+
 defaults_file=None
-for ii in sys.argv:                                                                                                                                                           
+for ii in sys.argv:    
     if ii.startswith('@'):        
         defaults_file=ii[1:]   
     
@@ -105,7 +137,6 @@ parser.add_argument('--slurm', action='store_true')
 parser.add_argument('--dry_run','-d', action='store_true')
 
 args, _ = parser.parse_known_args()
-
 
 if args.step not in ['centers', 'edges','corners', 'prelim','matched']:
     raise(ValueError('step argument not known: must be one of : centers, edges, corners'))
@@ -176,7 +207,12 @@ else:
     Wxy=args.tile_spacing
 
 Hxy=Wxy/2
+
+print(f"Wxy={Wxy}")
+sys.exit()
+
 xg, yg  = get_xy_from_mask(args, Hxy, XR, YR)
+
 
 if args.step=='centers' or args.step=='prelim' or args.step=='matched':
     delta_x=[0]
@@ -187,6 +223,11 @@ elif args.step=='edges':
 elif args.step=='corners':
     delta_x=[-1, 1, -1, 1.]
     delta_y=[-1, -1, 1, 1.]
+
+if args.step=='matched':
+    calc_errors=False
+    args.prior_edge_include=1000
+    args.max_iterations=1
 
 queued=[];
 
@@ -203,6 +244,8 @@ for name in ["logs", "running","done", "slurm_logs"]:
         os.mkdir(run_dir+'/'+name)
 
 count=0
+
+step_file=rewrite_args_file(defaults_file, args)
 
 xyE=open('xyE.txt','w')
 
@@ -221,12 +264,15 @@ for xy0 in zip(xg, yg):
         task_file=f'{queue_dir}/calc_dh_{count}'
         with open(task_file,'w') as fh_out:
             fh_out.write(f'source activate {environment}\n')
-            cmd = '%s --xy0 %d %d --%s @%s ' % (prog, xy1[0], xy1[1], args.step, defaults_file)
+            cmd = '%s --xy0 %d %d --%s @%s ' % (prog, xy1[0], xy1[1], args.step, step_file)
             fh_out.write(cmd+'\n')
 
             if calc_errors:
                 fh_out.write(cmd+' --calc_error_for_xy'+'\n')
 print("Wrote commands to "+queue_dir)
+
+
+
 
 replacements={"[[JOB_NAME]]":run_name+'_dh', "[[TIME]]":"04:00:00", '[[NUM_TASKS]]':'3', "[[JOB_DIR]]":queue_dir, "[[JOB_NUMBERS]]":f"1-{count}", "[[PREFIX]]":"calc_dh"}
 
