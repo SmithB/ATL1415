@@ -17,9 +17,10 @@ if [ $compute_sigma == 'True' ]; then
    field="dz sigma_dz"
 fi
 
-glob_str='centers/*.h5 edges/*.h5 corners/*.h5'
+glob_str='matched/*.h5'
 
 python3 ~/git_repos/pointCollection/scripts/make_mosaic.py  -w  -d $base  -g $glob_str  -p $pad -f $feather -O $base/dz.h5 --in_group dz/ -F count misfit_rms misfit_scaled_rms mask cell_area $field
+
 
 for lag in _lag1 _lag4 _lag8; do
         echo "lag=$lag"
