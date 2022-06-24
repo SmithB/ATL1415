@@ -30,6 +30,8 @@ import h5py
 import traceback
 #import matplotlib.pyplot as plt
 from ATL1415.reread_data_from_fits import reread_data_from_fits
+from ATL1415.make_mask_from_vector import make_mask_from_vector
+
 import pyTMD
 import scipy.optimize
 
@@ -505,6 +507,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
             geoid_tol=None, \
             sigma_tol=None,\
             mask_file=None,\
+            geoid_file=None,\
             tide_mask_file=None,\
             tide_directory=None,\
             tide_adjustment=False,\
@@ -566,7 +569,14 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
     # work out which mask to use based on the region
     tide_mask_data=None
     mask_data=None
-    if region is not None:
+    I_AM_SKIPPING_THE_EXISTING_MASK_DATA=True
+    if I_AM_SKIPPING_THE_EXISTING_MASK_DATA:
+        print("I_AM_SKIPPING_THE_EXISTING_MASK_DATA")
+        
+    if data_file is not None and I_AM_SKIPPING_THE_EXISTING_MASK_DATA is False:
+        mask_data={'z0':pc.grid.data().from_h5(data_file, group='z0', fields=['mask']),
+                   'dz':pc.grid.data().from_h5(data_file, group='dz', fields=['mask'])}
+    elif region is not None:
         if region=='AA':
             pad=np.array([-1.e4, 1.e4])
             mask_data=pc.grid.data().from_h5(mask_file,
@@ -581,8 +591,19 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
             #import scipy.ndimage as snd
             #mask_data.z=snd.binary_erosion(snd.binary_erosion(mask_data.z, np.ones([1,3])), np.ones([3,1]))
             mask_file=None
-        if region=='GL' and mask_file.endswith('.nc'):
-            mask_data, tide_mask_data = read_bedmachine_greenland(mask_file, xy0, Wxy)
+        if region=='GL':
+            if mask_file.endswith('.nc'):
+                mask_data, tide_mask_data = read_bedmachine_greenland(mask_file, xy0, Wxy)
+        if mask_file.endswith('.shp') or mask_file.endswith('.db'):
+            mask_data=make_mask_from_vector(mask_file, W, ctr, spacing['z0'], srs_proj4=SRS_proj4)
+        
+        # check if mask_data is 2D or 3D
+        if len(mask_data.z.shape)==2:
+            #repeat the mask data to make a 3d field
+            mask_data.t=np.arange(t_span[0]-1, t_span[1]+1)
+            mask_data.z=np.tile(mask_data.z[:,:,None], [1, 1, len(mask_data.t)])
+            mask_data.__update_size_and_shape__()
+
 
     # initialize file_list to empty in case we're rereading the data
     file_list=[]
@@ -658,6 +679,12 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
     if write_data_only:
         return {'data':data}
 
+    mask_update_function=None
+    if geoid_file is not None:
+        ancillary_data={'geoid_file':geoid_file}
+        from ATL1415.update_masks_with_geoid import update_masks_with_geoid
+        mask_update_function=update_masks_with_geoid
+
     # call smooth_xytb_fitting
     S=smooth_xytb_fit_aug(data=data,
                       ctr=ctr, W=W,
@@ -674,6 +701,8 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
                       mask_file=mask_file, mask_data=mask_data, mask_scale={0:10, 1:1},
                       converge_tol_frac_edit=0.001,
                       error_res_scale=error_res_scale,
+                      ancillary_data=ancillary_data,
+                      mask_update_function=mask_update_function,
                       avg_scales=avg_scales)
     S['file_list'] = file_list
     return S
@@ -706,6 +735,11 @@ def save_fit_to_file(S,  filename, dzdt_lags=None, reference_epoch=0):
     for key , ds in S['m'].items():
         if isinstance(ds, pc.grid.data):
             ds.to_h5(filename, group=key)
+    with h5py.File(filename,'r+') as h5f:
+        h5f.create_dataset('/z0/mask', data=S['grids']['z0'].mask.astype(int), \
+                           chunks=True, compression="gzip", fillvalue=-1)
+        h5f.create_dataset('/dz/mask', data=S['grids']['dz'].mask_3d.z.astype(int),\
+                           chunks=True, compression="gzip", fillvalue=-1)
     return
 
 def mask_components_by_time(dz):
@@ -824,6 +858,7 @@ def main(argv):
     parser.add_argument('--geoid_tol', type=float, help='points closer than this to the geoid will be rejected')
     parser.add_argument('--sigma_tol', type=float, help='points with sigma greater than this value will be edited')
     parser.add_argument('--mask_file', type=str)
+    parser.add_argument('--geoid_file', type=str, help="file containing geoid information")
     parser.add_argument('--tide_mask_file', type=str)
     parser.add_argument('--tide_directory', type=str)
     parser.add_argument('--tide_adjustment', action="store_true", help="Use bounded least-squares fit to adjust tides")
@@ -947,6 +982,7 @@ def main(argv):
            N_subset=args.N_subset,\
            mask_file=args.mask_file, \
            region=args.region, \
+           geoid_file=args.geoid_file,\
            tide_mask_file=args.tide_mask_file, \
            tide_directory=args.tide_directory, \
            tide_adjustment=args.tide_adjustment, \
