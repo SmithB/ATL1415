@@ -30,48 +30,33 @@ def pad_mask_canvas(D, N):
 
 def get_xy_from_mask(args, Hxy, XR, YR):
     mask_base, mask_ext = os.path.splitext(args.mask_file)
-    if mask_ext in ('.tif','.h5'): 
-        if mask_ext=='.h5':
-            tif_1km=args.mask_file.replace('.h5', '_1km.tif')
-        else:
-            tif_1km=args.mask_file.replace('100m','1km').replace('125m','1km')
-        temp=pc.grid.data().from_geotif(tif_1km)
-    
-        mask_G=pad_mask_canvas(temp, 200)
-        # downsample the mask to 4 km
-        mask_G.z=snd.binary_dilation(mask_G.z, structure=np.ones([1, 5], dtype='bool'))
-        mask_G.z=snd.binary_dilation(mask_G.z, structure=np.ones([5, 1], dtype='bool'))
-        mask_G=mask_G[2::4, 2::4]
-        # blur the mask to three times the half tile
-        mask_G.z=snd.binary_dilation(mask_G.z, structure=np.ones([1, int(3*Hxy/4000)+1], dtype='bool'))
-        mask_G.z=snd.binary_dilation(mask_G.z, structure=np.ones([int(3*Hxy/4000)+1, 1], dtype='bool'))
-        x0=np.unique(np.round(mask_G.x/Hxy)*Hxy)
-        y0=np.unique(np.round(mask_G.y/Hxy)*Hxy)
-        x0, y0 = np.meshgrid(x0, y0)
-        xg=x0.ravel()
-        yg=y0.ravel()
-        good=(np.abs(mask_G.interp(xg, yg)-1)<0.1) & (np.mod(xg, Wxy)==0) & (np.mod(yg, Wxy)==0)
-    elif mask_ext in ['.shp','.db']:
-        # the mask is a shape.
-        if Hxy==20000:
-            grid_str='_40km.tif'
-        elif Hxy==40000:
-            grid_str='_80km.tif'
-        # We require that an 80-km grid based on the mask exists
-        if not os.path.isfile(mask_base+grid_str):
-            raise(OSError(f"gridded mask file {mask_base+grid_str} not found"))
-        mask_G=pc.grid.data().from_geotif(mask_base+grid_str)
-        xg, yg = np.meshgrid(mask_G.x, mask_G.y)
-        xg=xg.ravel()[mask_G.z.ravel()==1]
-        yg=yg.ravel()[mask_G.z.ravel()==1]
-        good=np.ones_like(xg, dtype=bool)
+    tif_1km = args.mask_file.replace(mask_ext, '_1km.tif')
+    # make a 1km tif if it does not exist:
+    if mask_ext in ['.shp','.db','h5']:
+        tif_1km = args.mask_file.replace(mask_ext, '_1km.tif')
+        if not os.path.isfile(tif_1km):
+            os.system(f'gdal_rasterize -init 0 -burn 1 -tr 1000 1000 -at -ot byte -co "COMPRESS=LZW" -co "PREDICTOR=1" {args.mask_file} {tif_1km}')
+    temp=pc.grid.data().from_geotif(tif_1km)
+    mask_G=pad_mask_canvas(temp, 200)
+    # downsample the mask to 4 km
+    mask_G.z=snd.binary_dilation(mask_G.z, structure=np.ones([1, 5], dtype='bool'))
+    mask_G.z=snd.binary_dilation(mask_G.z, structure=np.ones([5, 1], dtype='bool'))
+    mask_G=mask_G[2::4, 2::4]
+    # blur the mask to two times the half tile
+    mask_G.z=snd.binary_dilation(mask_G.z, structure=np.ones([1, int(2*Hxy/4000)+1], dtype='bool'))
+    mask_G.z=snd.binary_dilation(mask_G.z, structure=np.ones([int(2*Hxy/4000)+1, 1], dtype='bool'))
+    x0=np.unique(np.round(mask_G.x/Hxy)*Hxy)
+    y0=np.unique(np.round(mask_G.y/Hxy)*Hxy)
+    x0, y0 = np.meshgrid(x0, y0)
+    xg=x0.ravel()
+    yg=y0.ravel()
+    good=(np.abs(mask_G.interp(xg, yg)-1)<0.1) & (np.mod(xg, Wxy)==0) & (np.mod(yg, Wxy)==0)
 
     if XR is not None:
         good &= (xg>=XR[0]) & (xg <= XR[1]) & (yg > YR[0]) & (yg < YR[1])
 
     xg=xg[good]
     yg=yg[good]
-
 
     return xg, yg
 
@@ -203,10 +188,11 @@ if not os.path.isdir(step_dir):
 # generate the center locations
 if args.tile_spacing is None:
     Wxy=float(args.W)
+    Hxy=Wxy/2
 else:
     Wxy=args.tile_spacing
+    Hxy=args.tile_spacing
 
-Hxy=Wxy/2
 
 print(f"Wxy={Wxy}")
 
@@ -214,16 +200,17 @@ print(f"Wxy={Wxy}")
 xg, yg  = get_xy_from_mask(args, Hxy, XR, YR)
 
 
-if args.step=='centers' or args.step=='prelim' or args.step=='matched':
+if args.step in ['centers', 'prelim','matched']:
     delta_x=[0]
     delta_y=[0]
+#elif  args.step=='prelim' or args.step=='matched':
+#    delta_x, delta_y = [ii.ravel() for ii in np.meshgrid([-1., 0., 1.], [-1., 0., 1.])]
 elif args.step=='edges':
     delta_x=[-1, 0, 0, 1.]
     delta_y=[0, -1, 1, 0.]
 elif args.step=='corners':
     delta_x=[-1, 1, -1, 1.]
     delta_y=[-1, -1, 1, 1.]
-
 if args.step=='matched':
     calc_errors=False
     args.prior_edge_include=1000
@@ -252,6 +239,8 @@ xyE=open('xyE.txt','w')
 for xy0 in zip(xg, yg):
     for dx, dy in zip(delta_x, delta_y):  
         xy1=np.array(xy0)+np.array([dx, dy])*Hxy
+        if  np.mod(xy0[0], Hxy)>0 or np.mod(xy0[1], Hxy)>1:
+            continue
         if tuple(xy1) in queued:
             continue
         else:
