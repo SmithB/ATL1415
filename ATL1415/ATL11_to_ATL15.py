@@ -569,13 +569,23 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
     # work out which mask to use based on the region
     tide_mask_data=None
     mask_data=None
-    I_AM_SKIPPING_THE_EXISTING_MASK_DATA=True
+    I_AM_SKIPPING_THE_EXISTING_MASK_DATA=False
     if I_AM_SKIPPING_THE_EXISTING_MASK_DATA:
         print("I_AM_SKIPPING_THE_EXISTING_MASK_DATA")
-        
-    if data_file is not None and I_AM_SKIPPING_THE_EXISTING_MASK_DATA is False:
-        mask_data={'z0':pc.grid.data().from_h5(data_file, group='z0', fields=['mask']),
-                   'dz':pc.grid.data().from_h5(data_file, group='dz', fields=['mask'])}
+
+    read_mask_file=None
+    if data_file is not None:
+        read_mask_file=data_file
+    elif calc_error_file is not None:
+        read_mask_file=calc_error_file
+
+    if read_mask_file is not None and I_AM_SKIPPING_THE_EXISTING_MASK_DATA is False:
+        print("READING MASK DATA")
+        mask_data={'z0':pc.grid.data().from_h5(read_mask_file, group='z0', fields=['mask']),
+                   'dz':pc.grid.data().from_h5(read_mask_file, group='dz', fields=['mask'])}
+        for key, mask in mask_data.items():
+            mask.assign({'z':mask.mask})
+
     elif region is not None:
         if region=='AA':
             pad=np.array([-1.e4, 1.e4])
