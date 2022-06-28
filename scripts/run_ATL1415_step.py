@@ -30,7 +30,11 @@ def pad_mask_canvas(D, N):
 
 def get_xy_from_mask(args, Hxy, XR, YR):
     mask_base, mask_ext = os.path.splitext(args.mask_file)
-    tif_1km = args.mask_file.replace(mask_ext, '_1km.tif')
+    if mask_ext == '.tif':
+        mask_re=re.compile('(_\d+m.tif)')
+        m=mask_re.search(args.mask_file)
+        if m is not None:
+            tif_1km = args.mask_file.replace(m.group(1), '_1km.tif')
     # make a 1km tif if it does not exist:
     if mask_ext in ['.shp','.db','h5']:
         tif_1km = args.mask_file.replace(mask_ext, '_1km.tif')
@@ -241,6 +245,12 @@ for xy0 in zip(xg, yg):
         xy1=np.array(xy0)+np.array([dx, dy])*Hxy
         if  np.mod(xy0[0], Hxy)>0 or np.mod(xy0[1], Hxy)>1:
             continue
+
+        if args.step=='matched':
+            in_file=os.path.join(region_dir, 'prelim', 'E%d_N%d.h5' % (xy1[0]/1000, xy1[1]/1000))
+            if not os.path.isfile(in_file):
+                continue
+
         if tuple(xy1) in queued:
             continue
         else:
@@ -260,10 +270,7 @@ for xy0 in zip(xg, yg):
                 fh_out.write(cmd+' --calc_error_for_xy'+'\n')
 print("Wrote commands to "+queue_dir)
 
-
-
-
-replacements={"[[JOB_NAME]]":run_name+'_dh', "[[TIME]]":"04:00:00", '[[NUM_TASKS]]':'3', "[[JOB_DIR]]":queue_dir, "[[JOB_NUMBERS]]":f"1-{count}", "[[PREFIX]]":"calc_dh"}
+replacements={"[[JOB_NAME]]":run_name+'_dh', "[[TIME]]":"01:00:00", '[[NUM_TASKS]]':'3', "[[JOB_DIR]]":queue_dir, "[[JOB_NUMBERS]]":f"1-{count}", "[[PREFIX]]":"calc_dh"}
 
 with open('/home/besmith4/slurm_files/templates/worker','r') as temp:
     with open(run_dir+'/slurm_tile_run','w') as out:
