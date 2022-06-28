@@ -19,3 +19,4 @@
 --geoid_tol=5
 --sigma_extra_bin_spacing=10000
 --sigma_extra_max=3
+--geoid_file=EGM2008_geoid_h.nc

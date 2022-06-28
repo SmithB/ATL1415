@@ -2,6 +2,7 @@
 --tide_mask_file=Arctic/BedMachineGreenland-2021-04-20_shelf_125m.tif
 --tide_model=Gr1km-v2
 --mask_file=Arctic/U_Texas_ice_mask_2019_100m.tif
+--E_d2z0dx2_file=Arctic/GL_Ed2z0dx2.tif
 --region=GL
 --Hemisphere=1
 
