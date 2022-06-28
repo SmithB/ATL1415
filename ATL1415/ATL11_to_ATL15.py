@@ -579,13 +579,18 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
     elif calc_error_file is not None:
         read_mask_file=calc_error_file
 
+    mask_update_function=None
+    if geoid_file is not None:
+        ancillary_data={'geoid_file':geoid_file}
+        from ATL1415.update_masks_with_geoid import update_masks_with_geoid
+        mask_update_function=update_masks_with_geoid
+
     if read_mask_file is not None and I_AM_SKIPPING_THE_EXISTING_MASK_DATA is False:
         print("READING MASK DATA")
         mask_data={'z0':pc.grid.data().from_h5(read_mask_file, group='z0', fields=['mask']),
                    'dz':pc.grid.data().from_h5(read_mask_file, group='dz', fields=['mask'])}
         for key, mask in mask_data.items():
             mask.assign({'z':mask.mask})
-
     elif region is not None:
         if region=='AA':
             pad=np.array([-1.e4, 1.e4])
@@ -604,6 +609,10 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
         if region=='GL':
             if mask_file.endswith('.nc'):
                 mask_data, tide_mask_data = read_bedmachine_greenland(mask_file, xy0, Wxy)
+            elif mask_file.endswith('.tif'):
+                pad=np.array([-1.e4, 1.e4])
+                mask_data=pc.grid.data().from_geotif(mask_file, 
+                                                bounds=[bds['x']+pad, bds['y']+pad])
         if mask_file.endswith('.shp') or mask_file.endswith('.db'):
             mask_data=make_mask_from_vector(mask_file, W, ctr, spacing['z0'], srs_proj4=SRS_proj4)
         
@@ -656,6 +665,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
         ctr_dist = np.max(np.abs(data.x-xy0[0]), np.abs(data.y-xy0[1]))
         in_ctr = ctr_dist < Wxy/2 - edge_pad
         if np.sum(in_ctr) < 50:
+            print("After editing by edge pad, <50 data present, returning")
             return None
 
     if W_edit is not None:
@@ -688,12 +698,6 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
 
     if write_data_only:
         return {'data':data}
-
-    mask_update_function=None
-    if geoid_file is not None:
-        ancillary_data={'geoid_file':geoid_file}
-        from ATL1415.update_masks_with_geoid import update_masks_with_geoid
-        mask_update_function=update_masks_with_geoid
 
     # call smooth_xytb_fitting
     S=smooth_xytb_fit_aug(data=data,
@@ -742,6 +746,11 @@ def save_fit_to_file(S,  filename, dzdt_lags=None, reference_epoch=0):
             h5f.create_dataset('E_RMS/'+key, data=S['E_RMS'][key])
         for key in S['m']['bias']:
             h5f.create_dataset('/bias/'+key, data=S['m']['bias'][key])
+    
+    # if we have a 3d mask on z0, use it to replace the 'mask' in S['m']['dz']
+    if S['grids']['dz'].mask_3d is not None:
+        S['m']['dz'].mask = S['grids']['dz'].mask_3d
+
     for key , ds in S['m'].items():
         if isinstance(ds, pc.grid.data):
             ds.to_h5(filename, group=key)
