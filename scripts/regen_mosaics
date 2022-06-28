@@ -41,10 +41,14 @@ for group in avg_dz_40000m avg_dz_20000m avg_dz_10000m; do
     this_feather=$feather
     this_S=""
     this_w="-w"
-    if [ $group=='avg_dz_40000m' ] ; then
+    if [ $group == 'avg_dz_40000m' ] ; then
         this_pad=0
         this_feather=0
         this_S="-S 40000 40000"
+	this_w=""
+    elif [ $group == 'avg_dz_20000m' ] ; then
+	this_pad=0
+	this_feather=0
 	this_w=""
     fi
     out=`echo $group | sed s/000m/km/ | sed s/avg_//`
