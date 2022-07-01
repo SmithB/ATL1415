@@ -797,14 +797,6 @@ def main(argv):
     args.time_span = [np.float64(temp) for temp in args.time_span.split(',')]
     args.avg_scales = [np.int64(temp) for temp in args.avg_scales.split(',')]
 
-    if args.E_d2z0dx2_file is not None and args.calc_error_file is None:
-        E_d2z0dx2=pc.grid.data().from_geotif(args.E_d2z0dx2_file)#, bounds=[args.xy0[0]+np.array([-1, 1])*args.Width, args.xy0[1]+np.array([-1, 1])*args.Width])
-        col = np.argmin(np.abs(E_d2z0dx2.x-args.xy0[0]))
-        row = np.argmin(np.abs(E_d2z0dx2.y-args.xy0[1]))
-        args.E_d2z0dx2 = np.minimum(1.e-2, np.maximum(1.e-4, E_d2z0dx2.z[row,col]))
-        if np.isnan(args.E_d2z0dx2):
-            args.E_d2z0dx2=1.e-2
-
     spacing={'z0':args.grid_spacing[0], 'dz':args.grid_spacing[1], 'dt':args.grid_spacing[2]}
     E_RMS={'d2z0_dx2':args.E_d2z0dx2, 'd3z_dx2dt':args.E_d3zdx2dt, 'd2z_dxdt':args.E_d3zdx2dt*args.data_gap_scale,  'd2z_dt2':args.E_d2zdt2}
 
@@ -851,6 +843,14 @@ def main(argv):
         elif args.data_file is not None:
             re_match=re.compile('E(.*)_N(.*).h5').search(args.data_file)
         args.xy0=[float(re_match.group(ii))*1000 for ii in [1, 2]]
+
+    if args.E_d2z0dx2_file is not None and args.calc_error_file is None:
+        E_d2z0dx2=pc.grid.data().from_geotif(args.E_d2z0dx2_file)#, bounds=[args.xy0[0]+np.array([-1, 1])*args.Width, args.xy0[1]+np.array([-1, 1])*args.Width])
+        col = np.argmin(np.abs(E_d2z0dx2.x-args.xy0[0]))
+        row = np.argmin(np.abs(E_d2z0dx2.y-args.xy0[1]))
+        args.E_d2z0dx2 = np.minimum(1.e-2, np.maximum(1.e-4, E_d2z0dx2.z[row,col]))
+        if np.isnan(args.E_d2z0dx2):
+            args.E_d2z0dx2=1.e-2
 
     if args.calc_error_file is not None:
         dest_dir=os.path.dirname(args.calc_error_file)
