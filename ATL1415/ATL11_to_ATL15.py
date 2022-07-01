@@ -501,14 +501,14 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
             #import scipy.ndimage as snd
             #mask_data.z=snd.binary_erosion(snd.binary_erosion(mask_data.z, np.ones([1,3])), np.ones([3,1]))
             mask_file=None
-        if region=='GL':
+        elif region=='GL':
             if mask_file.endswith('.nc'):
                 mask_data, tide_mask_data = read_bedmachine_greenland(mask_file, xy0, Wxy)
             elif mask_file.endswith('.tif'):
                 pad=np.array([-1.e4, 1.e4])
                 mask_data=pc.grid.data().from_geotif(mask_file,
                                                 bounds=[bds['x']+pad, bds['y']+pad])
-        if mask_file.endswith('.shp') or mask_file.endswith('.db'):
+        elif mask_file.endswith('.shp') or mask_file.endswith('.db'):
             mask_data=make_mask_from_vector(mask_file, W, ctr, spacing['z0'], srs_proj4=SRS_proj4)
 
         # check if mask_data is 2D or 3D
