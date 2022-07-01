@@ -122,7 +122,6 @@ parser.add_argument('--Release', type=str)
 parser.add_argument('--Hemisphere', type=str)
 parser.add_argument('--mask_file', type=str)
 parser.add_argument('--d2z0_file', type=str)
-parser.add_argument('--slurm', action='store_true')
 parser.add_argument('--dry_run','-d', action='store_true')
 
 args, _ = parser.parse_known_args()
@@ -263,14 +262,17 @@ for xy0 in zip(xg, yg):
         task_file=f'{queue_dir}/calc_dh_{count}'
         with open(task_file,'w') as fh_out:
             fh_out.write(f'source activate {environment}\n')
-            cmd = '%s --xy0 %d %d --%s @%s ' % (prog, xy1[0], xy1[1], args.step, step_file)
+            if args.step=='matched':
+                cmd = '%s --data_file %s --%s @%s ' % (prog, in_file, args.step, step_file)
+            else:
+                cmd = '%s --xy0 %d %d --%s @%s ' % (prog, xy1[0], xy1[1], args.step, step_file)
             fh_out.write(cmd+'\n')
 
             if calc_errors:
                 fh_out.write(cmd+' --calc_error_for_xy'+'\n')
 print("Wrote commands to "+queue_dir)
 
-replacements={"[[JOB_NAME]]":run_name+'_dh', "[[TIME]]":"01:00:00", '[[NUM_TASKS]]':'3', "[[JOB_DIR]]":queue_dir, "[[JOB_NUMBERS]]":f"1-{count}", "[[PREFIX]]":"calc_dh"}
+replacements={"[[JOB_NAME]]":run_name+'_dh', "[[TIME]]":"02:00:00", '[[NUM_TASKS]]':'3', "[[JOB_DIR]]":queue_dir, "[[JOB_NUMBERS]]":f"1-{count}", "[[PREFIX]]":"calc_dh"}
 
 with open('/home/besmith4/slurm_files/templates/worker','r') as temp:
     with open(run_dir+'/slurm_tile_run','w') as out:
@@ -279,7 +281,7 @@ with open('/home/besmith4/slurm_files/templates/worker','r') as temp:
                 line=line.replace(search, replace)
             out.write(line)
 
-if args.slurm and not args.dry_run:
+if not args.dry_run:
     if args.step=='centers' or args.step=='prelim':
         os.system(f'cd {run_dir}; sbatch slurm_tile_run > dependents')
     else:
