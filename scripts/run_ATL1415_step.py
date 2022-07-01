@@ -36,9 +36,9 @@ def get_xy_from_mask(args, Hxy, XR, YR):
         if m is not None:
             tif_1km = args.mask_file.replace(m.group(1), '_1km.tif')
     # make a 1km tif if it does not exist:
-    if mask_ext in ['.shp','.db','h5']:
+    if mask_ext in ['.shp','.db','.h5']:
         tif_1km = args.mask_file.replace(mask_ext, '_1km.tif')
-        if not os.path.isfile(tif_1km):
+        if mask_ext in ['.shp','.db'] and not os.path.isfile(tif_1km):
             os.system(f'gdal_rasterize -init 0 -burn 1 -tr 1000 1000 -at -ot byte -co "COMPRESS=LZW" -co "PREDICTOR=1" {args.mask_file} {tif_1km}')
     temp=pc.grid.data().from_geotif(tif_1km)
     mask_G=pad_mask_canvas(temp, 200)
