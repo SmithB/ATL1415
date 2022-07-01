@@ -5,3 +5,5 @@
 --Hemisphere=-1
 --region=AA
 --d2z0_file=Antarctic/AA_Ed2z0dx2.tif
+--tide_adjust_file=Antarctic/ATL11_0314_tide_adj_scale_200m.h5
+--tide_adjust_format=h5
