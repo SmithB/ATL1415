@@ -122,6 +122,7 @@ parser.add_argument('--Release', type=str)
 parser.add_argument('--Hemisphere', type=str)
 parser.add_argument('--mask_file', type=str)
 parser.add_argument('--d2z0_file', type=str)
+parser.add_argument('--name', type=str)
 parser.add_argument('--dry_run','-d', action='store_true')
 
 args, _ = parser.parse_known_args()
@@ -221,7 +222,10 @@ if args.step=='matched':
 
 queued=[];
 
-run_name=f"1415_run_{args.region}_{args.step}"
+if args.name is not None:
+    run_name=args.name
+else:
+    run_name=f"1415_run_{args.region}_{args.step}"
 run_dir=run_name
 queue_dir=f"{run_dir}/queue"
 if not os.path.isdir(run_dir):
