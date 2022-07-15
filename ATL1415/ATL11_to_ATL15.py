@@ -285,6 +285,8 @@ def apply_tides(D, xy0, W,
         ii, = np.nonzero(D.tide_adj_scale != 0)
         D.tide_ocean[ii] *= D.tide_adj_scale[ii]
         D.dac[ii] *= D.tide_adj_scale[ii]
+        print(f'mean tide adjustment scale={np.nanmean(D.tide_adj_scale)}')
+
     # replace invalid tide and dac values
     D.tide_ocean[is_els==0] = 0
     D.dac[is_els==0] = 0
@@ -315,12 +317,14 @@ def decimate_data(D, N_target, W_domain,  W_sub, x0, y0):
         1j*np.round((D.y - (y0 - W_domain/2 + W_sub/2))/W_sub)
     rho_target = N_target / W_domain**2
     ind_buffer=[]
+    #print(f'N_target:{N_target}, N={D.size}, R_target={D.size/N_target}')
     for bin0 in np.unique(ij_bin):
         ii = np.flatnonzero((ij_bin==bin0) & D.along_track)
         this_rho = len(ii) / (W_sub**2)
         #print(f'bin0={bin0}, this_rho={this_rho}, ratio={this_rho/rho_target}')
         if this_rho < rho_target:
             # if there aren't too many points in this bin, continue
+            print(f'bin:{bin0}, N: {len(ii)}, N_target:{len(ii)*rho_target/this_rho}, N_out:{len(ii)}, R_target={this_rho/rho_target}, R=1.0')
             ind_buffer += [ii]
             continue
         # make a global reference point number (equal to the number of ref pts in an orbit * rgt + ref_pt)
@@ -333,7 +337,9 @@ def decimate_data(D, N_target, W_domain,  W_sub, x0, y0):
         sel_ref_pts = u_ref_pts[sel_ind[sel_ind < len(u_ref_pts)]]
         # keep the points matching the selected ref pt numbers
         isub = np.in1d(global_ref_pt, sel_ref_pts)
+        #print(f'bin:{bin0}, N: {len(ii)}, N_target:{len(ii)*rho_target/this_rho}, N_out:{np.sum(isub)}, R_target={this_rho/rho_target}, R={len(ii)/np.sum(isub)}')
         ind_buffer.append(ii[isub])
+    #print("Decimate_data: N_AT={len(ind_buffer)}, N_XO={np.sum(D.along_track==0)}")
     ind_buffer.append(np.flatnonzero(D.along_track==0))
     D.index(np.concatenate(ind_buffer))
 
@@ -870,6 +876,9 @@ def main(argv):
         if not os.path.isfile(args.out_name):
             print(f"{args.out_name} not found, returning")
             return 1
+
+    if args.tide_adjustment_file is not None:
+        args.tide_adjustment=True
 
     if args.error_res_scale is not None:
         if args.calc_error_file is not None:
