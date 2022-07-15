@@ -6,6 +6,7 @@
 --E_d3zdx2dt=0.00005 
 --E_d2z0dx2=0.02
 --E_d2zdt2=200000 
+--sigma_geo=4.5
 --reference_epoch=5
 --avg_scales=40000,20000,10000
 --max_iterations=6
