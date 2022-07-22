@@ -60,6 +60,15 @@ def manual_edits(D):
     D.index(~bad)
     return
 
+def select_best_xovers(D):
+    _, i_pts = pc.unique_by_rows(np.c_[D.rgt, D.cycle_number, 1+np.floor((D.spot_crossing-1)/2)], return_dict=True)
+    ii = np.zeros(len(i_pts), dtype=int)
+    for count, (pt, i_pt) in enumerate(i_pts.items()):
+        if len(i_pt)==0:
+            ii[count]=i_pt
+        else:
+            ii[count]=i_pt[np.argsort(D.h_corr_sigma[i_pt])[0]]
+    D.index(ii)
 
 def read_ATL11(xy0, Wxy, index_file, SRS_proj4, \
                sigma_geo=6.5, sigma_radial=0.03):
@@ -82,7 +91,9 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, \
                         '__calc_internal__' : ['rgt'],
                         'cycle_stats' : {'tide_ocean','dac'},
                         'ref_surf':['e_slope','n_slope', 'x_atc', 'fit_quality', 'dem_h', 'geoid_h']}
-
+    xover_fields = pc.ATL11.crossover_data().__default_XO_field_dict__()
+    xover_fields = xover_fields[list(xover_fields.keys())[0]] + ['spot_crossing']
+ 
     try:
         # catch empty data
         D11_list=pc.geoIndex().from_file(index_file).query_xy_box(
@@ -94,6 +105,7 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, \
         return None, []
     D_list=[]
     XO_list=[]
+    xover_count=[0, 0]
     file_list= [ Di.filename for Di in D11_list ]
     for D11 in D11_list:
         D11.get_xy(proj4_string=SRS_proj4)
@@ -140,7 +152,8 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, \
             continue
         # N.B.  D11 is getting indexed in this step, and it's leading to the warning in
         # line 76.  Can fix by making crossover_data.from_h5 copy D11 on input
-        D_x = pc.ATL11.crossover_data().from_h5(D11.filename, pair=D11.pair, D_at=D11)
+        D_x = pc.ATL11.crossover_data().from_h5(D11.filename, pair=D11.pair, D_at=D11,\
+                                                crossover_fields=xover_fields)
         if D_x is None:
             continue
         # constant fields in D11 apply to all cycles, but are mapped
@@ -169,6 +182,11 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, \
                  (np.abs(D_x.y-xy0[1]) <= Wxy/2))
         if D_x.size==0:
             continue
+
+        # choose the smallest_sigma xover for each rgt and pair
+        xover_count[0]+=D_x.size
+        select_best_xovers(D_x)
+        xover_count[1]+=D_x.size
 
         #N.B.  Check whether n_slope and e_slope are set correctly.
         zero = np.zeros_like(D_x.h_corr)
@@ -204,7 +222,7 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, \
         return None, file_list
 
     D.index(( D.fit_quality ==0 ) | ( D.fit_quality == 2 ))
-
+    print(f'xover_count={xover_count}')
     return D, file_list
 
 def apply_tides(D, xy0, W,
@@ -317,14 +335,14 @@ def decimate_data(D, N_target, W_domain,  W_sub, x0, y0):
         1j*np.round((D.y - (y0 - W_domain/2 + W_sub/2))/W_sub)
     rho_target = N_target / W_domain**2
     ind_buffer=[]
-    #print(f'N_target:{N_target}, N={D.size}, R_target={D.size/N_target}')
+    print(f'decimate_data: N_target:{N_target}, N={D.size}, R_target={D.size/N_target}')
     for bin0 in np.unique(ij_bin):
         ii = np.flatnonzero((ij_bin==bin0) & D.along_track)
         this_rho = len(ii) / (W_sub**2)
         #print(f'bin0={bin0}, this_rho={this_rho}, ratio={this_rho/rho_target}')
         if this_rho < rho_target:
             # if there aren't too many points in this bin, continue
-            print(f'bin:{bin0}, N: {len(ii)}, N_target:{len(ii)*rho_target/this_rho}, N_out:{len(ii)}, R_target={this_rho/rho_target}, R=1.0')
+            #print(f'bin:{bin0}, N: {len(ii)}, N_target:{len(ii)*rho_target/this_rho}, N_out:{len(ii)}, R_target={this_rho/rho_target}, R=1.0')
             ind_buffer += [ii]
             continue
         # make a global reference point number (equal to the number of ref pts in an orbit * rgt + ref_pt)
@@ -339,7 +357,7 @@ def decimate_data(D, N_target, W_domain,  W_sub, x0, y0):
         isub = np.in1d(global_ref_pt, sel_ref_pts)
         #print(f'bin:{bin0}, N: {len(ii)}, N_target:{len(ii)*rho_target/this_rho}, N_out:{np.sum(isub)}, R_target={this_rho/rho_target}, R={len(ii)/np.sum(isub)}')
         ind_buffer.append(ii[isub])
-    #print("Decimate_data: N_AT={len(ind_buffer)}, N_XO={np.sum(D.along_track==0)}")
+    print(f"Decimate_data: N_AT={len(np.concatenate(ind_buffer))}, N_XO={np.sum(D.along_track==0)}")
     ind_buffer.append(np.flatnonzero(D.along_track==0))
     D.index(np.concatenate(ind_buffer))
 
@@ -893,6 +911,9 @@ def main(argv):
         os.mkdir(dest_dir)
     except FileExistsError:
         pass
+
+    print("ATL11_to_ATL15: working on "+args.out_name)
+
     S=ATL11_to_ATL15(args.xy0, ATL11_index=args.ATL11_index,
            Wxy=args.Width, E_RMS=E_RMS, t_span=args.time_span, spacing=spacing, \
            bias_params=args.bias_params,\
