@@ -68,7 +68,7 @@ def rewrite_args_file(args_file, args):
     out_file=args_file.replace('.txt', f'_{args.step}.txt')
     arg_re=re.compile('(.*)=(.*)')
     arg_dict={}
-    skip_args=['--region_file', '--slurm','--dry_run']
+    skip_args=['--region_file', '--submit']
     with open(args_file,'r') as fh:
         for line in fh:
             m=arg_re.search(line)
@@ -123,7 +123,7 @@ parser.add_argument('--Hemisphere', type=str)
 parser.add_argument('--mask_file', type=str)
 parser.add_argument('--d2z0_file', type=str)
 parser.add_argument('--name', type=str)
-parser.add_argument('--dry_run','-d', action='store_true')
+parser.add_argument('--submit', action='store_true')
 
 args, _ = parser.parse_known_args()
 
@@ -276,7 +276,7 @@ for xy0 in zip(xg, yg):
                 fh_out.write(cmd+' --calc_error_for_xy'+'\n')
 print("Wrote commands to "+queue_dir)
 
-replacements={"[[JOB_NAME]]":run_name+'_dh', "[[TIME]]":"02:00:00", '[[NUM_TASKS]]':'3', "[[JOB_DIR]]":queue_dir, "[[JOB_NUMBERS]]":f"1-{count}", "[[PREFIX]]":"calc_dh"}
+replacements={"[[JOB_NAME]]":run_name+'_dh', "[[TIME]]":"04:00:00", '[[NUM_TASKS]]':'3', "[[JOB_DIR]]":queue_dir, "[[JOB_NUMBERS]]":f"1-{count}", "[[PREFIX]]":"calc_dh"}
 
 with open('/home/besmith4/slurm_files/templates/worker','r') as temp:
     with open(run_dir+'/slurm_tile_run','w') as out:
@@ -285,7 +285,7 @@ with open('/home/besmith4/slurm_files/templates/worker','r') as temp:
                 line=line.replace(search, replace)
             out.write(line)
 
-if not args.dry_run:
+if args.submit:
     if args.step=='centers' or args.step=='prelim':
         os.system(f'cd {run_dir}; sbatch slurm_tile_run > dependents')
     else:
