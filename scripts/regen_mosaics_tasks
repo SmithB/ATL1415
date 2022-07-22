@@ -1,0 +1,115 @@
+#! /usr/bin/env bash
+
+source activate IS2
+
+base=$1
+region=`basename $base`
+
+mosaic_run="mosaic_run_"$region
+
+[ -d $mosaic_run ] || mkdir $mosaic_run
+
+for thedir in queue running done logs; do
+    [ -d $mosaic_run/$thedir ] || mkdir $mosaic_run/$thedir
+done
+
+
+pad=5000
+feather=10000
+
+compute_sigma='True'
+
+field=dz
+
+glob_str="'matched/*.h5'"
+
+task=0
+
+task=$(($task+1))
+echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py -R  -w  -d $base  -g $glob_str  -p $pad -f $feather -O $base/dz.h5 --in_group dz/ -F count misfit_rms misfit_scaled_rms mask cell_area $field" > $mosaic_run/task_${task}
+if [ $compute_sigma == 'True' ]; then
+  echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py  -w  -d $base  -g 'prelim/*.h5'  -p $pad -f $feather -O $base/dz.h5 --in_group dz/ -F sigma_dz" >> $mosaic_run/task_${task}
+fi
+
+for lag in _lag1 _lag4 _lag8 _lag12; do
+    task=$(($task+1))
+        echo "lag=$lag"
+        field=dzdt$lag
+        echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py -R -w  -d $base  -g  $glob_str  -p $pad -f $feather -O $base/dzdt$lag.h5 --in_group dzdt$lag/ -F $field cell_area" >> $mosaic_run/task_${task}
+        if [ $compute_sigma == 'True' ]; then
+	    echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py -w  -d $base  -g  'prelim/*.h5'  -p $pad -f $feather -O $base/dzdt$lag.h5 --in_group dzdt$lag/ -F sigma_$field" >> $mosaic_run/task_${task} 
+        fi
+done
+
+
+for group in avg_dz_40000m avg_dz_20000m avg_dz_10000m; do
+    field=$group
+
+    echo "$group $field"
+    this_pad=$pad
+    this_feather=$feather
+    this_S=""
+    this_w="-w"
+    if [ $group == 'avg_dz_40000m' ] ; then
+        this_pad=0
+        this_feather=0
+        this_S="-S 40000 40000"
+	this_w=""
+    elif [ $group == 'avg_dz_20000m' ] ; then
+	this_pad=0
+	this_feather=0
+	this_w=""
+    fi
+    out=`echo $group | sed s/000m/km/ | sed s/avg_//`
+    task=$(($task+1))
+    echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $this_w -R -d $base  -g  $glob_str  -p $this_pad -f $this_feather $this_S -O $base/$out.h5 --in_group $group/ -F $field cell_area" > $mosaic_run/task_${task}
+    if [ $compute_sigma == 'True' ]; then
+	    echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $this_w -d $base  -g  'prelim/*.h5'  -p $this_pad -f $this_feather $this_S -O $base/$out.h5 --in_group $group/ -F sigma_$group" >> $mosaic_run/task_${task}
+    fi
+
+    
+    group=`echo $group | sed s/dz/dzdt/`
+    out=`echo $out | sed s/dz/dzdt/`
+    for lag in _lag1 _lag4 _lag8 _lag12; do
+        field=$group$lag
+	field_list="$field cell_area"
+	task=$(($task+1))
+
+        echo "lag=$lag, group=$group, task=$task"
+        echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py -R $this_w  -d $base  -g  $glob_str  -p $this_pad -f $this_feather $this_S -O $base/$out$lag.h5 --in_group $field/ -F $field_list" > $mosaic_run/task_${task}
+	if [ $compute_sigma == 'True' ]; then
+	    sigma_field=sigma_${group}${lag}
+	    echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $this_w -d $base  -g  'prelim/*.h5'  -p $this_pad -f $this_feather $this_S -O $base/$out$lag.h5 --in_group $field/ -F $sigma_field" >> $mosaic_run/task_${task}
+	fi
+    done
+done
+
+
+field_list="z0 misfit_rms misfit_scaled_rms mask cell_area count"
+
+
+task=$(($task+1))
+
+this_replace='-R'
+if [ -d $base/200km_tiles/z0 ] ; then
+    echo "200km" 
+    field_list=$field_list" sigma_z0"
+    for field in $field_list; do
+	echo $field
+	echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $this_replace  -d ${base}/200km_tiles/z0  -g '*.h5' -O $base/z0.h5 --in_group z0/ -F  $field" >> $mosaic_run/task_${task} 
+	this_replace=''
+    done
+else
+    for field in $field_list; do
+	echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $this_replace -w -d $base  -g $glob_str  -p $pad -f $feather -O $base/z0.h5 --in_group z0/ -F  $field " >> $mosaic_run/task_${task} 
+	this_replace=''
+    done
+    if [ $compute_sigma == 'True' ]; then
+	    echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $this_replace -w -d $base  -g 'prelim/*.h5'  -p $pad -f $feather -O $base/z0.h5 --in_group z0/ -F sigma_z0 " >> $mosaic_run/task_${task} 
+    fi
+fi
+mv $mosaic_run/task* $mosaic_run/queue
+
+cp slurm_scripts/slurm_mos_run $mosaic_run
+pushd $mosaic_run
+sbatch slurm_mos_run
