@@ -371,6 +371,7 @@ def ATL15_write2nc(args):
                 ncTemplate=pkg_resources.resource_filename('ATL1415','resources/atl15_metadata_template.nc')
                 # write_atl14meta(nc, fileout, ncTemplate, args)
 
+
     return fileout
 
 

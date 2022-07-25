@@ -115,7 +115,7 @@ def ATL15_browse_plots(args):
         print(f'Making file {brwfile}') 
         if os.path.isfile(brwfile):
             os.remove(brwfile)
-        shutil.copyfile('surfaceChange/resources/BRW_template.h5',brwfile)
+        shutil.copyfile('ATL1415/resources/BRW_template.h5',brwfile)
         with h5py.File(brwfile,'r+') as hf:   
             hf.require_group('/default')
             for ii, name in enumerate(sorted(glob.glob(f'{args.base_dir.rstrip("/")}/ATL15_{args.region}_{args.cycles}{ave}_{args.Release}_{args.version}_BRW_default*.png'))):

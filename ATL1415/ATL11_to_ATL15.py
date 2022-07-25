@@ -28,10 +28,8 @@ import re
 import sys
 import h5py
 import traceback
-#import matplotlib.pyplot as plt
 from ATL1415.reread_data_from_fits import reread_data_from_fits
 from ATL1415.make_mask_from_vector import make_mask_from_vector
-
 import pyTMD
 import scipy.optimize
 

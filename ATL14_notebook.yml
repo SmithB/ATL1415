@@ -1,0 +1,36 @@
+name: ATL14_notebook
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - conda
+  - python
+  - matplotlib
+  - nodejs
+  - xarray
+  - jupyterlab
+  - netcdf4
+  - pandas
+  - ipympl
+  - numpy
+  - scikit-learn
+  - scipy
+  - suitesparse
+  - h5py
+  - cython
+  - pyproj
+  - gdal
+  - pip
+  - cartopy
+  - geopandas
+  - rasterio
+  - descartes
+  - python-docx
+  - openpyxl
+  - tabulate
+  - imageio
+  - pyfftw
+  - ffmpeg
+  - bs4
+  - git-lfs
+  - proj

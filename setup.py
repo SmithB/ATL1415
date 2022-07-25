@@ -8,7 +8,7 @@ with open("README.md", "r") as fh:
 
 # list of all scripts to be included with package
 scripts = [os.path.join('scripts',f) for f in os.listdir('scripts') if not (f[0]=='.' or f[-1]=='~' or os.path.isdir(os.path.join('scripts', f)))] +\
-    [os.path.join('ATL1415/', f) for f in ['ATL11_to_ATL15.py']]
+    [os.path.join('ATL1415', f) for f in ['ATL11_to_ATL15.py']]
 
 setup(
     name='ATL1415',
