@@ -7,7 +7,7 @@ base=$1
 rm $base/*.h5
 
 
-pad=10000
+pad=5000
 feather=10000
 
 compute_sigma='True'
@@ -17,11 +17,12 @@ if [ $compute_sigma == 'True' ]; then
    field="dz sigma_dz"
 fi
 
-glob_str='centers/*.h5 edges/*.h5 corners/*.h5'
+glob_str='matched/*.h5'
 
 python3 ~/git_repos/pointCollection/scripts/make_mosaic.py  -w  -d $base  -g $glob_str  -p $pad -f $feather -O $base/dz.h5 --in_group dz/ -F count misfit_rms misfit_scaled_rms mask cell_area $field
 
-for lag in _lag1 _lag4 _lag8; do
+
+for lag in _lag1 _lag4 _lag8 _lag12; do
         echo "lag=$lag"
         field=dzdt$lag
         if [ $compute_sigma == 'True' ]; then
@@ -40,10 +41,14 @@ for group in avg_dz_40000m avg_dz_20000m avg_dz_10000m; do
     this_feather=$feather
     this_S=""
     this_w="-w"
-    if [ $group=='avg_dz_40000m' ] ; then
+    if [ $group == 'avg_dz_40000m' ] ; then
         this_pad=0
         this_feather=0
         this_S="-S 40000 40000"
+	this_w=""
+    elif [ $group == 'avg_dz_20000m' ] ; then
+	this_pad=0
+	this_feather=0
 	this_w=""
     fi
     out=`echo $group | sed s/000m/km/ | sed s/avg_//`
@@ -51,7 +56,7 @@ for group in avg_dz_40000m avg_dz_20000m avg_dz_10000m; do
     python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $this_w  -d $base  -g  $glob_str  -p $this_pad -f $this_feather $this_S -O $base/$out.h5 --in_group $group/ -F $field cell_area
     
     group=`echo $group | sed s/dz/dzdt/`
-    for lag in _lag1 _lag4 _lag8; do
+    for lag in _lag1 _lag4 _lag8 _lag12; do
         echo "lag=$lag"
         field=$group$lag
 	field_list=$field

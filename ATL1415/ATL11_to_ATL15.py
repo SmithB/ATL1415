@@ -4,24 +4,34 @@
 Created on Fri Nov 15 17:15:08 2019
 
 @author: ben
- """
+"""
 import os
-os.environ["MKL_NUM_THREADS"]="1"  # multiple threads don't help that much and tend to eat resources
-os.environ["OPENBLAS_NUM_THREADS"]="1"  # multiple threads don't help that much and tend to eat resources
+import sys
+import re
+
+threads_re=re.compile("THREADS=(\S+)")
+n_threads="1"
+for arg in sys.argv:
+    try:
+        n_threads=str(threads_re.search(arg).group(1))
+    except Exception:
+        pass
+
+os.environ["MKL_NUM_THREADS"]=n_threads
+os.environ["OPENBLAS_NUM_THREADS"]=n_threads
 
 import numpy as np
-from LSsurf.smooth_xytb_fit import smooth_xytb_fit
+from LSsurf.smooth_xytb_fit_aug import smooth_xytb_fit_aug
 import pointCollection as pc
 
 import re
 import sys
 import h5py
 import traceback
-import matplotlib.pyplot as plt
 from ATL1415.reread_data_from_fits import reread_data_from_fits
+from ATL1415.make_mask_from_vector import make_mask_from_vector
 import pyTMD
 import scipy.optimize
-import pdb
 
 def get_SRS_info(hemisphere):
     if hemisphere==1:
@@ -48,7 +58,18 @@ def manual_edits(D):
     D.index(~bad)
     return
 
-def read_ATL11(xy0, Wxy, index_file, SRS_proj4, sigma_geo=6.5):
+def select_best_xovers(D):
+    _, i_pts = pc.unique_by_rows(np.c_[D.rgt, D.cycle_number, 1+np.floor((D.spot_crossing-1)/2)], return_dict=True)
+    ii = np.zeros(len(i_pts), dtype=int)
+    for count, (pt, i_pt) in enumerate(i_pts.items()):
+        if len(i_pt)==0:
+            ii[count]=i_pt
+        else:
+            ii[count]=i_pt[np.argsort(D.h_corr_sigma[i_pt])[0]]
+    D.index(ii)
+
+def read_ATL11(xy0, Wxy, index_file, SRS_proj4, \
+               sigma_geo=6.5, sigma_radial=0.03):
     '''
     read ATL11 data from an index file
 
@@ -67,7 +88,10 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, sigma_geo=6.5):
                         'h_corr','h_corr_sigma','h_corr_sigma_systematic', 'ref_pt'],\
                         '__calc_internal__' : ['rgt'],
                         'cycle_stats' : {'tide_ocean','dac'},
-                        'ref_surf':['e_slope','n_slope', 'x_atc', 'fit_quality', 'dem_h']}
+                        'ref_surf':['e_slope','n_slope', 'x_atc', 'fit_quality', 'dem_h', 'geoid_h']}
+    xover_fields = pc.ATL11.crossover_data().__default_XO_field_dict__()
+    xover_fields = xover_fields[list(xover_fields.keys())[0]] + ['spot_crossing']
+ 
     try:
         # catch empty data
         D11_list=pc.geoIndex().from_file(index_file).query_xy_box(
@@ -79,6 +103,7 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, sigma_geo=6.5):
         return None, []
     D_list=[]
     XO_list=[]
+    xover_count=[0, 0]
     file_list= [ Di.filename for Di in D11_list ]
     for D11 in D11_list:
         D11.get_xy(proj4_string=SRS_proj4)
@@ -88,7 +113,7 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, sigma_geo=6.5):
         if D11.size==0:
             continue
         sigma_corr=np.sqrt((sigma_geo*np.abs(np.median(D11.n_slope)))**2+\
-                           (sigma_geo*np.abs(np.median(D11.e_slope)))**2+0.03**2)
+                           (sigma_geo*np.abs(np.median(D11.e_slope)))**2+sigma_radial**2)
         # fix for early ATL11 versions that had some zero error estimates.
         bad=np.any(D11.h_corr_sigma==0, axis=1)
         D11.h_corr_sigma[bad,:]=np.NaN
@@ -114,6 +139,7 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, sigma_geo=6.5):
            'dem_h': D11.dem_h,
            'tide_ocean': D11.tide_ocean,
            'dac': D11.dac,
+           'geoid_h':D11.geoid_h,
            'delta_time': D11.delta_time,
            'time':D11.delta_time/24/3600/365.25+2018,
            'n_slope':D11.n_slope,
@@ -124,17 +150,24 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, sigma_geo=6.5):
             continue
         # N.B.  D11 is getting indexed in this step, and it's leading to the warning in
         # line 76.  Can fix by making crossover_data.from_h5 copy D11 on input
-        D_x = pc.ATL11.crossover_data().from_h5(D11.filename, pair=D11.pair, D_at=D11)
+        D_x = pc.ATL11.crossover_data().from_h5(D11.filename, pair=D11.pair, D_at=D11,\
+                                                crossover_fields=xover_fields)
         if D_x is None:
             continue
-        # fit_quality and dem_h D11 apply to all cycles, but are mapped only to some specific
-        # cycle of the reference cycle
-        temp={'fit_quality':np.nanmax(D_x.fit_quality[:,:,0], axis=1),
-              'dem_h':np.nanmax(D_x.dem_h[:,:,0], axis=1)}       
-        for cycle in range(D_x.shape[1]):
-            D_x.fit_quality[:,cycle,1]=temp['fit_quality']
-            D_x.dem_h[:,cycle,1]=temp['dem_h']
-        
+        # constant fields in D11 apply to all cycles, but are mapped
+        # only to some specific cycle of the reference cycle
+        constant_fields = ['fit_quality', 'dem_h', 'geoid_h']
+        for field in constant_fields:
+            temp=getattr(D_x, field)
+            val=np.nanmax(temp[:,:,0], axis=1)
+            for cycle in range(D_x.shape[1]):
+                temp[:, cycle, 1] = val
+        #temp={'fit_quality':np.nanmax(D_x.fit_quality[:,:,0], axis=1),
+        #      'dem_h':np.nanmax(D_x.dem_h[:,:,0], axis=1)}
+        #for cycle in range(D_x.shape[1]):
+        #    D_x.fit_quality[:,cycle,1]=temp['fit_quality']
+        #    D_x.dem_h[:,cycle,1]=temp['dem_h']
+
         D_x.get_xy(proj4_string=SRS_proj4)
 
         good=np.isfinite(D_x.h_corr)[:,0:2,1].ravel()
@@ -148,6 +181,11 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, sigma_geo=6.5):
         if D_x.size==0:
             continue
 
+        # choose the smallest_sigma xover for each rgt and pair
+        xover_count[0]+=D_x.size
+        select_best_xovers(D_x)
+        xover_count[1]+=D_x.size
+
         #N.B.  Check whether n_slope and e_slope are set correctly.
         zero = np.zeros_like(D_x.h_corr)
         blank = zero+np.NaN
@@ -159,6 +197,7 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, sigma_geo=6.5):
             'latitude':D_x.latitude,
             'longitude':D_x.longitude,
             'dem_h':D_x.dem_h,
+            'geoid_h':D_x.geoid_h,
             'rgt':D_x.rgt,
             'pair':np.zeros_like(D_x.x)+D_x.pair,
             'ref_pt':blank,
@@ -175,13 +214,13 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, sigma_geo=6.5):
     try:
         D=pc.data().from_list(D_list+XO_list).ravel_fields()
         D.index(np.isfinite(D.z))
-        
+
     except ValueError:
         # catch empty data
         return None, file_list
 
     D.index(( D.fit_quality ==0 ) | ( D.fit_quality == 2 ))
-
+    print(f'xover_count={xover_count}')
     return D, file_list
 
 def apply_tides(D, xy0, W,
@@ -191,7 +230,7 @@ def apply_tides(D, xy0, W,
                 tide_model=None,
                 tide_adjustment=False,
                 tide_adjustment_file=None,
-                sigma_tolerance=0.5,
+                tide_adjustment_format='h5',
                 extrapolate=True,
                 cutoff=200,
                 EPSG=None,
@@ -213,9 +252,9 @@ def apply_tides(D, xy0, W,
         tide_mask_data: pc.grid.data() object containing the tide mask (alternative to tide_mask_file)
         tide_directory: path to tide models
         tide_model: the name of the tide model to use
-        tide_adjustment: use bounded least-squares fit to adjust tides for extrapolated points
-        tide_adjustment_file: file specifying the areas for which the tide model should be empirically adjusted
-        sigma_tolerance: maximum height sigmas allowed in tidal adjustment fit
+        tide_adjustment: adjust amplitudes of tide model amplitudes to account for ice flexure
+        tide_adjustment_file: File for adjusting tide and dac values for ice shelf flexure
+        tide_adjustment_format: file format of the scaling factor grid
         extrapolate: extrapolate outside tide model bounds with nearest-neighbors
         cutoff: extrapolation cutoff in kilometers
 
@@ -232,7 +271,7 @@ def apply_tides(D, xy0, W,
             return None
         if tide_mask.shape is None:
             return
-
+    # find ice shelf points
     is_els=tide_mask.interp(D.x, D.y) > 0.5
     if verbose:
         print(f"\t\t{np.mean(is_els)*100}% shelf data")
@@ -246,129 +285,24 @@ def apply_tides(D, xy0, W,
                 DIRECTORY=tide_directory, MODEL=tide_model,
                 EPOCH=(2018,1,1,0,0,0), TYPE='drift', TIME='utc',
                 EPSG=EPSG, EXTRAPOLATE=extrapolate, CUTOFF=cutoff)
-    # use a bounded least-squares fit to adjust tides
-    # this is a purely empirical correction that
-    # does not take into account ice shelf flexure physics
+    # use a flexure mask to adjust estimated tidal values
     if np.any(is_els.ravel()) and tide_adjustment:
+        print(f"\t\t{tide_adjustment_file}") if verbose else None
         D.assign({'tide_adj_scale': np.ones_like(D.x)})
+        # read adjustment grid and interpolate to values
+        tide_adj_scale = pc.grid.data().from_file(tide_adjustment_file,
+            file_format=tide_adjustment_format, field_mapping=dict(z='tide_adj_scale'),
+            bounds=[np.array([-0.6, 0.6])*W+xy0[0], np.array([-0.6, 0.6])*W+xy0[1]])
+        # interpolate tide adjustment to coordinate values
+        D.tide_adj_scale[:] = tide_adj_scale.interp(D.x, D.y)
+        # mask out scaling factors where grounded
         D.tide_adj_scale[is_els==0]=0.0
-        tide_adj_sigma = np.zeros_like(D.x) + np.inf
-        # adjust indices that are extrapolated of within a defined mask
-        if not tide_adjustment_file:
-            # check if point is within model domain
-            inmodel = pyTMD.check_tide_points(D.x, D.y,
-                DIRECTORY=tide_directory, MODEL=tide_model,
-                EPSG=EPSG)
-            # find where points have an extrapolated tide value
-            # only calculate adjustments for ice shelf values
-            adjustment_indices, = np.nonzero(np.isfinite(D.tide_ocean) &
-                np.logical_not(inmodel) & is_els.ravel() & D.along_track)
-        else:
-            # read adjustment mask and calculate indices
-            try:
-                adjustment_mask = pc.grid.data().from_geotif(tide_adjustment_file,
-                    bounds=[np.array([-0.6, 0.6])*W+xy0[0], np.array([-0.6, 0.6])*W+xy0[1]])
-                adjustment_indices, = np.nonzero((adjustment_mask.interp(D.x, D.y) > 0.5) &
-                    np.isfinite(D.tide_ocean) & is_els.ravel() & D.along_track)
-            except IndexError:
-                adjustment_indices = []
-        # make a global reference point number combining ref_pt, rgt and pair
-        # convert both pair and rgt to zero-based indices
-        global_ref_pt = 3*1387*D.ref_pt + 3*(D.rgt-1) + (D.pair-1)
-        u_ref_pt = np.unique(global_ref_pt[adjustment_indices])
-        print(f"\t\ttide adjustment: {len(u_ref_pt)} refs") if verbose else None
-        print(f"\t\t{tide_adjustment_file}") if tide_adjustment_file else None
-        # calculate temporal fit of tide points with model phases
-        # only for reference points that are extrapolated
-        for ref_pt in u_ref_pt:
-            # indices for along-track coordinates for reference point
-            iref, = np.nonzero((global_ref_pt == ref_pt) & D.along_track)
-            # calculate distance from central point
-            x = np.median(D.x[iref])
-            y = np.median(D.y[iref])
-            dist = np.sqrt((D.x - x)**2 + (D.y - y)**2)
-            # indices of nearby points (include nearby crossover points)
-            # reduce to ice shelf points with errors less than tolerance
-            ii, = np.nonzero(((global_ref_pt == ref_pt) | (dist <= 100)) &
-                np.isfinite(D.tide_ocean) & is_els.ravel() &
-                (D.sigma < sigma_tolerance))
-            # calculate differences in spatial coordinates
-            dx = D.x[ii] - x
-            dy = D.y[ii] - y
-            # check if minimum number of values for fit
-            if (len(ii) < 4):
-                # continue to next global reference point
-                continue
-            elif np.any(dx**2 + dy**2) and (len(ii) < 6):
-                # continue to next global reference point
-                continue
-            # reduce time and ocean amplitude to global reference point
-            t = np.copy(D.time[ii])
-            tide = np.copy(D.tide_ocean[ii])
-            # correct heights for ocean variability
-            dac = np.copy(D.dac[ii])
-            dac[~np.isfinite(dac)] = 0.0
-            # reduce DAC-corrected heights to global reference point
-            h = D.z[ii] - dac
-            # use linear least-squares with bounds on the variables
-            # create design matrix
-            p0 = np.ones_like(t)
-            p1 = t - np.median(t)
-            DMAT = np.c_[tide,p0,p1]
-            # check if there are enough unique dates for fit
-            u_days = np.unique(np.round(p1*365.25))
-            if (len(u_days) <= 3):
-                continue
-            # tuple for parameter bounds (lower and upper)
-            # output tidal amplitudes must be between 0 and 1 of model
-            # average height must be between minimum and maximum of h
-            # elevation change rate must be between range
-            lb,ub = ([0.0,np.nanmin(h),-2.0],[1.0,np.nanmax(h),2.0])
-            # check if there are coordinates away from central point
-            if np.any(dx**2 + dy**2):
-                # append horizontal coordinates to design matrix
-                DMAT = np.c_[DMAT,dx,dy]
-                # calculate min and max of surface slopes
-                e_slope_min = np.nanmin(D.e_slope[ii])
-                e_slope_max = np.nanmax(D.e_slope[ii])
-                n_slope_min = np.nanmin(D.n_slope[ii])
-                n_slope_max = np.nanmax(D.n_slope[ii])
-                # append lists for parameter bounds (lower and upper)
-                # fit slopes must be within the range of ATL11 slopes
-                lb.extend([e_slope_min,n_slope_min])
-                ub.extend([e_slope_max,n_slope_max])
-            # calculate degrees of freedom
-            n_max,n_terms = np.shape(DMAT)
-            nu = np.float64(n_max - n_terms)
-            # attempt bounded linear least squares
-            try:
-                # results from bounded least squares
-                results = scipy.optimize.lsq_linear(DMAT, h,
-                    bounds=(lb,ub))
-                # model covariance matrix
-                Hinv = np.linalg.inv(np.dot(DMAT.T,DMAT))
-            except:
-                # print exceptions
-                if verbose:
-                    traceback.print_exc()
-                # continue to next global reference point
-                # and use original tide values
-                continue
-            else:
-                # extract tidal adjustment estimate
-                adj,*_ = np.copy(results['x'])
-                # calculate mean square error
-                MSE = np.sum(results['fun']**2)/nu
-                # standard error from covariance matrix
-                adj_sigma,*_ = np.sqrt(MSE*np.diag(Hinv))
-            # use best case fits for each point
-            imin, = np.nonzero(tide_adj_sigma[ii] >= adj_sigma)
-            # copy adjustments and estimated uncertainties
-            D.tide_adj_scale[ii[imin]] = adj
-            tide_adj_sigma[ii[imin]] = adj_sigma
-        # multiply tides by adjustments
-        ii, = np.nonzero((D.tide_adj_scale < 1) & (tide_adj_sigma < 1))
+        # multiply tides and dynamic atmospheric correction by adjustments
+        ii, = np.nonzero(D.tide_adj_scale != 0)
         D.tide_ocean[ii] *= D.tide_adj_scale[ii]
+        D.dac[ii] *= D.tide_adj_scale[ii]
+        print(f'mean tide adjustment scale={np.nanmean(D.tide_adj_scale)}')
+
     # replace invalid tide and dac values
     D.tide_ocean[is_els==0] = 0
     D.dac[is_els==0] = 0
@@ -399,12 +333,14 @@ def decimate_data(D, N_target, W_domain,  W_sub, x0, y0):
         1j*np.round((D.y - (y0 - W_domain/2 + W_sub/2))/W_sub)
     rho_target = N_target / W_domain**2
     ind_buffer=[]
+    print(f'decimate_data: N_target:{N_target}, N={D.size}, R_target={D.size/N_target}')
     for bin0 in np.unique(ij_bin):
         ii = np.flatnonzero((ij_bin==bin0) & D.along_track)
         this_rho = len(ii) / (W_sub**2)
         #print(f'bin0={bin0}, this_rho={this_rho}, ratio={this_rho/rho_target}')
         if this_rho < rho_target:
             # if there aren't too many points in this bin, continue
+            #print(f'bin:{bin0}, N: {len(ii)}, N_target:{len(ii)*rho_target/this_rho}, N_out:{len(ii)}, R_target={this_rho/rho_target}, R=1.0')
             ind_buffer += [ii]
             continue
         # make a global reference point number (equal to the number of ref pts in an orbit * rgt + ref_pt)
@@ -417,7 +353,9 @@ def decimate_data(D, N_target, W_domain,  W_sub, x0, y0):
         sel_ref_pts = u_ref_pts[sel_ind[sel_ind < len(u_ref_pts)]]
         # keep the points matching the selected ref pt numbers
         isub = np.in1d(global_ref_pt, sel_ref_pts)
+        #print(f'bin:{bin0}, N: {len(ii)}, N_target:{len(ii)*rho_target/this_rho}, N_out:{np.sum(isub)}, R_target={this_rho/rho_target}, R={len(ii)/np.sum(isub)}')
         ind_buffer.append(ii[isub])
+    print(f"Decimate_data: N_AT={len(np.concatenate(ind_buffer))}, N_XO={np.sum(D.along_track==0)}")
     ind_buffer.append(np.flatnonzero(D.along_track==0))
     D.index(np.concatenate(ind_buffer))
 
@@ -435,7 +373,7 @@ def set_three_sigma_edit_with_DEM(data, xy0, Wxy, DEM_file, DEM_tol, W_med=None)
 
     outputs:  None (modifies data.three_sigma_edit)
     '''
-    
+
     if DEM_tol is None:
         return
 
@@ -443,30 +381,37 @@ def set_three_sigma_edit_with_DEM(data, xy0, Wxy, DEM_file, DEM_tol, W_med=None)
         W_med=Wxy/8
     if 'three_sigma_edit' not in data.fields:
         data.assign({'three_sigma_edit':np.ones_like(data.z, dtype=bool)})
-    
+
     if DEM_file is None:
         r_DEM = data.z-data.dem_h
     else:
          r_DEM = data.z - pc.grid.data()\
                 .from_geotif(DEM_file, bounds=[xy+0.6*np.array([-Wxy, Wxy]) for xy in xy0])\
                 .interp(data.x, data.y)
-        
-    good = np.ones_like(data.z, dtype=bool)   
+
+    good = np.ones_like(data.z, dtype=bool)
     for x0 in np.arange(xy0[0]-Wxy/2, xy0[0]+Wxy/2, W_med):
         for y0 in np.arange(xy0[1]-Wxy/2, xy0[1]+Wxy/2, W_med):
             ii = (data.x>=x0) & (data.x <= x0+W_med) &\
                 (data.y>=y0) & (data.y <= y0+W_med)
             good[ii] &= (np.abs(r_DEM[ii] - np.nanmedian(r_DEM[ii])) < DEM_tol)
     data.three_sigma_edit &= good
-    
+
 def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
             t_span=[2019.25, 2020.5], \
             spacing={'z0':2.5e2, 'dz':5.e2, 'dt':0.25},  \
             sigma_geo=6.5,\
+            sigma_radial=0.03,\
             dzdt_lags=[1, 4],\
-            hemisphere=1, reference_epoch=None,\
-            region=None, reread_dirs=None, \
+            hemisphere=1,\
+            reference_epoch=None,\
+            region=None,\
+            reread_dirs=None, \
+            sigma_extra_bin_spacing=None,\
+            sigma_extra_max=None,\
+            prior_edge_args=None,\
             data_file=None, \
+            restart_edit=False, \
             max_iterations=5, \
             N_subset=8,  \
             W_edit=None, \
@@ -474,17 +419,21 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
             compute_E=False, \
             DEM_file=None,\
             DEM_tol=None,\
+            geoid_tol=None, \
             sigma_tol=None,\
             mask_file=None,\
+            geoid_file=None,\
             tide_mask_file=None,\
             tide_directory=None,\
             tide_adjustment=False,\
             tide_adjustment_file=None,\
+            tide_adjustment_format=None,\
             tide_model=None,\
             avg_scales=None,\
             edge_pad=None,\
             error_res_scale=None,\
             calc_error_file=None,\
+            bias_params=['rgt','cycle'],\
             verbose=False,\
             write_data_only=False):
     '''
@@ -504,6 +453,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
         data_file: (string) output file from which to reread data (alternative to reread_dirs)
         max_iterations: (int) maximum number of iterations in three-sigma edit of the solution
         N_subset: (int) If specified, the domain is subdivided into this number of divisions in x and y, and a three-sigma edit is calculated for each
+        sigma_extra_bin_spacing: (float) grid spacing that will be used to calculate extra geophysical errors
         W_edit: (float) Only data within this distance of the grid center can be editied in the iterative step
         out_name: (string) Name of the output file
         compute_E: (bool) If true, errors will be calculated
@@ -513,8 +463,9 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
         mask_file: (string) File specifying areas for which data should be used and strong constraints should be applied
         tide_mask_file: (string)  File specifying the areas for which the tide model should be calculated
         tide_directory: (string)  Directory containing the tide model data
-        tide_adjustment: (bool)  Use bounded least-squares fit to adjust tides for extrapolated points
-        tide_adjustment_file: (string)  File specifying the areas for which the tide model should be empirically adjusted
+        tide_adjustment: (bool)  Adjust tides for ice shelf flexure
+        tide_adjustment_file: (string)  File for adjusting tide and dac values for ice shelf flexure
+        tide_adjustment_format: (string) file format of the scaling factor grid
         tide_model: (string)  Name of the tide model to use for a given domain
         avg_scales: (list of floats) scales over which the output grids will be averaged and errors will be calculated
         error_res_scale: (float) If errors are calculated, the grid resolution will be coarsened by this factor
@@ -530,10 +481,69 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
 
     W={'x':Wxy, 'y':Wxy,'t':np.diff(t_span)}
     ctr={'x':xy0[0], 'y':xy0[1], 't':np.mean(t_span)}
+    bds={ dim: c_i+np.array([-0.5, 0.5])*W[dim]  for dim, c_i in ctr.items()}
+
+    # work out which mask to use based on the region
+    tide_mask_data=None
+    mask_data=None
+    I_AM_SKIPPING_THE_EXISTING_MASK_DATA=False
+    if I_AM_SKIPPING_THE_EXISTING_MASK_DATA:
+        print("I_AM_SKIPPING_THE_EXISTING_MASK_DATA")
+
+    read_mask_file=None
+    if data_file is not None:
+        read_mask_file=data_file
+    elif calc_error_file is not None:
+        read_mask_file=calc_error_file
+
+    mask_update_function=None
+    if geoid_file is not None:
+        ancillary_data={'geoid_file':geoid_file}
+        from ATL1415.update_masks_with_geoid import update_masks_with_geoid
+        mask_update_function=update_masks_with_geoid
+
+    if read_mask_file is not None and I_AM_SKIPPING_THE_EXISTING_MASK_DATA is False:
+        print("READING MASK DATA")
+        mask_data={'z0':pc.grid.data().from_h5(read_mask_file, group='z0', fields=['mask']),
+                   'dz':pc.grid.data().from_h5(read_mask_file, group='dz', fields=['mask'])}
+        for key, mask in mask_data.items():
+            mask.assign({'z':mask.mask})
+    elif region is not None:
+        if region=='AA':
+            pad=np.array([-1.e4, 1.e4])
+            mask_data=pc.grid.data().from_h5(mask_file,
+                                             bounds=[bds['x']+pad, bds['y']+pad],
+                                            bands=np.arange(17, 24))
+            while mask_data.t[-1] < ctr['t']+W['t']/2:
+                # append a copy of the last field in the mask data to the end of the mask data
+                mask_data.z = np.concatenate([mask_data.z,mask_data.z[:,:,-1:]], axis=2)
+                mask_data.t = np.concatenate([mask_data.t,mask_data.t[-1:]+1], axis=0)
+            mask_data.__update_size_and_shape__()
+            #mask_data=pc.grid.data().from_geotif(mask_file, bounds=[xy0[0]+np.array([-1.2, 1.2])*Wxy/2, xy0[1]+np.array([-1.2, 1.2])*Wxy/2])
+            #import scipy.ndimage as snd
+            #mask_data.z=snd.binary_erosion(snd.binary_erosion(mask_data.z, np.ones([1,3])), np.ones([3,1]))
+            mask_file=None
+        elif region=='GL':
+            if mask_file.endswith('.nc'):
+                mask_data, tide_mask_data = read_bedmachine_greenland(mask_file, xy0, Wxy)
+            elif mask_file.endswith('.tif'):
+                pad=np.array([-1.e4, 1.e4])
+                mask_data=pc.grid.data().from_geotif(mask_file,
+                                                bounds=[bds['x']+pad, bds['y']+pad])
+        elif mask_file.endswith('.shp') or mask_file.endswith('.db'):
+            mask_data=make_mask_from_vector(mask_file, W, ctr, spacing['z0'], srs_proj4=SRS_proj4)
+
+        # check if mask_data is 2D or 3D
+        if len(mask_data.z.shape)==2:
+            #repeat the mask data to make a 3d field
+            mask_data.t=np.arange(t_span[0]-1, t_span[1]+1)
+            mask_data.z=np.tile(mask_data.z[:,:,None], [1, 1, len(mask_data.t)])
+            mask_data.__update_size_and_shape__()
+
 
     # initialize file_list to empty in case we're rereading the data
     file_list=[]
-    
+
     # figure out where to get the data
     if data_file is not None:
         data=pc.data().from_h5(data_file, group='data')
@@ -541,11 +551,11 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
         data=pc.data().from_h5(calc_error_file, group='data')
         max_iterations=0
         compute_E=True
-        N_subset=None
     elif reread_dirs is not None:
-        data = reread_data_from_fits(xy0, Wxy, reread_dirs, template='E%d_N%d.h5')
+        data, tile_reread_list = reread_data_from_fits(xy0, Wxy, reread_dirs, template='E%d_N%d.h5')
     else:
-        data, file_list = read_ATL11(xy0, Wxy, ATL11_index, SRS_proj4, sigma_geo=sigma_geo)
+        data, file_list = read_ATL11(xy0, Wxy, ATL11_index, SRS_proj4,
+                                     sigma_geo=sigma_geo, sigma_radial=sigma_radial)
         if sigma_tol is not None and data is not None:
             data.index(data.sigma < sigma_tol)
         if data is not None:
@@ -572,6 +582,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
         ctr_dist = np.max(np.abs(data.x-xy0[0]), np.abs(data.y-xy0[1]))
         in_ctr = ctr_dist < Wxy/2 - edge_pad
         if np.sum(in_ctr) < 50:
+            print("After editing by edge pad, <50 data present, returning")
             return None
 
     if W_edit is not None:
@@ -580,22 +591,13 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
         # the three-sigma edit
         data.assign({'editable':  (np.abs(data.x-xy0[0])<=W_edit/2) & (np.abs(data.y-xy0[1])<=W_edit/2)})
 
+    if restart_edit:
+        if 'three_sigma_edit' in data.fields:
+            data.three_sigma_edit[:]=True
 
-    # work out which mask to use based on the region
-    tide_mask_data=None
-    mask_data=None
-    if region is not None:
-        if region=='AA':
-            mask_data=pc.grid.data().from_geotif(mask_file, bounds=[xy0[0]+np.array([-1.2, 1.2])*Wxy/2, xy0[1]+np.array([-1.2, 1.2])*Wxy/2])
-            import scipy.ndimage as snd
-            mask_data.z=snd.binary_erosion(snd.binary_erosion(mask_data.z, np.ones([1,3])), np.ones([3,1]))
-            mask_file=None
-        if region=='GL' and mask_file.endswith('.nc'):
-            mask_data, tide_mask_data = read_bedmachine_greenland(mask_file, xy0, Wxy)
-
-    # new 8/11/2021: use a DEM (if provided) to reject ATL06/11 blunders
+    # to reject ATL06/11 blunders
     set_three_sigma_edit_with_DEM(data, xy0, Wxy, DEM_file, DEM_tol)
-    
+
     # apply the tides if a directory has been provided
     # NEW 2/19/2021: apply the tides only if we have not read the data from first-round fits.
     if (tide_mask_file is not None or tide_mask_data is not None) and reread_dirs is None and calc_error_file is None and data_file is None:
@@ -606,20 +608,34 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
                     tide_model=tide_model,
                     tide_adjustment=tide_adjustment,
                     tide_adjustment_file=tide_adjustment_file,
+                    tide_adjustment_format=tide_adjustment_format,
                     EPSG=EPSG, verbose=verbose)
+
+    if geoid_tol is not None:
+        data.index((data.z - data.geoid_h) > geoid_tol)
 
     if write_data_only:
         return {'data':data}
 
     # call smooth_xytb_fitting
-    S=smooth_xytb_fit(data=data, ctr=ctr, W=W, spacing=spacing, E_RMS=E_RMS0,
-                     reference_epoch=reference_epoch, N_subset=N_subset, compute_E=compute_E,
-                     bias_params=['rgt','cycle'],  max_iterations=max_iterations,
-                     srs_proj4=SRS_proj4, VERBOSE=True, dzdt_lags=dzdt_lags,
-                     mask_file=mask_file, mask_data=mask_data, mask_scale={0:10, 1:1},
-                     converge_tol_frac_edit=0.001,
-                     error_res_scale=error_res_scale,
-                     avg_scales=avg_scales)
+    S=smooth_xytb_fit_aug(data=data,
+                      ctr=ctr, W=W,
+                      spacing=spacing, E_RMS=E_RMS0,
+                      reference_epoch=reference_epoch,
+                      compute_E=compute_E,
+                      sigma_extra_bin_spacing=sigma_extra_bin_spacing,
+                      sigma_extra_max=sigma_extra_max,
+                      prior_edge_args=prior_edge_args,
+                      bias_params=bias_params,
+                      max_iterations=max_iterations,
+                      srs_proj4=SRS_proj4, VERBOSE=True,
+                      dzdt_lags=dzdt_lags,
+                      mask_file=mask_file, mask_data=mask_data, mask_scale={0:10, 1:1},
+                      converge_tol_frac_edit=0.001,
+                      error_res_scale=error_res_scale,
+                      ancillary_data=ancillary_data,
+                      mask_update_function=mask_update_function,
+                      avg_scales=avg_scales)
     S['file_list'] = file_list
     return S
 
@@ -648,16 +664,26 @@ def save_fit_to_file(S,  filename, dzdt_lags=None, reference_epoch=0):
             h5f.create_dataset('E_RMS/'+key, data=S['E_RMS'][key])
         for key in S['m']['bias']:
             h5f.create_dataset('/bias/'+key, data=S['m']['bias'][key])
+
+    # if we have a 3d mask on z0, use it to replace the 'mask' in S['m']['dz']
+    if S['grids']['dz'].mask_3d is not None:
+        S['m']['dz'].mask = S['grids']['dz'].mask_3d
+
     for key , ds in S['m'].items():
         if isinstance(ds, pc.grid.data):
             ds.to_h5(filename, group=key)
+    with h5py.File(filename,'r+') as h5f:
+        h5f.create_dataset('/z0/mask', data=S['grids']['z0'].mask.astype(int), \
+                           chunks=True, compression="gzip", fillvalue=-1)
+        h5f.create_dataset('/dz/mask', data=S['grids']['dz'].mask_3d.z.astype(int),\
+                           chunks=True, compression="gzip", fillvalue=-1)
     return
 
 def mask_components_by_time(dz):
     """
     identify the connected components in the data, mark unconstrained epochs as invalid
-    
-    inputs 
+
+    inputs
     dz: pc.grid.data() instance containing fields dz, cell_area
     outputs:
     modified inputs
@@ -734,42 +760,55 @@ def main(argv):
         description="function to fit ICESat-2 data with a smooth elevation-change model", \
         fromfile_prefix_chars="@")
     parser.add_argument('--xy0', type=float, nargs=2, help="fit center location")
-    parser.add_argument('--ATL11_index', type=str, required=True, help="ATL11 index file")
+    parser.add_argument('--ATL11_index', type=lambda p: os.path.abspath(os.path.expanduser(p)), required=True, help="ATL11 index file")
     parser.add_argument('--Width','-W',  type=float, help="Width of grid")
     parser.add_argument('--time_span','-t', type=str, help="time span, first year,last year AD (comma separated, no spaces)")
     parser.add_argument('--grid_spacing','-g', type=str, help='grid spacing:DEM (meters),dh maps xy (meters),dh_maps time (years): comma-separated, no spaces', default='250.,4000.,1.')
     parser.add_argument('--Hemisphere','-H', type=int, default=1, help='hemisphere: -1=Antarctica, 1=Greenland')
-    parser.add_argument('--base_directory','-b', type=str, help='base directory')
-    parser.add_argument('--out_name', '-o', type=str, help="output file name")
+    parser.add_argument('--base_directory','-b', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='base directory')
+    parser.add_argument('--out_name', '-o', type=lambda p: os.path.abspath(os.path.expanduser(p)), help="output file name")
+    parser.add_argument('--prelim', action='store_true')
     parser.add_argument('--centers', action="store_true")
     parser.add_argument('--edges', action="store_true")
     parser.add_argument('--corners', action="store_true")
+    parser.add_argument('--matched', action="store_true")
+    parser.add_argument('--prior_edge_include', type=float, help='include prior constraints over this width at the edge of each tile')
+    parser.add_argument('--prior_sigma_scale', type=float, default=1, help='scale prior error estimates by this value')
+    parser.add_argument('--tile_spacing', type=float, default=60000.)
+    parser.add_argument('--sigma_extra_bin_spacing', type=float, default=None, help='width over which data are collected to calculate the extra error estimates')
+    parser.add_argument('--sigma_extra_max', type=float, default=None, help='maximum value for sigma_extra,')
     parser.add_argument('--W_edit', type=int)
     parser.add_argument('--E_d2zdt2', type=float, default=5000)
     parser.add_argument('--E_d2z0dx2', type=float, default=0.02)
     parser.add_argument('--E_d3zdx2dt', type=float, default=0.0003)
-    parser.add_argument('--E_d2z0dx2_file', type=str, help='file from which to read the expected d2z0dx2 values')
+    parser.add_argument('--E_d2z0dx2_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='file from which to read the expected d2z0dx2 values')
     parser.add_argument('--data_gap_scale', type=float,  default=2500)
     parser.add_argument('--sigma_geo', type=float,  default=6.5)
+    parser.add_argument('--sigma_radial', type=float,  default=0.03)
     parser.add_argument('--dzdt_lags', type=str, default='1,4', help='lags for which to calculate dz/dt, comma-separated list, no spaces')
     parser.add_argument('--avg_scales', type=str, default='10000,40000', help='scales at which to report average errors, comma-separated list, no spaces')
     parser.add_argument('--N_subset', type=int, default=None, help="number of pieces into which to divide the domain for (cheap) editing iterations.")
     parser.add_argument('--max_iterations', type=int, default=6, help="maximum number of iterations used to edit the data.")
-    parser.add_argument('--map_dir','-m', type=str)
-    parser.add_argument('--DEM_file', type=str, help='DEM file to use with the DEM_tol parameter')
+    parser.add_argument('--map_dir','-m', type=lambda p: os.path.abspath(os.path.expanduser(p)))
+    parser.add_argument('--DEM_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='DEM file to use with the DEM_tol parameter')
     parser.add_argument('--DEM_tol', type=float, default=50, help='points different from the DEM by more than this value will be edited in the first iteration')
+    parser.add_argument('--geoid_tol', type=float, help='points closer than this to the geoid will be rejected')
     parser.add_argument('--sigma_tol', type=float, help='points with sigma greater than this value will be edited')
-    parser.add_argument('--mask_file', type=str)
-    parser.add_argument('--tide_mask_file', type=str)
-    parser.add_argument('--tide_directory', type=str)
-    parser.add_argument('--tide_adjustment', action="store_true", help="Use bounded least-squares fit to adjust tides")
-    parser.add_argument('--tide_adjustment_file', type=str, help="File specifying the areas for which the tide model should be empirically adjusted")
+    parser.add_argument('--mask_file', type=lambda p: os.path.abspath(os.path.expanduser(p)))
+    parser.add_argument('--geoid_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help="file containing geoid information")
+    parser.add_argument('--tide_mask_file', type=lambda p: os.path.abspath(os.path.expanduser(p)))
+    parser.add_argument('--tide_directory', type=lambda p: os.path.abspath(os.path.expanduser(p)))
+    parser.add_argument('--tide_adjustment', action="store_true", help="Adjust tides for ice shelf flexure")
+    parser.add_argument('--tide_adjustment_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help="File for adjusting tide and dac values for ice shelf flexure")
+    parser.add_argument('--tide_adjustment_format', type=str, choices=('geotif','h5','nc'), default='h5', help="File format of the scaling factor grid")
     parser.add_argument('--tide_model', type=str)
     parser.add_argument('--reference_epoch', type=int, default=0, help="Reference epoch number, for which dz=0")
-    parser.add_argument('--data_file', type=str, help='read data from this file alone')
-    parser.add_argument('--calc_error_file','-c', type=str, help='file containing data for which errors will be calculated')
+    parser.add_argument('--data_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='read data from this file alone')
+    parser.add_argument('--restart_edit', action='store_true')
+    parser.add_argument('--calc_error_file','-c', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='file containing data for which errors will be calculated')
     parser.add_argument('--calc_error_for_xy', action='store_true', help='calculate the errors for the file specified by the x0, y0 arguments')
     parser.add_argument('--error_res_scale','-s', type=float, nargs=2, default=[4, 2], help='if the errors are being calculated (see calc_error_file), scale the grid resolution in x and y to be coarser')
+    parser.add_argument('--bias_params', type=str, default="rgt,cycle", help='one bias parameter will be assigned for each unique combination of these ATL11 parameters (comma-separated list with no spaces)')
     parser.add_argument('--region', type=str, help='region for which calculation is being performed')
     parser.add_argument('--verbose','-v', action="store_true")
     parser.add_argument('--write_data_only', action='store_true', help='save data without processing')
@@ -779,14 +818,6 @@ def main(argv):
     args.dzdt_lags = [np.int64(temp) for temp in args.dzdt_lags.split(',')]
     args.time_span = [np.float64(temp) for temp in args.time_span.split(',')]
     args.avg_scales = [np.int64(temp) for temp in args.avg_scales.split(',')]
-
-    if args.E_d2z0dx2_file is not None and args.calc_error_file is None:
-        E_d2z0dx2=pc.grid.data().from_geotif(args.E_d2z0dx2_file)#, bounds=[args.xy0[0]+np.array([-1, 1])*args.Width, args.xy0[1]+np.array([-1, 1])*args.Width])
-        col = np.argmin(np.abs(E_d2z0dx2.x-args.xy0[0]))
-        row = np.argmin(np.abs(E_d2z0dx2.y-args.xy0[1]))
-        args.E_d2z0dx2 = np.minimum(1.e-2, np.maximum(1.e-4, E_d2z0dx2.z[row,col]))
-        if np.isnan(args.E_d2z0dx2):
-            args.E_d2z0dx2=1.e-2
 
     spacing={'z0':args.grid_spacing[0], 'dz':args.grid_spacing[1], 'dt':args.grid_spacing[2]}
     E_RMS={'d2z0_dx2':args.E_d2z0dx2, 'd3z_dx2dt':args.E_d3zdx2dt, 'd2z_dxdt':args.E_d3zdx2dt*args.data_gap_scale,  'd2z_dt2':args.E_d2zdt2}
@@ -800,20 +831,51 @@ def main(argv):
 
     if args.centers:
         dest_dir += '/centers'
+        prior_dirs=None
         W_edit=None
-    if args.edges or args.corners:
+    elif args.prelim:
+        dest_dir += '/prelim'
+        prior_dirs=None
+        W_edit=None
+    elif args.edges or args.corners:
         reread_dirs=[args.base_directory+'/centers']
         if args.edges:
             dest_dir += '/edges'
-    if args.corners:
+        prior_dirs=reread_dirs
+    elif args.corners:
         reread_dirs += [args.base_directory+'/edges']
         dest_dir +='/corners'
+        prior_dirs=reread_dirs
+    elif args.matched:
+        dest_dir += '/matched'
+        args.max_iterations=1
+        prior_dirs = [args.base_directory+'/'+ii for ii in ['prelim','centers','edges','corners']]
+
+    prior_edge_args=None
+    if args.prior_edge_include is not None:
+        prior_edge_args={'prior_dir': prior_dirs,
+                         'edge_include':args.prior_edge_include,
+                         'sigma_scale':args.prior_sigma_scale,
+                         'tile_spacing':args.tile_spacing}
+
+    if args.xy0 is None and args.calc_error_file is not None or args.data_file is not None:
+        # get xy0 from the filename
+        if args.calc_error_file is not None:
+            re_match=re.compile('E(.*)_N(.*).h5').search(args.calc_error_file)
+        elif args.data_file is not None:
+            re_match=re.compile('E(.*)_N(.*).h5').search(args.data_file)
+        args.xy0=[float(re_match.group(ii))*1000 for ii in [1, 2]]
+
+    if args.E_d2z0dx2_file is not None and args.calc_error_file is None:
+        E_d2z0dx2=pc.grid.data().from_geotif(args.E_d2z0dx2_file)#, bounds=[args.xy0[0]+np.array([-1, 1])*args.Width, args.xy0[1]+np.array([-1, 1])*args.Width])
+        col = np.argmin(np.abs(E_d2z0dx2.x-args.xy0[0]))
+        row = np.argmin(np.abs(E_d2z0dx2.y-args.xy0[1]))
+        args.E_d2z0dx2 = np.minimum(1.e-2, np.maximum(1.e-4, E_d2z0dx2.z[row,col]))
+        if np.isnan(args.E_d2z0dx2):
+            args.E_d2z0dx2=1.e-2
 
     if args.calc_error_file is not None:
         dest_dir=os.path.dirname(args.calc_error_file)
-        # get xy0 from the filename
-        re_match=re.compile('E(.*)_N(.*).h5').search(args.calc_error_file)
-        args.xy0=[float(re_match.group(ii))*1000 for ii in [1, 2]]
         args.out_name=args.calc_error_file
         with h5py.File(args.calc_error_file) as h5f:
             args.E_d2z0dx2 = h5f['E_RMS']['d2z0_dx2'][()]
@@ -831,10 +893,15 @@ def main(argv):
             print(f"{args.out_name} not found, returning")
             return 1
 
+    if args.tide_adjustment_file is not None:
+        args.tide_adjustment=True
+
     if args.error_res_scale is not None:
         if args.calc_error_file is not None:
             for ii, key in enumerate(['z0','dz']):
                 spacing[key] *= args.error_res_scale[ii]
+
+    args.bias_params=args.bias_params.split(',')
 
     if not os.path.isdir(args.base_directory):
         os.mkdir(args.base_directory)
@@ -842,22 +909,33 @@ def main(argv):
         os.mkdir(dest_dir)
     except FileExistsError:
         pass
+
+    print("ATL11_to_ATL15: working on "+args.out_name)
+
     S=ATL11_to_ATL15(args.xy0, ATL11_index=args.ATL11_index,
            Wxy=args.Width, E_RMS=E_RMS, t_span=args.time_span, spacing=spacing, \
+           bias_params=args.bias_params,\
+           prior_edge_args=prior_edge_args, \
            sigma_geo=args.sigma_geo, \
+           sigma_radial=args.sigma_radial, \
            hemisphere=args.Hemisphere, reread_dirs=reread_dirs, \
            data_file=args.data_file, \
+           restart_edit=args.restart_edit, \
            out_name=args.out_name,
            dzdt_lags=args.dzdt_lags, \
            N_subset=args.N_subset,\
            mask_file=args.mask_file, \
            region=args.region, \
+           geoid_file=args.geoid_file,\
            tide_mask_file=args.tide_mask_file, \
            tide_directory=args.tide_directory, \
            tide_adjustment=args.tide_adjustment, \
            tide_adjustment_file=args.tide_adjustment_file, \
+           tide_adjustment_format=args.tide_adjustment_format, \
            tide_model=args.tide_model, \
            max_iterations=args.max_iterations, \
+           sigma_extra_bin_spacing=args.sigma_extra_bin_spacing,\
+           sigma_extra_max=args.sigma_extra_max,\
            reference_epoch=args.reference_epoch, \
            W_edit=W_edit,\
            calc_error_file=args.calc_error_file, \
@@ -866,6 +944,7 @@ def main(argv):
            verbose=args.verbose, \
            DEM_file=args.DEM_file, \
            DEM_tol=args.DEM_tol, \
+           geoid_tol=args.geoid_tol,\
            sigma_tol=args.sigma_tol, \
            write_data_only=args.write_data_only)
 

@@ -223,7 +223,10 @@ def ATL14_write2nc(args):
             if field == 'x':
                 dsetvar.standard_name = 'projection_x_coordinate'
             if field == 'y':
-                dsetvar.standard_name = 'projection_y_coordinate'                
+                dsetvar.standard_name = 'projection_y_coordinate'   
+            if field == 'ice_mask' or 'cell_area':
+                dsetvar.setncattr('grid_mapping','Polar_Stereographic')
+                
         crs_var.GeoTransform = (xll,dx,0,yll,0,dy)
                 
         for field in [item for item in field_names if item != 'x' and item != 'y' and item != 'ice_mask' and item != 'cell_area']:
