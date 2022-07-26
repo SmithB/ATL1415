@@ -14,15 +14,16 @@ import uuid
 import pkg_resources
 import warnings
 from datetime import datetime
+from ATL1415.version import softwareVersion,softwareDate,softwareTitle,identifier,series_version
 
 def write_atl14meta(dst,fileout,ncTemplate,args):
 
     # setup basic dictionary of attributes to touch
-    root_info={'asas_release':'SET_BY_PGE', 'date_created':'', 'fileName':'', 'geospatial_lat_max':0., \
+    root_info={'date_created':'', 'fileName':'', 'geospatial_lat_max':0., \
         'geospatial_lat_min':0., 'geospatial_lon_max':0., 'geospatial_lon_min':0., \
         'netcdfversion':'', 'history':'SET_BY_PGE', \
         'identifier_product_format_version':'SET_BY_PGE', 'time_coverage_duration':0., \
-        'time_coverage_end':'', 'time_coverage_start':'', 'uuid':''}
+        'time_coverage_end':'', 'time_coverage_start':'', 'identifier_file_uuid':''}
 
     # copy attributes, dimensions, variables, and groups from template
     if 'ATL15' in os.path.basename(fileout):
@@ -39,6 +40,8 @@ def write_atl14meta(dst,fileout,ncTemplate,args):
         for name, variable in src.variables.items():
             x = dst.createVariable(name, variable.datatype, variable.dimensions)
             dst.variables[name][:] = src.variables[name][:]
+            for attribute in src.variables[name].ncattrs():
+                dst.variables[name].setncattr(attribute, src.variables[name].getncattr(attribute))
     # copy groups, recursively
         for grp in walktree(src):
             for child in grp:
@@ -50,6 +53,8 @@ def write_atl14meta(dst,fileout,ncTemplate,args):
                 for name, variable in child.variables.items():
                     x = dg.createVariable(name, variable.datatype, variable.dimensions)
                     dg.variables[name][:] = child.variables[name][:]
+                    for attribute in child.variables[name].ncattrs():
+                        dg.variables[name].setncattr(attribute, child.variables[name].getncattr(attribute))
     # build ATL11 lineage
     set_lineage(dst,root_info,args)
     # lat/lon bounds
@@ -57,14 +62,20 @@ def write_atl14meta(dst,fileout,ncTemplate,args):
 
     # set file and date attributes
     root_info.update({'netcdfversion': netCDF4.__netcdf4libversion__})
-    root_info.update({'uuid': str(uuid.uuid4())})
+    root_info.update({'identifier_file_uuid': str(uuid.uuid4())})
     dst['METADATA/DatasetIdentification'].setncattr('uuid', str(uuid.uuid4()).encode('ASCII'))
     dateval = str(datetime.now().date())
     dateval = dateval+'T'+str(datetime.now().time())+'Z'
     root_info.update({'date_created': dateval})
+    root_info.update({'history': dateval})
     dst['METADATA/DatasetIdentification'].setncattr('creationDate', str(datetime.now().date()))
     root_info.update({'fileName': os.path.basename(fileout)})
     dst['METADATA/DatasetIdentification'].setncattr('fileName', os.path.basename(fileout))
+    root_info.update({'identifier_product_format_version': series_version()})
+    dst['METADATA/SeriesIdentification'].setncattr('VersionID', series_version())
+    dst['METADATA/ProcessStep/PGE'].setncattr('softwareDate', softwareDate())
+    dst['METADATA/ProcessStep/PGE'].setncattr('softwareTitle', softwareTitle())
+    dst['METADATA/ProcessStep/PGE'].setncattr('softwareVersion', softwareVersion())
     # apply dict of root level attributes
     for key, keyval in root_info.items():
         dst.setncattr(key, keyval)
