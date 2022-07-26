@@ -15,17 +15,17 @@ import ast
 import pkg_resources
 from netCDF4 import Dataset
 #import matplotlib.pyplot as plt
+from ATL1415 import ATL14_attrs_meta
 
-from ATL1415 import write_atl14meta
 #from ATL11.h5util import create_attribute
 
-def ATL14_write2nc(args):    
+def ATL14_write2nc(args):
     dz_dict ={'x':'x',   # ATL14 varname : z0.h5 varname
               'y':'y',
               'h':'z0',
               'h_sigma':'sigma_z0',
               'cell_area':'cell_area',
-              'ice_mask':'mask',
+              # 'ice_mask':'mask',
               'data_count':'count',
               'misfit_rms':'misfit_rms',
               'misfit_scaled_rms':'misfit_scaled_rms',
@@ -37,7 +37,7 @@ def ATL14_write2nc(args):
     # establish output file
     fileout = args.base_dir.rstrip('/') + '/ATL14_' + args.region + '_' + args.cycles + '_100m_' + args.Release + '_' + args.version +'.nc'
     print('output file:',fileout)
-   
+
     with Dataset(fileout,'w',clobber=True) as nc:
         nc.setncattr('GDAL_AREA_OR_POINT','Area')
         nc.setncattr('Conventions','CF-1.6')
@@ -76,11 +76,11 @@ def ATL14_write2nc(args):
             crs_var.crs_wkt = ('PROJCS["WGS 84 / Antarctic Polar Stereographic",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Polar_Stereographic"],PARAMETER["latitude_of_origin",-71],PARAMETER["central_meridian",0],PARAMETER["scale_factor",1],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","3031"]]')
 
         # make tile_stats group (ATBD 4.1.2.1, Table 3)
-        tilegrp = nc.createGroup('tile_stats')   
+        tilegrp = nc.createGroup('tile_stats')
         tileFile = pkg_resources.resource_filename('ATL1415','resources/tile_stats_output_attrs.csv')
         with open(tileFile,'r', encoding='utf-8-sig') as tilefile:
             tile_reader=list(csv.DictReader(tilefile))
-    
+
         tile_attr_names=[x for x in tile_reader[0].keys() if x != 'field' and x != 'group']
 
         tile_field_names = [row['field'] for row in tile_reader]
@@ -89,8 +89,8 @@ def ATL14_write2nc(args):
         for field in tile_field_names:
             if field not in tile_stats:
                 tile_stats[field] = { 'data': [], 'mapped':np.array(())}
-                    
-        
+
+
         # work through the tiles in all three subdirectories
         for sub in ['centers','edges','corners']:
             files = os.listdir(os.path.join(args.base_dir,sub))
@@ -114,12 +114,12 @@ def ATL14_write2nc(args):
                     tile_stats['sigma_xx0']['data'].append( h5['E_RMS']['d2z0_dx2'][()] )
                     tile_stats['sigma_tt']['data'].append( h5['E_RMS']['d2z_dt2'][()] )
                     tile_stats['sigma_xxt']['data'].append( h5['E_RMS']['d3z_dx2dt'][()] )
-                    
+
         # establish output grids from min/max of x and y
         for key in tile_stats.keys():
-            if key == 'N_data' or key == 'N_bias':  # key == 'x' or key == 'y' or 
+            if key == 'N_data' or key == 'N_bias':  # key == 'x' or key == 'y' or
                 tile_stats[key]['mapped'] = np.zeros( [len(np.arange(np.min(tile_stats['y']['data']),np.max(tile_stats['y']['data'])+40,40)),
-                                                        len(np.arange(np.min(tile_stats['x']['data']),np.max(tile_stats['x']['data'])+40,40))], 
+                                                        len(np.arange(np.min(tile_stats['x']['data']),np.max(tile_stats['x']['data'])+40,40))],
                                                         dtype=int)
             else:
                 tile_stats[key]['mapped'] = np.zeros( [len(np.arange(np.min(tile_stats['y']['data']),np.max(tile_stats['y']['data'])+40,40)),
@@ -138,7 +138,7 @@ def ATL14_write2nc(args):
                 row=int((yt-np.min(tile_stats['y']['data']))/40)
                 col=int((xt-np.min(tile_stats['x']['data']))/40)
                 tile_stats[key]['mapped'][row,col] = dt
-            tile_stats[key]['mapped'] = np.ma.masked_where(tile_stats[key]['mapped'] == 0, tile_stats[key]['mapped'])   
+            tile_stats[key]['mapped'] = np.ma.masked_where(tile_stats[key]['mapped'] == 0, tile_stats[key]['mapped'])
 
         # make dimensions, fill them as variables
         tilegrp.createDimension('y',len(np.arange(np.min(tile_stats['y']['data']),np.max(tile_stats['y']['data'])+40,40)))
@@ -153,14 +153,14 @@ def ATL14_write2nc(args):
             elif field == 'y':
                 dsetvar = tilegrp.createVariable('y', tile_field_attrs[field]['datatype'], ('y',), fill_value=np.finfo(tile_field_attrs[field]['datatype']).max, zlib=True)
                 dsetvar[:] = np.arange(np.min(tile_stats['y']['data']),np.max(tile_stats['y']['data'])+40,40.) * 1000 # convert from km to meter
-            elif field == 'N_data' or field == 'N_bias': 
+            elif field == 'N_data' or field == 'N_bias':
                 dsetvar = tilegrp.createVariable(field, tile_field_attrs[field]['datatype'],('y','x'),fill_value=np.iinfo(tile_field_attrs[field]['datatype']).max, zlib=True)
             else:
                 dsetvar = tilegrp.createVariable(field, tile_field_attrs[field]['datatype'],('y','x'),fill_value=np.finfo(tile_field_attrs[field]['datatype']).max, zlib=True)
 
             if field != 'x' and field != 'y':
                 dsetvar[:] = tile_stats[field]['mapped'][:]
-            
+
             for attr in ['units','dimensions','datatype','coordinates','description','coordinates','long_name','source']:
                 dsetvar.setncattr(attr,tile_field_attrs[field][attr])
             dsetvar.setncattr('grid_mapping','Polar_Stereographic')
@@ -173,30 +173,30 @@ def ATL14_write2nc(args):
             exit(-1)
         else:
             print('Reading file:',args.base_dir.rstrip('/')+'/z0.h5')
-            
-        attrFile = pkg_resources.resource_filename('ATL1415','resources/ATL14_output_attrs.csv') 
+
+        attrFile = pkg_resources.resource_filename('ATL1415','resources/ATL14_output_attrs.csv')
         with open(attrFile,'r', encoding='utf-8-sig') as attrfile:
             reader=list(csv.DictReader(attrfile))
-    
+
         attr_names=[x for x in reader[0].keys() if x != 'field' and x != 'group']
 
         field_names = [row['field'] for row in reader if 'ROOT' in row['group']]
 
         # create dimensions
-        for field in ['x', 'y', 'ice_mask', 'cell_area']: 
+        for field in ['x', 'y', 'cell_area']:   #, 'ice_mask'
             field_attrs = {row['field']: {attr_names[ii]:row[attr_names[ii]] for ii in range(len(attr_names))} for row in reader if field in row['field']}
             dimensions = field_attrs[field]['dimensions'].split(',')
             dimensions = tuple(x.strip() for x in dimensions)
-            if field != 'ice_mask':
-                fill_value = np.finfo(np.dtype(field_attrs[field]['datatype'])).max
-            else:
-                fill_value = np.iinfo(np.dtype(field_attrs[field]['datatype'])).max                
+            # if field != 'ice_mask':
+            fill_value = np.finfo(np.dtype(field_attrs[field]['datatype'])).max
+            # else:
+                # fill_value = np.iinfo(np.dtype(field_attrs[field]['datatype'])).max
             data = np.array(FH['z0'][dz_dict[field]])
-            if field == 'ice_mask':
-                ice_mask = data
+            # if field == 'ice_mask':
+            #     ice_mask = data
             if field == 'cell_area':
-                data = data*ice_mask
-                data[data==0.0] = np.nan 
+                # data = data*ice_mask
+                data[data==0.0] = np.nan
                 cell_area_mask = data  # where cell_area is invalid, so are h and h_sigma
             if field == 'x':
                 nc.createDimension(field_attrs[field]['dimensions'],data.shape[0])
@@ -207,12 +207,12 @@ def ATL14_write2nc(args):
                 nc.createDimension(field_attrs[field]['dimensions'],data.shape[0])
                 y = data
                 yll = np.max(y)
-                dy = y[0]-y[1]    
-                
+                dy = y[0]-y[1]
+
             data = np.nan_to_num(data,nan=fill_value)
             dsetvar = nc.createVariable(field,
                                         nctype[field_attrs[field]['datatype']],
-                                        dimensions, zlib=True, 
+                                        dimensions, zlib=True,
                                         least_significant_digit=ast.literal_eval(field_attrs[field]['least_significant_digit']),
                                         fill_value=fill_value)
             dsetvar[:] = data
@@ -223,13 +223,13 @@ def ATL14_write2nc(args):
             if field == 'x':
                 dsetvar.standard_name = 'projection_x_coordinate'
             if field == 'y':
-                dsetvar.standard_name = 'projection_y_coordinate'   
-            if field == 'ice_mask' or 'cell_area':
+                dsetvar.standard_name = 'projection_y_coordinate'
+            if field == 'cell_area':  # 'ice_mask'
                 dsetvar.setncattr('grid_mapping','Polar_Stereographic')
-                
+
         crs_var.GeoTransform = (xll,dx,0,yll,0,dy)
-                
-        for field in [item for item in field_names if item != 'x' and item != 'y' and item != 'ice_mask' and item != 'cell_area']:
+
+        for field in [item for item in field_names if item != 'x' and item != 'y' and item != 'cell_area']: # 'ice_mask'
             field_attrs = {row['field']: {attr_names[ii]:row[attr_names[ii]] for ii in range(len(attr_names))} for row in reader if field in row['field']}
             dimensions = field_attrs[field]['dimensions'].split(',')
             dimensions = tuple(x.strip() for x in dimensions)
@@ -251,14 +251,14 @@ def ATL14_write2nc(args):
             dsetvar.setncattr('grid_mapping','Polar_Stereographic')
 
         ncTemplate = pkg_resources.resource_filename('ATL1415','resources/atl14_metadata_template.nc')
-        write_atl14meta(nc, fileout, ncTemplate, args)
+        # ATL14_attrs_meta.write_atl14meta(nc, fileout, ncTemplate, args)
 
         FH.close()
-   
+
     return fileout
-    
+
 if __name__=='__main__':
-    
+
     import argparse
     parser=argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter, fromfile_prefix_chars='@')
     parser.add_argument('-b','--base_dir', type=str, default=os.getcwd(), help='directory in which to look for mosaicked .h5 files')
@@ -278,16 +278,16 @@ if __name__=='__main__':
     parser.add_argument('-tiles','--tiles_dir', type=str, help='directory in which to look for tile .h5 files, defaults to [base_dir]/centers')
     parser.add_argument('--ATL11_index', type=str, help='GeoIndex file pointing to ATL11 data')
     args, _=parser.parse_known_args()
-    
+
     if args.ATL11_lineage_dir is None:
         # if ATL11 lineage_dir is not specified, assume that the grandparent of the ATL11_index works
         args.ATL11_lineage_dir=os.path.dirname(os.path.dirname(args.ATL11_index))
 
     if args.tiles_dir is None:
         args.tiles_dir=os.path.join(args.base_dir, 'centers')
-    
+
     print('args:',args)
-    
-    
-    
+
+
+
     fileout = ATL14_write2nc(args)

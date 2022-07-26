@@ -15,7 +15,7 @@ from netCDF4 import Dataset
 #import cartopy.crs as ccrs
 #import cartopy.feature
 from scipy import stats
-from ATL1415 import write_atl14meta
+from ATL1415 import ATL14_attrs_meta
 
 def projection_variable(region,group):
     if region in ['AK','CN','CS','GL','IS','SV','RA']:
@@ -99,7 +99,7 @@ def ATL15_write2nc(args):
               'x':'x',
               'y':'y',
               'cell_area':'cell_area',
-              'ice_mask':'mask',
+              # 'ice_mask':'mask',
               'data_count':'count',
               'misfit_rms':'misfit_rms',
               'misfit_scaled_rms':'misfit_scaled_rms',
@@ -140,10 +140,11 @@ def ATL15_write2nc(args):
             with Dataset(fileout,'w',clobber=True) as nc:
                 nc.setncattr('GDAL_AREA_OR_POINT','Area')
                 nc.setncattr('Conventions','CF-1.6')
-############################
+
+###################################
                 # # make tile_stats group (ATBD 4.1.2.1, Table 3)
                 # tilegrp = nc.createGroup('tile_stats')
-                # tileFile = pkg_resources.resource_filename('surfaceChange','resources/tile_stats_output_attrs.csv')
+                # tileFile = pkg_resources.resource_filename('ATL1415','resources/tile_stats_output_attrs.csv')
                 # with open(tileFile,'r', encoding='utf-8-sig') as tilefile:
                 #     tile_reader=list(csv.DictReader(tilefile))
                 #
@@ -232,8 +233,7 @@ def ATL15_write2nc(args):
                 #
                 #
                 # crs_var = projection_variable(args.region,tilegrp)
-############################
-
+#########################################
     #            # make comfort figures
     #            extent=[np.min(tile_stats['x']['data'])*fact,np.max(tile_stats['x']['data'])*fact,
     #                    np.min(tile_stats['y']['data'])*fact,np.max(tile_stats['y']['data'])*fact]
@@ -369,8 +369,7 @@ def ATL15_write2nc(args):
                         pass
 
                 ncTemplate=pkg_resources.resource_filename('ATL1415','resources/atl15_metadata_template.nc')
-                # write_atl14meta(nc, fileout, ncTemplate, args)
-
+                # ATL14_attrs_meta.write_atl14meta(nc, fileout, ncTemplate, args)
 
     return fileout
 
