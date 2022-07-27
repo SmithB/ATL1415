@@ -1,6 +1,6 @@
 name: ATL14
 channels:
-  - conda_forge
+  - conda-forge
   - defaults
 dependencies:
   - suitesparse
