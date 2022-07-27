@@ -92,7 +92,8 @@ def ATL14_write2nc(args):
 
 
         # work through the tiles in all three subdirectories
-        for sub in ['centers','edges','corners']:
+        # for sub in ['centers','edges','corners']:
+        for sub in ['prelim']:
             files = os.listdir(os.path.join(args.base_dir,sub))
             files = [f for f in files if f.endswith('.h5')]
             for file in files:
