@@ -6,11 +6,11 @@ Created on Fri Jan 24 10:45:47 2020
 @author: ben05
 """
 import numpy as np
-import  os, h5py, csv, re
+import  os, h5py, csv, re, glob
 import ast
 import pkg_resources
 from netCDF4 import Dataset
-#import matplotlib.pyplot as plt
+import matplotlib.pyplot as plt
 #import matplotlib as mpl
 #import cartopy.crs as ccrs
 #import cartopy.feature
@@ -91,41 +91,67 @@ def ATL15_write2nc(args):
 
         return file_obj
 
-    dz_dict ={'time':'t',     # for non-lagged vars. {ATL15 outgoing var name: hdf5 incoming var name}
-              'time_lag1':'t',
-              'time_lag4':'t',
-              'time_lag8':'t',
-              'time_lag12':'t',
-              'x':'x',
-              'y':'y',
-              'cell_area':'cell_area',
-              # 'ice_mask':'mask',
-              'data_count':'count',
-              'misfit_rms':'misfit_rms',
-              'misfit_scaled_rms':'misfit_scaled_rms',
-              'delta_h':'dz',
-              'delta_h_sigma':'sigma_dz',
-              'delta_h_10km':'avg_dz_10000m',
-              'delta_h_sigma_10km':'sigma_avg_dz_10000m',
-              'delta_h_20km':'avg_dz_20000m',
-              'delta_h_sigma_20km':'sigma_avg_dz_20000m',
-              'delta_h_40km':'avg_dz_40000m',
-              'delta_h_sigma_40km':'sigma_avg_dz_40000m',
-              }
-    nctype = {'float64':'f8',
-              'float32':'f4',
-              'int8':'i1'}
-
-    lags = {
-            'file' : ['FH','FH_lag1','FH_lag4','FH_lag8','FH_lag12'],
-            'vari' : ['','_lag1','_lag4','_lag8','_lag12'],
-            'varigrp' : ['delta_h','dhdt_lag1','dhdt_lag4','dhdt_lag8','dhdt_lag12']
-           }
-    avgs = ['','_10km','_20km','_40km']
-    # open data attributes file
+    # find which lags are in attributes file
     attrFile = pkg_resources.resource_filename('ATL1415','resources/ATL15_output_attrs.csv')
     with open(attrFile,'r',encoding='utf-8-sig') as attrfile:
         reader=list(csv.DictReader(attrfile))
+    qtrs = []
+    for row in reader:
+        if row['group'] == 'height_change' and row['field'].startswith('time'):
+            qtrs.append(re.search('(time)(.*)',row['field']).group(2))
+    # print(qtrs)
+
+    # fileslag = glob.glob(os.path.join(args.base_dir,'*lag*.h5'))
+    # qtrs=[]
+    # for filesl in fileslag:
+    #     qtrs.append(re.search('lag(\d+).',filesl).group(1))
+    # ll = sorted([int(x) for x in list(set(qtrs))])
+    # print('lags available for this region',ll)
+    # print()
+    #
+    # lagkeys = [f'_lag{x}' for x in ll]
+    # print(lagkeys.insert(0,''))
+    # exit(-1)
+
+    dz_dict = {}
+    for qtr in qtrs:
+        dz_dict[f'time{qtr}'] = 't'   # {ATL15 outgoing var name: hdf5 incoming var name}
+    dz_dict2 = {'x':'x',                # {ATL15 outgoing var name: hdf5 incoming var name}
+                'y':'y',
+                'cell_area':'cell_area',
+                'data_count':'count',
+                'misfit_rms':'misfit_rms',
+                'misfit_scaled_rms':'misfit_scaled_rms',
+                'delta_h':'dz',
+                'delta_h_sigma':'sigma_dz',
+                'delta_h_10km':'avg_dz_10000m',
+                'delta_h_sigma_10km':'sigma_avg_dz_10000m',
+                'delta_h_20km':'avg_dz_20000m',
+                'delta_h_sigma_20km':'sigma_avg_dz_20000m',
+                'delta_h_40km':'avg_dz_40000m',
+                'delta_h_sigma_40km':'sigma_avg_dz_40000m',
+                }
+    dz_dict.update(dz_dict2)
+    # print(dz_dict)
+
+    nctype = {'float64':'f8',
+              'float32':'f4',
+              'int8':'i1'}
+    lags = {'file': [f'FH{qtr}' for qtr in qtrs]}
+    lags['vari'] = [qtr for qtr in qtrs]
+    lags['varigrp'] = ['delta_h' if qtr=='' else 'dhdt'+qtr for qtr in qtrs]
+    # print(lags)
+
+    # lags = {
+    #         'file' : ['FH','FH_lag1','FH_lag4','FH_lag8','FH_lag12'],
+    #         'vari' : ['','_lag1','_lag4','_lag8','_lag12'],
+    #         'varigrp' : ['delta_h','dhdt_lag1','dhdt_lag4','dhdt_lag8','dhdt_lag12']
+    #        }
+    avgs = ['','_10km','_20km','_40km']
+    # # open data attributes file
+    # attrFile = pkg_resources.resource_filename('ATL1415','resources/ATL15_output_attrs.csv')
+    # with open(attrFile,'r',encoding='utf-8-sig') as attrfile:
+    #     reader=list(csv.DictReader(attrfile))
 
     attr_names=[x for x in reader[0].keys() if x != 'field' and x != 'group']
 
@@ -339,9 +365,10 @@ def ATL15_write2nc(args):
                         field_attrs = {row['field']: {attr_names[ii]:row[attr_names[ii]] for ii in range(len(attr_names))} for row in reader if field in row['field'] if row['group']=='height_change'+ave}
                         make_dataset(field,'time',data,field_attrs,nc,nc.groups[lags['varigrp'][jj]],nctype,dimScale=True)
 
-                        # get cell_area first, because that's the ice mask.
+                        # get cell_area first, because that's the mask for dhdt and _sigma.
                         field = 'cell_area'+lags['vari'][jj]+ave
                         data = np.array(lags['file'][jj][dzg]['cell_area'])
+                        data[data==0.0] = np.nan
                         data = np.moveaxis(data,2,0)  # t, y, x
                         mask_lag = data;
                         field_attrs = {row['field']: {attr_names[ii]:row[attr_names[ii]] for ii in range(len(attr_names))} for row in reader if field in row['field'] if row['group']=='height_change'+ave}
