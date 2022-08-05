@@ -186,28 +186,30 @@ def ATL15_write2nc(args):
 
                 # work through the tiles in all three subdirectories
                 # for sub in ['centers','edges','corners']:
-                for sub in ['prelim']:
-                    files = os.listdir(os.path.join(args.base_dir,sub))
-                    files = [f for f in files if f.endswith('.h5')]
-                    for file in files:
-                        try:
-                            tile_stats['x']['data'].append(int(re.match(r'^.*E(.*)\_.*$',file).group(1)))
-                        except Exception as e:
-                            print(f"problem with [ {file} ], skipping")
-                            continue
-                        tile_stats['y']['data'].append(int(re.match(r'^.*N(.*)\..*$',file).group(1)))
+                # for sub in args.tiles_dir:
+                    # files = os.listdir(os.path.join(args.base_dir,sub))  #used for sub in ['centers','edges','corners']
+                files = os.listdir(args.tiles_dir)
+                files = [f for f in files if f.endswith('.h5')]
+                for file in files:
+                    try:
+                        tile_stats['x']['data'].append(int(re.match(r'^.*E(.*)\_.*$',file).group(1)))
+                    except Exception as e:
+                        print(f"problem with [ {file} ], skipping")
+                        continue
+                    tile_stats['y']['data'].append(int(re.match(r'^.*N(.*)\..*$',file).group(1)))
 
-                        with h5py.File(os.path.join(args.base_dir,sub,file),'r') as h5:
-                            tile_stats['N_data']['data'].append( np.sum(h5['data']['three_sigma_edit'][:]) )
-                            tile_stats['RMS_data']['data'].append( h5['RMS']['data'][()] )  # use () for getting a scalar.
-                            tile_stats['RMS_bias']['data'].append( np.sqrt(np.mean((h5['bias']['val'][:]/h5['bias']['expected'][:])**2)) )
-                            tile_stats['N_bias']['data'].append( len(h5['bias']['val'][:]) )  #### or all BUT the zeros.
-                            tile_stats['RMS_d2z0dx2']['data'].append( h5['RMS']['grad2_z0'][()] )
-                            tile_stats['RMS_d2zdt2']['data'].append( h5['RMS']['d2z_dt2'][()] )
-                            tile_stats['RMS_d2zdx2dt']['data'].append( h5['RMS']['grad2_dzdt'][()] )
-                            tile_stats['sigma_xx0']['data'].append( h5['E_RMS']['d2z0_dx2'][()] )
-                            tile_stats['sigma_tt']['data'].append( h5['E_RMS']['d2z_dt2'][()] )
-                            tile_stats['sigma_xxt']['data'].append( h5['E_RMS']['d3z_dx2dt'][()] )
+                    # with h5py.File(os.path.join(args.base_dir,sub,file),'r') as h5: #used for sub in ['centers','edges','corners']
+                    with h5py.File(os.path.join(args.tiles_dir,file),'r') as h5:
+                        tile_stats['N_data']['data'].append( np.sum(h5['data']['three_sigma_edit'][:]) )
+                        tile_stats['RMS_data']['data'].append( h5['RMS']['data'][()] )  # use () for getting a scalar.
+                        tile_stats['RMS_bias']['data'].append( np.sqrt(np.mean((h5['bias']['val'][:]/h5['bias']['expected'][:])**2)) )
+                        tile_stats['N_bias']['data'].append( len(h5['bias']['val'][:]) )  #### or all BUT the zeros.
+                        tile_stats['RMS_d2z0dx2']['data'].append( h5['RMS']['grad2_z0'][()] )
+                        tile_stats['RMS_d2zdt2']['data'].append( h5['RMS']['d2z_dt2'][()] )
+                        tile_stats['RMS_d2zdx2dt']['data'].append( h5['RMS']['grad2_dzdt'][()] )
+                        tile_stats['sigma_xx0']['data'].append( h5['E_RMS']['d2z0_dx2'][()] )
+                        tile_stats['sigma_tt']['data'].append( h5['E_RMS']['d2z_dt2'][()] )
+                        tile_stats['sigma_xxt']['data'].append( h5['E_RMS']['d3z_dx2dt'][()] )
 
                 # establish output grids from min/max of x and y
                 for key in tile_stats.keys():
@@ -397,7 +399,7 @@ def ATL15_write2nc(args):
                         pass
 
                 ncTemplate=pkg_resources.resource_filename('ATL1415','resources/atl15_metadata_template.nc')
-                # ATL14_attrs_meta.write_atl14meta(nc, fileout, ncTemplate, args)
+                ATL14_attrs_meta.write_atl14meta(nc, fileout, ncTemplate, args)
 
     return fileout
 
