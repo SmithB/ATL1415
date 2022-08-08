@@ -118,7 +118,7 @@ def ATL15_write2nc(args):
         dz_dict[f'time{qtr}'] = 't'   # {ATL15 outgoing var name: hdf5 incoming var name}
     dz_dict2 = {'x':'x',                # {ATL15 outgoing var name: hdf5 incoming var name}
                 'y':'y',
-                'cell_area':'cell_area',
+                'ice_area':'cell_area',
                 'data_count':'count',
                 'misfit_rms':'misfit_rms',
                 'misfit_scaled_rms':'misfit_scaled_rms',
@@ -333,7 +333,7 @@ def ATL15_write2nc(args):
                         field_attrs = {row['field']: {attr_names[ii]:row[attr_names[ii]] for ii in range(len(attr_names))} for row in reader if field in row['field'] if row['group']=='height_change'+ave}
                         make_dataset(field,field,data,field_attrs,nc,nc.groups[lags['varigrp'][jj]],nctype,dimScale=True)
 
-                        for fld in ['cell_area','delta_h','delta_h_sigma','data_count','misfit_rms','misfit_scaled_rms']:  # fields that can be ave'd but not lagged
+                        for fld in ['ice_area','delta_h','delta_h_sigma','data_count','misfit_rms','misfit_scaled_rms']:  # fields that can be ave'd but not lagged
 
                             if (len(ave) > 0) and (fld.startswith('misfit') or fld=='data_count'): # not in ave'd groups  or fld=='ice_mask'
                                 break
@@ -343,16 +343,14 @@ def ATL15_write2nc(args):
                             # get data from .h5
                             if fld.startswith('delta_h'):  # fields with complicated name changes
                                 data = np.array(lags['file'][jj][dzg][dz_dict[field]])
-                                # data[np.isnan(cell_area_mask)] = np.nan
+                                data[np.isnan(ice_area_mask)] = np.nan
                                 if fld=='delta_h':  # add group description
                                     nc.groups[lags['varigrp'][jj]].setncattr('description',field_attrs[field]['group description'])
                             else:
                                 data = np.array(lags['file'][jj][dzg][dz_dict[fld]])
-                                if fld == 'cell_area':
-                                #     # until cell_area has a time dimension in the dz h5 file, repeat the same 2d array
-                                #     data = np.repeat(data[:,:,np.newaxis],ntime,2)
+                                if fld == 'ice_area':
                                     data[data==0.0] = np.nan
-                                    cell_area_mask = data # where cell_area is invalid, so are delta_h and dhdt variables.
+                                    ice_area_mask = data # where ice_area is invalid, so are delta_h and dhdt variables.
                             if len(data.shape)==3:
                                 data = np.moveaxis(data,2,0)  # results in t, y, x
 
@@ -367,14 +365,14 @@ def ATL15_write2nc(args):
                         field_attrs = {row['field']: {attr_names[ii]:row[attr_names[ii]] for ii in range(len(attr_names))} for row in reader if field in row['field'] if row['group']=='height_change'+ave}
                         make_dataset(field,'time',data,field_attrs,nc,nc.groups[lags['varigrp'][jj]],nctype,dimScale=True)
 
-                        # get cell_area first, because that's the mask for dhdt and _sigma.
-                        field = 'cell_area'+lags['vari'][jj]+ave
+                        # get ice_area first, because that's the mask for dhdt and _sigma.
+                        field = 'ice_area'+lags['vari'][jj]+ave
                         data = np.array(lags['file'][jj][dzg]['cell_area'])
                         data[data==0.0] = np.nan
                         data = np.moveaxis(data,2,0)  # t, y, x
                         mask_lag = data;
                         field_attrs = {row['field']: {attr_names[ii]:row[attr_names[ii]] for ii in range(len(attr_names))} for row in reader if field in row['field'] if row['group']=='height_change'+ave}
-                        make_dataset(field,'cell_area',data,field_attrs,nc,nc.groups[lags['varigrp'][jj]],nctype,dimScale=False)
+                        make_dataset(field,'ice_area',data,field_attrs,nc,nc.groups[lags['varigrp'][jj]],nctype,dimScale=False)
 
                         field = 'dhdt'+lags['vari'][jj]+ave
                         data = np.array(lags['file'][jj][dzg][dzg])

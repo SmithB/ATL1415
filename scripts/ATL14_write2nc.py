@@ -20,12 +20,11 @@ from ATL1415 import ATL14_attrs_meta
 #from ATL11.h5util import create_attribute
 
 def ATL14_write2nc(args):
-    dz_dict ={'x':'x',   # ATL14 varname : z0.h5 varname
+    dz_dict ={'x':'x',   # ATL14 .nc varname : z0.h5 varname
               'y':'y',
               'h':'z0',
               'h_sigma':'sigma_z0',
-              'cell_area':'cell_area',
-              # 'ice_mask':'mask',
+              'ice_area':'cell_area',
               'data_count':'count',
               'misfit_rms':'misfit_rms',
               'misfit_scaled_rms':'misfit_scaled_rms',
@@ -184,7 +183,7 @@ def ATL14_write2nc(args):
         field_names = [row['field'] for row in reader if 'ROOT' in row['group']]
 
         # create dimensions
-        for field in ['x', 'y', 'cell_area']:   #, 'ice_mask'
+        for field in ['x', 'y', 'ice_area']:
             field_attrs = {row['field']: {attr_names[ii]:row[attr_names[ii]] for ii in range(len(attr_names))} for row in reader if field in row['field']}
             dimensions = field_attrs[field]['dimensions'].split(',')
             dimensions = tuple(x.strip() for x in dimensions)
@@ -193,12 +192,10 @@ def ATL14_write2nc(args):
             # else:
                 # fill_value = np.iinfo(np.dtype(field_attrs[field]['datatype'])).max
             data = np.array(FH['z0'][dz_dict[field]])
-            # if field == 'ice_mask':
-            #     ice_mask = data
-            if field == 'cell_area':
-                # data = data*ice_mask
+
+            if field == 'ice_area':
                 data[data==0.0] = np.nan
-                cell_area_mask = data  # where cell_area is invalid, so are h and h_sigma
+                ice_area_mask = data  # where ice_area is invalid, so are h and h_sigma
             if field == 'x':
                 nc.createDimension(field_attrs[field]['dimensions'],data.shape[0])
                 x = data
@@ -225,18 +222,18 @@ def ATL14_write2nc(args):
                 dsetvar.standard_name = 'projection_x_coordinate'
             if field == 'y':
                 dsetvar.standard_name = 'projection_y_coordinate'
-            if field == 'cell_area':  # 'ice_mask'
+            if field == 'ice_area':  # 'ice_mask'
                 dsetvar.setncattr('grid_mapping','Polar_Stereographic')
 
         crs_var.GeoTransform = (xll,dx,0,yll,0,dy)
 
-        for field in [item for item in field_names if item != 'x' and item != 'y' and item != 'cell_area']: # 'ice_mask'
+        for field in [item for item in field_names if item != 'x' and item != 'y' and item != 'ice_area']:
             field_attrs = {row['field']: {attr_names[ii]:row[attr_names[ii]] for ii in range(len(attr_names))} for row in reader if field in row['field']}
             dimensions = field_attrs[field]['dimensions'].split(',')
             dimensions = tuple(x.strip() for x in dimensions)
             data = np.array(FH['z0'][dz_dict[field]])
             if field.startswith('h'):
-                data[np.isnan(cell_area_mask)] = np.nan
+                data[np.isnan(ice_area_mask)] = np.nan
             if field_attrs[field]['datatype'].startswith('int'):
                 fill_value = np.iinfo(np.dtype(field_attrs[field]['datatype'])).max
             elif field_attrs[field]['datatype'].startswith('float'):
