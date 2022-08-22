@@ -19,57 +19,57 @@ import matplotlib.pyplot as plt
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import osgeo
-import imageio
+import imageio.v2
 import datetime as dt
 
 def ATL15_browse_plots(args):
-        
+
     # get projection
     if args.Hemisphere==1:
         # set cartopy projection as EPSG 3413
-        projection = ccrs.Stereographic(central_longitude=-45.0, 
+        projection = ccrs.Stereographic(central_longitude=-45.0,
                                         central_latitude=+90.0,
-                                        true_scale_latitude=+70.0)   
+                                        true_scale_latitude=+70.0)
 #        DEM_file = '/Volumes/ice3/suzanne/arcticdem_mosaic_100m_v3.0.tif'
     else:
         # set cartopy projection as EPSG 3031
         projection = ccrs.Stereographic(central_longitude=+0.0,
                                         central_latitude=-90.0,
-                                        true_scale_latitude=-71.0)  
+                                        true_scale_latitude=-71.0)
 #        DEM_file = '/Volumes/ice3/suzanne/REMA_100m_dem.tif'
-        
+
     lagtext = {'lag1':'quarterly','lag4':'annual', 'lag8':'biennial', 'lag12':'triennial', 'lag16':'quadriennial'}
 
-    # make a log file for errors 
-    if not args.nolog:        
+    # make a log file for errors
+    if not args.nolog:
         log_file = '{}/ATL15_BrowsePlots_{}.log'.format(args.base_dir.rstrip('/'), dt.datetime.now().date())
         fhlog = open(log_file,'a')
-     
+
     # list of spatial averaging ATL15 files
     avgs = ['_01km','_10km','_20km','_40km']
     for ii, ave in enumerate(avgs):
         filein = args.base_dir.rstrip('/') + '/ATL15_' + args.region + '_' + args.cycles + ave + '_' + args.Release + '_' + args.version + '.nc'
         print('Making browse figures from ',filein)
         pngfile = args.base_dir.rstrip('/') + '/ATL15_' + args.region + '_' + args.cycles + ave + '_' + args.Release + '_' + args.version + '_BRW'
-    
+
         ds = Dataset(filein)
-    #    # find group of largest lag 
+    #    # find group of largest lag
     #    lag=1
     #    for grp in ds.groups:
     #        if grp.startswith('dhdt_lag'):
     #            if int(grp[8:])>lag:
     #                lag=int(grp[8:])
     #    grp = 'dhdt_lag'+str(lag)
-        
+
         x = ds.groups['dhdt_lag1']['x']
         y = ds.groups['dhdt_lag1']['y']
         extent=[np.min(x),np.max(x),np.min(y),np.max(y)]
-        
-        dhdt = ds.groups['dhdt_lag1']['dhdt'] 
-        dhdt[:][dhdt[:]==ds.groups['dhdt_lag1']['dhdt']._FillValue] = np.nan  
+
+        dhdt = ds.groups['dhdt_lag1']['dhdt']
+        dhdt[:][dhdt[:]==ds.groups['dhdt_lag1']['dhdt']._FillValue] = np.nan
         dhdtmn = np.nanmean(dhdt,axis=0)
         dhdtstd = np.nanstd(dhdt,axis=0)
-    
+
         if np.any(dhdtmn.ravel()):
             # get limits for colorbar
             h05mn = stats.mstats.scoreatpercentile(dhdtmn[~np.isnan(dhdtmn)].ravel(),5)    # dhdt is a masked array what?
@@ -79,7 +79,7 @@ def ATL15_browse_plots(args):
         else:
             fhlog.write('{}: No valid dhdt data, no browse plot written.\n'.format(filein))
             exit(-1)
-    
+
         fig,ax = plt.subplots(1,1)
         ax = plt.subplot(1,1,1,projection=projection)
         ax.add_feature(cfeature.LAND,facecolor='0.8')
@@ -93,7 +93,7 @@ def ATL15_browse_plots(args):
         elif args.Hemisphere==-1:
             plt.figtext(0.1,0.01,f'Figure 1. Average quarterly rate of height change (dhdt_lag1/dhdt) at {ave[1:]}-resolution, in meters, from cycle {args.cycles[0:2]} to cycle {args.cycles[2:4]}. Map is plotted in a polar-stereographic projection with a central longitude of 0W and a standard latitude of 71S.',wrap=True)
         fig.savefig(f'{pngfile}_default1.png')
-        
+
         fig,ax = plt.subplots(1,1)
         ax = plt.subplot(1,1,1,projection=projection)
         ax.add_feature(cfeature.LAND,facecolor='0.8')
@@ -107,21 +107,21 @@ def ATL15_browse_plots(args):
         elif args.Hemisphere==-1:
             plt.figtext(0.1,0.01,f'Figure 2. Standard deviation of quarterly rate of height change (dhdt_lag1/dhdt) at {ave[1:]}-resolution, in meters, from cycle {args.cycles[0:2]} to cycle {args.cycles[2:4]}. Map is plotted in a polar-stereographic projection with a central longitude of 0W and a standard latitude of 71S.',wrap=True)
         fig.savefig(f'{pngfile}_default2.png')
-        
+
     #    print(glob.glob(f'{args.base_dir.rstrip("/")}/ATL15_{args.region}_{args.cycles}{ave}_{args.Release}_{args.version}_BRW_default*.png'))
-    
+
         # write images to browse .h5 file
         brwfile = args.base_dir.rstrip('/') + '/ATL15_' + args.region + '_' + args.cycles + ave + '_' + args.Release + '_' + args.version + '_BRW.h5'
-        print(f'Making file {brwfile}') 
+        print(f'Making file {brwfile}')
         if os.path.isfile(brwfile):
             os.remove(brwfile)
         shutil.copyfile('ATL1415/resources/BRW_template.h5',brwfile)
-        with h5py.File(brwfile,'r+') as hf:   
+        with h5py.File(brwfile,'r+') as hf:
             hf.require_group('/default')
             for ii, name in enumerate(sorted(glob.glob(f'{args.base_dir.rstrip("/")}/ATL15_{args.region}_{args.cycles}{ave}_{args.Release}_{args.version}_BRW_default*.png'))):
-                img = imageio.imread(name, pilmode='RGB')
+                img = imageio.v2.imread(name, pilmode='RGB')
                 #print(ii,name)
-                
+
     #            ave = os.path.basename(name).split('_')[3]
                 dset = hf.create_dataset(f'default/default{ii+1}', \
                                          img.shape, data=img.data, \
@@ -131,18 +131,18 @@ def ATL15_browse_plots(args):
                 dset.attrs['IMAGE_VERSION'] = np.string_('1.2')
                 dset.attrs['IMAGE_SUBCLASS'] = np.string_('IMAGE_TRUECOLOR')
                 dset.attrs['INTERLACE_MODE'] = np.string_('INTERLACE_PIXEL')
-            
+
     #    plt.show(block=False)
     #    plt.pause(0.001)
     #    input('Press enter to end.')
     #    plt.close('all')
     #    exit(-1)
-    
+
         fhlog.close()
-    
+
 #    plt.show()
 #
-    
+
 if __name__=='__main__':
     import argparse
     parser=argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,  fromfile_prefix_chars='@')
@@ -180,16 +180,16 @@ if __name__=='__main__':
     elevation_dir['REMA'] = 'https://data.pgc.umn.edu/elev/dem/setsm/REMA/mosaic/v1.1/100m/'
     elevation_tile_index['REMA'] = 'https://data.pgc.umn.edu/elev/dem/setsm/REMA/indexes/REMA_Tile_Index_Rel1.1.zip'
 
-    
+
     # from github.com/tsutterley/read-ICESat-2/blob/main/scripts/MPI_DEM_ICESat2_ATL11.py
-    #-- PURPOSE: set the DEM model based on region 
+    #-- PURPOSE: set the DEM model based on region
 #    def set_DEM_model(region):
-#        if region == 'AA': 
+#        if region == 'AA':
 #            DEM_MODEL = 'REMA'
 #        else:
 #            DEM_MODEL = 'ArcticDEM'
 #        return DEM_MODEL
-    
+
     #-- PURPOSE: read zip file containing index shapefiles for finding DEM tiles
     def read_DEM_index(shape, epsg, DEM_MODEL):
         #-- read the compressed shapefile and extract entities
@@ -264,7 +264,7 @@ if __name__=='__main__':
             else:
                 tile, = re.findall(r'^(\d+_\d+_\d+_\d+)',ent['properties'][field])
                 print('line 539',tile)
-                
+
             #-- extract attributes and assign by tile
             attrs_dict[tile] = {}
             for key,val in ent['properties'].items():
@@ -290,7 +290,7 @@ if __name__=='__main__':
         shape.close()
         #-- return the dictionaries of polygon objects and attributes
         return (poly_dict,attrs_dict,epsg)
-    
+
     #-- PURPOSE: read DEM tile file from gzipped tar files
     def read_DEM_file(elevation_file, nd_value):
         #-- open file with tarfile (read)
@@ -332,11 +332,8 @@ if __name__=='__main__':
         yi = np.arange(ymax,ymin+info_geotiff[5],info_geotiff[5])
         #-- return values (flip y values to be monotonically increasing)
         return (im[::-1,:],mask[::-1,:],xi,yi[::-1],member.name)
-    
-    
-    
-    
+
+
+
+
     ATL15_browse_plots(args) #.ATL15_file, hemisphere=args.Hemisphere, mosaic=args.mosaic, out_path=args.out_path, pdf=args.pdf)
-
-
-
