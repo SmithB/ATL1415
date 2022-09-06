@@ -48,7 +48,7 @@ for key in ['--ATL14_root', '--region', '--Release','--Hemisphere', '--mask_file
 if not required_keys_present:
     sys.exit(1)
 
-print(defaults)
+
 
 if '--mask_dir' in defaults:
     for key in ['--mask_file','--d2z0_file','--tide_mask_file', '--tide_adjustment_file', '--geoid_file', '--E_d2z0dx2_file']:
@@ -73,12 +73,23 @@ for this in [release_dir, hemi_dir, region_dir]:
 
 # ATL11 index may be specified relative to ATL1r_root
 if '--ATL11_index' in defaults and not os.path.isfile(defaults['--ATL11_index']):
-    defaults['--ATL11_index'] = os.path.join(defaults['--ATL14_root'], defaults['--ATL11_index'])
+    temp1=os.path.join(defaults['--ATL14_root'], defaults['--ATL11_index'])
+    if os.path.isfile(temp1):
+        defaults['--ATL11_index']=temp1
+    else:
+        temp2=os.path.join(os.path.dirname(defaults['--ATL14_root']), defaults['--ATL11_index'])
+        print(f'looking for {temp2}')
+        if os.path.isfile(temp2):
+            defaults['--ATL11_index']=temp2
+        else:
+            raise(OSError(f"ATL11 index file {defaults['--ATL11_index']} does not exist"))        
+
 
 # if ATL11 release is specified and ATL11 geoindex is not specified, guess the location
 if '--ATL11_index' not in defaults and '--ATL11_release' in defaults:
     defaults['--ATL11_index'] = os.path.join(defaults['--ATL14_root'], 'ATL11_rel'+defaults['--ATL11_release'], hemisphere_name, 'index','GeoIndex.h5')
     defaults.pop('--ATL11_release')
+
 if not os.path.isfile(defaults['--ATL11_index']):
     raise(OSError(f"ATL11 index file {defaults['--ATL11_index']} does not exist"))        
         

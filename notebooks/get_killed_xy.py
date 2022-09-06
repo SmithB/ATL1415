@@ -3,7 +3,9 @@
 
 import re
 import numpy as np
+import sys
 
+job_base=sys.argv[1]
 #1415_run_AA_prelim_dh.63745071_3327
 
 job_re=re.compile('dh.\d+_(\d+)')
@@ -14,7 +16,7 @@ all_xy=[]
 with open('killed_jobs','r') as fh:
     for line in fh:
         job_number=job_re.search(line).group(1)
-        log_file=f'logs/calc_dh_{job_number}.log'
+        log_file=f'logs/{job_base}_{job_number}.log'
         with open(log_file,'r') as log:
             for log_line in log:
                 try:

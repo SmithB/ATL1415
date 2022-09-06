@@ -293,6 +293,8 @@ if args.submit:
             last_dir=run_dir.replace('edges','centers')
         elif args.step=='corners':
             last_dir=run_dir.replace('corners','edges')
+        elif args.step=='prelim':    
+            last_dir=run_dir.replace('prelim','matched')
         dep_job=os.popen(f'tail -1 {last_dir}/dependents').read().rstrip().split()[-1]
         os.system(f'cd {run_dir}; sbatch --dependency=afterany:{dep_job} slurm_tile_run > dependents')
 
