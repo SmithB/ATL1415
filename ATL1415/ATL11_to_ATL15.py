@@ -30,6 +30,7 @@ import h5py
 import traceback
 from ATL1415.reread_data_from_fits import reread_data_from_fits
 from ATL1415.make_mask_from_vector import make_mask_from_vector
+from SMBcorr import assign_firn_variable
 import pyTMD
 import scipy.optimize
 
@@ -429,6 +430,9 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
             tide_adjustment_file=None,\
             tide_adjustment_format=None,\
             tide_model=None,\
+            firn_correction=None, \
+            firn_directory=None,\
+            firn_version=None,\
             avg_scales=None,\
             edge_pad=None,\
             error_res_scale=None,\
@@ -594,6 +598,15 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
     if restart_edit:
         if 'three_sigma_edit' in data.fields:
             data.three_sigma_edit[:]=True
+
+    if firn_correction is not None:
+        if 'h_firn' in data.fields:
+            # if there is a firn varaible already, undo the correction
+            data.z += data.h_firn
+        assign_firn_variable(data, firn_correction, firn_directory, hemisphere,
+                             model_version=firn_version, subset_valid=False)
+        # make the correction
+        data.z -= data.h_firn
 
     # to reject ATL06/11 blunders
     set_three_sigma_edit_with_DEM(data, xy0, Wxy, DEM_file, DEM_tol)
@@ -802,6 +815,9 @@ def main(argv):
     parser.add_argument('--tide_adjustment_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help="File for adjusting tide and dac values for ice shelf flexure")
     parser.add_argument('--tide_adjustment_format', type=str, choices=('geotif','h5','nc'), default='h5', help="File format of the scaling factor grid")
     parser.add_argument('--tide_model', type=str)
+    parser.add_argument('--firn_directory', type=str, help='directory containing firn model')
+    parser.add_argument('--firn_model', type=str, help='firn model name')
+    parser.add_argument('--firn_version', type=str, help='firn version')
     parser.add_argument('--reference_epoch', type=int, default=0, help="Reference epoch number, for which dz=0")
     parser.add_argument('--data_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='read data from this file alone')
     parser.add_argument('--restart_edit', action='store_true')
@@ -933,6 +949,9 @@ def main(argv):
            tide_adjustment_file=args.tide_adjustment_file, \
            tide_adjustment_format=args.tide_adjustment_format, \
            tide_model=args.tide_model, \
+           firn_directory=args.firn_directory,\
+           firn_version=args.firn_version,\
+           firn_correction=args.firn_model,\
            max_iterations=args.max_iterations, \
            sigma_extra_bin_spacing=args.sigma_extra_bin_spacing,\
            sigma_extra_max=args.sigma_extra_max,\
