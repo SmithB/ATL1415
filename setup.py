@@ -32,5 +32,5 @@ setup(
     packages=find_packages(),
     scripts=scripts,
     include_package_data=True,
-    package_data={'ATL1415':['resources/*']}
+    package_data={'ATL1415':['resources/*', 'resources/templates/*']}
 )

@@ -134,3 +134,11 @@ dmypy.json
 # Queue files
 *queue*.txt
 queues/*
+
+# logs and runs
+mosaic_run*
+1415_run*
+firn_run*
+
+# reduced-resolution masks
+*_reduced_1km.tif
