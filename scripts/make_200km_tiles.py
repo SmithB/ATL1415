@@ -1,3 +1,6 @@
+#! /usr/bin/env python
+
+
 import glob
 import numpy as np
 import re
@@ -99,7 +102,7 @@ for count, xy in enumerate(xyc):
                 feather=0
                 spacing_str="-S 40000 40000"
             else:
-                pad=10000
+                pad=5000
                 feather=10000
                 spacing_str=""
 
