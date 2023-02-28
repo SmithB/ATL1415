@@ -7,6 +7,7 @@
 #SBATCH --qos=[[QOS=at15_pk]]
 #SBATCH --array=[[JOB_NUMBERS=1-1]]
 #SBATCH -o [[JOB_NAME=myjob]].%A_%a
+##SBATCH --constraint=cssro
 
 echo "-------------check memory for the node -----------"
 grep -i -e memfree -e memtotal -e swaptotal /proc/meminfo
