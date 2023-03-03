@@ -71,7 +71,7 @@ def __main__():
     ATL1415.make_slurm_file(os.path.join(args.run_name, 'slurm_script.sh'),
                           subs={'JOB_NAME':args.run_name,
                                 'TIME':args.time,
-                                'NUM_TASKS':str(args.jobs_per_node),
+                                'NUM_TASKS':str(args.jobs_per_task),
                                 'JOB_NUMBERS':f'{first_task}-{last_task}'}, css=args.css)
 
 if __name__ == '__main__':
