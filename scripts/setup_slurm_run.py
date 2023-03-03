@@ -59,7 +59,7 @@ def __main__():
     parser.add_argument('--queue_file', '-q', type=str, required=True, help="filename containing jobs, one per line")
     parser.add_argument('--environment','-e', type=str, default='ATL1415', help="environment that each job will activate")
     parser.add_argument('--shell','-s', type=str, default=None, help="shell to specify for each job (may not be needed)")
-    parser.add_argument('--jobs_per_node','-j', type=int, default=28, help="number of jobs per node")
+    parser.add_argument('--jobs_per_task','-j', type=int, default=1, help="number of jobs per node")
     parser.add_argument('--time','-t', type=str, default='02:00:00', help="time limit per job (hh:mm:ss)")
     parser.add_argument('--css', action='store_true', help="if set, the run will use the constraint=cssro argument, needed for ATL11")
     args=parser.parse_args()
