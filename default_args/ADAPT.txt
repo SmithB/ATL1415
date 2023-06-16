@@ -1,4 +1,4 @@
---mask_dir=/home/besmith4/git_repos/surfaceChange/masks/
---tide_directory=/att/nobackup/project/icesat-2/tide_models
---ATL14_root=/att/nobackup/project/icesat-2/ATL14_processing/
+--mask_dir=/home/besmith4/git_repos/ATL1415/masks/
+--tide_directory=/home/besmith4/shared//tide_models
+--ATL14_root=/home/besmith4/shared/ATL14_devel/
 

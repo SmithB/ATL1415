@@ -77,6 +77,7 @@ if '--ATL11_index' in defaults and not os.path.isfile(defaults['--ATL11_index'])
     if os.path.isfile(temp1):
         defaults['--ATL11_index']=temp1
     else:
+        print(temp1 + ' not found')
         temp2=os.path.join(os.path.dirname(defaults['--ATL14_root']), defaults['--ATL11_index'])
         print(f'looking for {temp2}')
         if os.path.isfile(temp2):
