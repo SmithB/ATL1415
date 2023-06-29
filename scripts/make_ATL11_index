@@ -43,8 +43,10 @@ for hemi in 'north' 'south'; do
     [ -d $ATL11_sub ] || mkdir $ATL11_sub
     [ -d $hemi_dir ] || mkdir $hemi_dir
     [ -d $index_dir ] || mkdir $index_dir 
-    for region in regions; do
-	for file in `ls $ATL11_source/ATL11_????$region_????_???_??.h5`; do
+    for region in $regions; do
+	glob_str=$ATL11_source"/ATL11_????"$region"_????_???_??.h5"
+	echo "glob str is $glob_str"
+	for file in `ls $glob_str`; do
 	    base=`basename $file`
 	    [ -L $hemi_dir/$base ] || ln -s $file $hemi_dir
 	
