@@ -21,7 +21,7 @@ os.environ["MKL_NUM_THREADS"]=n_threads
 os.environ["OPENBLAS_NUM_THREADS"]=n_threads
 
 import numpy as np
-from LSsurf.smooth_xytb_fit_aug import smooth_xytb_fit_aug
+from LSsurf.smooth_fit import smooth_fit
 import pointCollection as pc
 
 import re
@@ -30,7 +30,6 @@ import h5py
 import traceback
 from ATL1415.reread_data_from_fits import reread_data_from_fits
 from ATL1415.make_mask_from_vector import make_mask_from_vector
-from SMBcorr import assign_firn_variable
 import pyTMD
 import scipy.optimize
 
@@ -480,7 +479,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
     '''
     SRS_proj4, EPSG=get_SRS_info(hemisphere)
 
-    E_RMS0={'d2z0_dx2':200000./3000/3000, 'd3z_dx2dt':3000./3000/3000, 'd2z_dxdt':3000/3000, 'd2z_dt2':5000}
+    E_RMS0={'d2z0_dx2':200000./3000/3000, 'd3z_dx2dt':3000./3000/3000, 'd2z_dt2':5000}
     E_RMS0.update(E_RMS)
 
     W={'x':Wxy, 'y':Wxy,'t':np.diff(t_span)}
@@ -631,7 +630,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
         return {'data':data}
 
     # call smooth_xytb_fitting
-    S=smooth_xytb_fit_aug(data=data,
+    S=smooth_fit(data=data,
                       ctr=ctr, W=W,
                       spacing=spacing, E_RMS=E_RMS0,
                       reference_epoch=reference_epoch,
@@ -836,7 +835,11 @@ def main(argv):
     args.avg_scales = [np.int64(temp) for temp in args.avg_scales.split(',')]
 
     spacing={'z0':args.grid_spacing[0], 'dz':args.grid_spacing[1], 'dt':args.grid_spacing[2]}
-    E_RMS={'d2z0_dx2':args.E_d2z0dx2, 'd3z_dx2dt':args.E_d3zdx2dt, 'd2z_dxdt':args.E_d3zdx2dt*args.data_gap_scale,  'd2z_dt2':args.E_d2zdt2}
+    E_RMS={'d2z0_dx2':args.E_d2z0dx2, 'd3z_dx2dt':args.E_d3zdx2dt, 'd2z_dt2':args.E_d2zdt2}
+
+    if args.data_gap_scale > 0:
+        E_RMS[ 'd2z_dxdt'] = args.E_d3zdx2dt*args.data_gap_scale
+    print("E_RMS="+str(E_RMS))
 
     reread_dirs=None
     dest_dir=args.base_directory
