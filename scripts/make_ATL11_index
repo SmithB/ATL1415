@@ -24,13 +24,13 @@ for hemi in 'north' 'south'; do
         echo "NORTH!"
         ATL11_source=$ATL11_north
         hemisphere=1
-        the_digit=0
+        regions="03 04 05"
     else
         [ $ATL11_south == 'None' ] && continue
         echo "SOUTH!"
         ATL11_source=$ATL11_south
         hemisphere=-1
-        the_digit=1
+        regions="10 11 12"
     fi
 
     hemi_dir=$ATL14_dir/$AT$hemi
@@ -43,16 +43,16 @@ for hemi in 'north' 'south'; do
     [ -d $ATL11_sub ] || mkdir $ATL11_sub
     [ -d $hemi_dir ] || mkdir $hemi_dir
     [ -d $index_dir ] || mkdir $index_dir 
-
-    for file in `ls $ATL11_source/ATL11_????$the_digit?_????_???_??.h5`; do
-	base=`basename $file`
-	[ -L $hemi_dir/$base ] || ln -s $file $hemi_dir
+    for region in regions; do
+	for file in `ls $ATL11_source/ATL11_????$region_????_???_??.h5`; do
+	    base=`basename $file`
+	    [ -L $hemi_dir/$base ] || ln -s $file $hemi_dir
 	
-	index_file=$index_dir"/"$base
-	[ -f $index_file ] && continue
-	echo "$env_str pushd $index_dir; $prog  --hemisphere $hemisphere --type ATL11 -g ../$base --index_file $index_file --Relative" >> index_queue.txt    
+	    index_file=$index_dir"/"$base
+	    [ -f $index_file ] && continue
+	    echo "$env_str pushd $index_dir; $prog  --hemisphere $hemisphere --type ATL11 -g ../$base --index_file $index_file --Relative" >> index_queue.txt    
+	done
     done
-
     echo "pushd $index_dir; $prog --hemisphere $hemisphere --type h5_geoindex -g 'ATL11*.h5' --index_file GeoIndex.h5 --Relative; popd" >> post_queue.txt
 
 done
