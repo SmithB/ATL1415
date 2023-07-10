@@ -33,30 +33,40 @@ def get_last_task(run_name):
         last_file_num=0;
     return last_file_num
 
-def add_files_to_queue(run_name, task_list_file, shell=None, env=None):
+def add_files_to_queue(run_name=None, task_list_file=None, task_glob=None, shell=None, env=None):
     last_file_num=get_last_task(run_name)
-    with open(task_list_file,'r') as fh:
-        add_count=0
-        for line in fh:
+    if task_list_file is not None:
+        with open(task_list_file,'r') as fh:
+            add_count=0
+            for line in fh:
+                last_file_num=last_file_num+1;
+                this_file=os.path.join(run_name,'queue','task_%d' % last_file_num)
+                with open(this_file,'w') as out_fh:
+                    #print("adding %s to queue" % this_file)
+                    add_count +=1
+                    if shell is not None:
+                        out_fh.write(f'#! /usr/bin/env {shell}\n')
+                    if env is not None:
+                        out_fh.write("source activate %s\n" % env)
+                    out_fh.write('%s\n'% line.rstrip());
+                os.chmod(this_file, os.stat(this_file).st_mode | stat.S_IEXEC)
+            print(f"added {add_count} files to the queue")
+
+    if task_glob is not None:
+        task_files=glob.glob(task_glob)
+        for file in task_files:
             last_file_num=last_file_num+1;
             this_file=os.path.join(run_name,'queue','task_%d' % last_file_num)
-            with open(this_file,'w') as out_fh:
-                #print("adding %s to queue" % this_file)
-                add_count +=1
-                if shell is not None:
-                    out_fh.write(f'#! /usr/bin/env {shell}\n')
-                if env is not None:
-                    out_fh.write("source activate %s\n" % env)
-                out_fh.write('%s\n'% line.rstrip());
-            os.chmod(this_file, os.stat(this_file).st_mode | stat.S_IEXEC)
-    print(f"added {add_count} files to the queue")
+            os.rename(file, this_file)
+
     with open(os.path.join(run_name,'last_task'),'w+') as last_task_fh:
         last_task_fh.write('%d\n'% last_file_num)
 
 def __main__():
-    parser = argparse.ArgumentParser(description='Start parallel boss (no arguments) or add jobs to the queue (-m or -s options).')
+    parser = argparse.ArgumentParser()
     parser.add_argument('--run_name','-r', type=str, default='ATL_run', help="name to assign to jobs and temporary directories")
-    parser.add_argument('--queue_file', '-q', type=str, required=True, help="filename containing jobs, one per line")
+    parser.add_argument('--queue_file', '-q', type=str, help="filename containing jobs, one per line")
+    parser.add_argument('--task_glob', '-g', type=str, help='glob to match jobs')
     parser.add_argument('--environment','-e', type=str, default='ATL1415', help="environment that each job will activate")
     parser.add_argument('--shell','-s', type=str, default=None, help="shell to specify for each job (may not be needed)")
     parser.add_argument('--jobs_per_task','-j', type=int, default=1, help="number of jobs per node")
@@ -66,7 +76,7 @@ def __main__():
     
     first_task=get_last_task(args.run_name)+1
     setup_directories(args.run_name)
-    add_files_to_queue(args.run_name, args.queue_file, shell=args.shell, env=args.environment)
+    add_files_to_queue(run_name=args.run_name, task_list_file=args.queue_file, task_glob=args.task_glob, shell=args.shell, env=args.environment)
     last_task=get_last_task(args.run_name)
     ATL1415.make_slurm_file(os.path.join(args.run_name, 'slurm_script.sh'),
                           subs={'JOB_NAME':args.run_name,
