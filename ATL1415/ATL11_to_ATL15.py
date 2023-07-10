@@ -516,7 +516,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
             pad=np.array([-1.e4, 1.e4])
             mask_data=pc.grid.data().from_h5(mask_file,
                                              bounds=[bds['x']+pad, bds['y']+pad],
-                                            bands=np.arange(17, 24))
+                                             t_range=bds['t']+np.array([-1, 1])))
             while mask_data.t[-1] < ctr['t']+W['t']/2:
                 # append a copy of the last field in the mask data to the end of the mask data
                 mask_data.z = np.concatenate([mask_data.z,mask_data.z[:,:,-1:]], axis=2)
