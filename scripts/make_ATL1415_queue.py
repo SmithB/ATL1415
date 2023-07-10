@@ -46,6 +46,9 @@ parser.add_argument('--skip_errors','-s', action='store_true')
 parser.add_argument('--tile_spacing', type=int)
 parser.add_argument('--prior_edge_include', type=float, default=1000)
 parser.add_argument('--environment','-e', type=str)
+parser.add_argument('--min_R', type=float)
+parser.add_argument('--max_R', type=float)
+parser.add_argument('--replace', action='store_true')
 args = parser.parse_args()
 
 if args.step not in ['centers', 'edges','corners','prelim', 'matched']:
@@ -65,7 +68,7 @@ if args.region_file is not None:
     with open(args.region_file,'r') as fh:
         for line in fh:
             m = line_re.search(line)
-            temp[m.group(1)]=[np.float(m.group(2)), np.float(m.group(3))]
+            temp[m.group(1)]=[float(m.group(2)), float(m.group(3))]
     XR=temp['XR']
     YR=temp['YR']
 
@@ -147,6 +150,8 @@ if mask_ext in ('.tif','.h5'):
         tif_1km=defaults['--mask_file'].replace('.h5', '_1km.tif')
     else:
         tif_1km=defaults['--mask_file'].replace('100m','1km').replace('125m','1km')
+    print(tif_1km)
+    print()
     temp=pc.grid.data().from_geotif(tif_1km)
         
     mask_G=pad_mask_canvas(temp, 200)
@@ -194,13 +199,19 @@ with open(queue_file,'w') as qh:
     for xy0 in zip(xg, yg):
         for dx, dy in zip(delta_x, delta_y):  
             xy1=np.array(xy0)+np.array([dx, dy])*Hxy
+            if args.min_R is not None:
+                if np.abs(xy1[0]+1j*xy1[1]) <= args.min_R: 
+                    continue
+            if args.max_R is not None:
+                if np.abs(xy1[0]+1j*xy1[1]) >= args.max_R:
+                    continue
             if tuple(xy1) in queued:
                 continue
             else:
                 queued.append(tuple(xy1))
             if not args.step=='matched':
                 out_file='%s/E%d_N%d.h5' % (step_dir, xy1[0]/1000, xy1[1]/1000)
-                if os.path.isfile(out_file):
+                if os.path.isfile(out_file) and not args.replace:
                     continue
                 cmd='%s --xy0 %d %d --%s @%s ' % (prog, xy1[0], xy1[1], args.step, defaults_file)
                 if calc_errors:
