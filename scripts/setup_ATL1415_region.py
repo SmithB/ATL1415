@@ -52,7 +52,7 @@ if not required_keys_present:
 
 if '--mask_dir' in defaults:
     for key in ['--mask_file','--d2z0_file','--tide_mask_file', '--tide_adjustment_file', '--geoid_file', '--E_d2z0dx2_file']:
-        if key in defaults and not os.path.isfile(defaults[key]):
+        if key in defaults and not (os.path.isabs(defaults[key]) and  os.path.isfile(defaults[key])):
             defaults[key] = os.path.join(defaults['--mask_dir'], defaults[key])   
     defaults.pop('--mask_dir', None)
 
