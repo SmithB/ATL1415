@@ -1,5 +1,5 @@
---ATL11_index=ATL11_005/south/GeoIndex.h5
---mask_file=Antarctic/Greene_22_shelf_plus_10m_mask.h5
+--ATL11_index=ATL11_006_0319/south/index/GeoIndex.h5
+--mask_file=Antarctic/Greene_22_shelf_plus_10m_mask_full.h5
 --tide_mask_file=Antarctic/BedMachineAntarcticaOceanv2.tif
 --tide_model=CATS2008
 --Hemisphere=-1
