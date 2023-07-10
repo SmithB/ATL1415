@@ -13,12 +13,10 @@ import stat
 def make_fields():
     fields={}
     fields['z0']="z0 sigma_z0 misfit_rms misfit_scaled_rms mask cell_area count".split(' ')
-    #NOTE: This skipps the dz tiling
-    return fields
 
     fields['dz']="dz sigma_dz count misfit_rms misfit_scaled_rms mask cell_area".split(' ')
 
-    lags=['_lag1', '_lag4', '_lag8']
+    lags=['_lag1', '_lag4', '_lag8', '_lag12','_lag16']
     for lag in lags:
         fields['dzdt'+lag]=["dzdt"+lag, "sigma_dzdt"+lag]
 
@@ -42,7 +40,7 @@ def make_200km_tiles(region_dir):
         return xyc
                 
     tile_files=[]
-    for sub in ['matched']:
+    for sub in ['prelim']:
         tile_files += glob.glob(os.path.join(region_dir, sub, 'E*N*.h5'))
 
     tile_list=[]
@@ -67,6 +65,10 @@ tile_re = re.compile('E(.*)_N(.*).h5')
 
 region_dir=sys.argv[1]
 region=sys.argv[2]
+
+step='prelim'
+skip_sigma = step=='prelim'
+print(f"Skip sigma is {skip_sigma}, step is {step}")
 
 print("region_dir is " +region_dir)
 
@@ -112,8 +114,9 @@ for count, xy in enumerate(xyc):
             out_file = os.path.join(out_dir, f"{group}{tile_bounds_1km}.h5")
 
             fh.write("#\n")
-            fh.write(f"make_mosaic.py -w -R -d {region_dir} -g matched/E*.h5 -r {search_bounds_str} -f {feather} -p {pad} -c {tile_bounds_str} -G {group} -F {non_sigma_fields[group]} -O {out_file} {spacing_str}\n")
-            fh.write(f"make_mosaic.py -w  -d {region_dir} -g prelim/E*.h5 -r {search_bounds_str} -f {feather} -p {pad} -c {tile_bounds_str} -G {group} -F {sigma_fields[group]} -O {out_file} {spacing_str}\n")
+            fh.write(f"make_mosaic.py -w -R -d {region_dir} -g '{step}/E*.h5' -r {search_bounds_str} -f {feather} -p {pad} -c {tile_bounds_str} -G {group} -F {non_sigma_fields[group]} -O {out_file} {spacing_str}\n")
+            if not skip_sigma:
+                fh.write(f"make_mosaic.py -w  -d {region_dir} -g 'prelim/E*.h5' -r {search_bounds_str} -f {feather} -p {pad} -c {tile_bounds_str} -G {group} -F {sigma_fields[group]} -O {out_file} {spacing_str}\n")
     st=os.stat(task_file)
     os.chmod(task_file, st.st_mode | stat.S_IEXEC)   
 
