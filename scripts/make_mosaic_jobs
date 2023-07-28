@@ -31,7 +31,7 @@ if [ $compute_sigma == 'True' ]; then
   echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py  -w  -d $base  -g 'prelim/*.h5'  -p $pad -f $feather -O $base/dz.h5 --in_group dz/ -F sigma_dz" >> $mosaic_run/task_${task}
 fi
 
-for lag in _lag1 _lag4 _lag8 _lag12; do
+for lag in _lag1 _lag4 _lag8 _lag12 _lag16; do
     task=$(($task+1))
         echo "lag=$lag"
         field=dzdt$lag
@@ -70,7 +70,7 @@ for group in avg_dz_40000m avg_dz_20000m avg_dz_10000m; do
     
     group=`echo $group | sed s/dz/dzdt/`
     out=`echo $out | sed s/dz/dzdt/`
-    for lag in _lag1 _lag4 _lag8 _lag12; do
+    for lag in _lag1 _lag4 _lag8 _lag12 _lag16; do
         field=$group$lag
 	field_list="$field cell_area"
 	task=$(($task+1))

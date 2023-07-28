@@ -46,7 +46,7 @@ def add_files_to_queue(run_name=None, task_list_file=None, task_glob=None, shell
                     add_count +=1
                     if shell is not None:
                         out_fh.write(f'#! /usr/bin/env {shell}\n')
-                    if env is not None:
+                    if env is not None and "source activate" not in line:
                         out_fh.write("source activate %s\n" % env)
                     out_fh.write('%s\n'% line.rstrip());
                 os.chmod(this_file, os.stat(this_file).st_mode | stat.S_IEXEC)
