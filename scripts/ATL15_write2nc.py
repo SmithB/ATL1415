@@ -34,7 +34,7 @@ def projection_variable(region,group):
         crs_var.spatial_epsg = '3413'
         crs_var.spatial_ref = 'PROJCS["WGS 84 / NSIDC Sea Ice Polar Stereographic North",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Polar_Stereographic"],PARAMETER["latitude_of_origin",70],PARAMETER["central_meridian",-45],PARAMETER["scale_factor",1],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["X",EAST],AXIS["Y",NORTH],AUTHORITY["EPSG","3413"]]'
         crs_var.crs_wkt = ('PROJCS["WGS 84 / NSIDC Sea Ice Polar Stereographic North",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Polar_Stereographic"],PARAMETER["latitude_of_origin",70],PARAMETER["central_meridian",-45],PARAMETER["scale_factor",1],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["X",EAST],AXIS["Y",NORTH],AUTHORITY["EPSG","3413"]]')
-    elif region == 'AA':
+    elif region in ['A1','A2','A3','A4']:
         crs_var = group.createVariable('Polar_Stereographic',np.byte,())
         crs_var.standard_name = 'Polar_Stereographic'
         crs_var.grid_mapping_name = 'polar_stereographic'
@@ -288,7 +288,7 @@ def ATL15_write2nc(args):
     #            input('Press enter to end.')
     #            plt.close('all')
     #            exit(-1)
-
+                ice_area_mask=None
                 # loop over dz*.h5 files for one ave
                 for jj in range(len(lags['file'])):
                     if jj==0:
@@ -407,7 +407,7 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,  fromfile_prefix_chars='@')
     parser.add_argument('-b','--base_dir', type=str, default=os.getcwd(), help='directory in which to look for mosaicked .h5 files')
     parser.add_argument('-rr','--region', type=str, help='2-letter region indicator \n'
-                                                         '\t AA: Antarctica \n'
+                                                         '\t A(1-4): Antarctica, by quadrant \n'
                                                          '\t AK: Alaska \n'
                                                          '\t CN: Arctic Canada North \n'
                                                          '\t CS: Arctic Canada South \n'
@@ -428,7 +428,7 @@ if __name__=='__main__':
         args.ATL11_lineage_dir=os.path.dirname(os.path.dirname(args.ATL11_index))
 
     if args.tiles_dir is None:
-        args.tiles_dir=os.path.join(args.base_dir, 'centers')
+        args.tiles_dir=os.path.join(args.base_dir, 'matched')
 
     print('args',args)
 
