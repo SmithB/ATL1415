@@ -213,12 +213,13 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, \
             'along_track':np.zeros_like(D_x.x, dtype=bool)})]
     try:
         D=pc.data().from_list(D_list+XO_list).ravel_fields()
-        D.index(np.isfinite(D.z))
-
     except ValueError:
         # catch empty data
         return None, file_list
-
+    if hasattr(D,'z'):
+        D.index(np.isfinite(D.z))
+    else:
+        return None, file_list
     D.index(( D.fit_quality ==0 ) | ( D.fit_quality == 2 ))
     print(f'xover_count={xover_count}')
     return D, file_list
@@ -422,6 +423,8 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
             geoid_tol=None, \
             sigma_tol=None,\
             mask_file=None,\
+            rock_mask_file=None,\
+            rock_mask_reject_value=None,\
             geoid_file=None,\
             tide_mask_file=None,\
             tide_directory=None,\
@@ -512,27 +515,24 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
         for key, mask in mask_data.items():
             mask.assign({'z':mask.mask})
     elif region is not None:
-        if region=='AA':
+        if region in ['AA', 'GL']:
             pad=np.array([-1.e4, 1.e4])
             mask_data=pc.grid.data().from_h5(mask_file,
                                              bounds=[bds['x']+pad, bds['y']+pad],
-                                             t_range=bds['t']+np.array([-1, 1])))
+                                             t_range=bds['t']+np.array([-1, 1]))
+            if rock_mask_file is not None:
+                rock_mask=pc.grid.data().from_file(rock_mask_file, bounds=mask_data.bounds())
+                rock_mask.reject=rock_mask.mask==rock_mask_reject_value
+                rock=rock_mask.interp(mask_data.x, mask_data.y, gridded=True, field='reject') > 0.5
+                for band in range(mask_data.z.shape[2]):
+                    mask_data.z[:,:,band] *= (rock==0)
             while mask_data.t[-1] < ctr['t']+W['t']/2:
                 # append a copy of the last field in the mask data to the end of the mask data
                 mask_data.z = np.concatenate([mask_data.z,mask_data.z[:,:,-1:]], axis=2)
                 mask_data.t = np.concatenate([mask_data.t,mask_data.t[-1:]+1], axis=0)
             mask_data.__update_size_and_shape__()
-            #mask_data=pc.grid.data().from_geotif(mask_file, bounds=[xy0[0]+np.array([-1.2, 1.2])*Wxy/2, xy0[1]+np.array([-1.2, 1.2])*Wxy/2])
-            #import scipy.ndimage as snd
-            #mask_data.z=snd.binary_erosion(snd.binary_erosion(mask_data.z, np.ones([1,3])), np.ones([3,1]))
+            mask_data.z[~np.isfinite(mask_data.z)]=0.
             mask_file=None
-        elif region=='GL':
-            if mask_file.endswith('.nc'):
-                mask_data, tide_mask_data = read_bedmachine_greenland(mask_file, xy0, Wxy)
-            elif mask_file.endswith('.tif'):
-                pad=np.array([-1.e4, 1.e4])
-                mask_data=pc.grid.data().from_geotif(mask_file,
-                                                bounds=[bds['x']+pad, bds['y']+pad])
         elif mask_file.endswith('.shp') or mask_file.endswith('.db'):
             mask_data=make_mask_from_vector(mask_file, W, ctr, spacing['z0'], srs_proj4=SRS_proj4)
 
@@ -807,6 +807,8 @@ def main(argv):
     parser.add_argument('--geoid_tol', type=float, help='points closer than this to the geoid will be rejected')
     parser.add_argument('--sigma_tol', type=float, help='points with sigma greater than this value will be edited')
     parser.add_argument('--mask_file', type=lambda p: os.path.abspath(os.path.expanduser(p)))
+    parser.add_argument('--rock_mask_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='mask indicating exposed rock')
+    parser.add_argument('--rock_mask_reject_value', type=float, default=1, help='value within the rock mask file that indicates rock')
     parser.add_argument('--geoid_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help="file containing geoid information")
     parser.add_argument('--tide_mask_file', type=lambda p: os.path.abspath(os.path.expanduser(p)))
     parser.add_argument('--tide_directory', type=lambda p: os.path.abspath(os.path.expanduser(p)))
@@ -944,6 +946,8 @@ def main(argv):
            dzdt_lags=args.dzdt_lags, \
            N_subset=args.N_subset,\
            mask_file=args.mask_file, \
+           rock_mask_file=args.rock_mask_file, \
+           rock_mask_reject_value=args.rock_mask_reject_value,\
            region=args.region, \
            geoid_file=args.geoid_file,\
            tide_mask_file=args.tide_mask_file, \
