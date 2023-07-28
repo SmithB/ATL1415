@@ -48,6 +48,9 @@ parser.add_argument('--prior_edge_include', type=float, default=1000)
 parser.add_argument('--environment','-e', type=str)
 parser.add_argument('--min_R', type=float)
 parser.add_argument('--max_R', type=float)
+parser.add_argument('--min_xy', type=float)
+parser.add_argument('--max_xy', type=float)
+parser.add_argument('--queue_file','-q', type=str)
 parser.add_argument('--replace', action='store_true')
 args = parser.parse_args()
 
@@ -108,7 +111,10 @@ else:
 # figure out what directories we need to make
 release_dir = os.path.join(defaults['--ATL14_root'], "rel"+defaults['--Release'])
 hemi_dir=os.path.join(release_dir, hemisphere_name)
-region_dir=os.path.join(hemi_dir, defaults['--region'])
+if "--base_directory"in defaults:
+    region_dir=defaults['--base_directory']
+else:
+    region_dir=os.path.join(hemi_dir, defaults['--region'])
 
 for this in [release_dir, hemi_dir, region_dir]:
     if not os.path.isdir(this):
@@ -146,8 +152,10 @@ Hxy=Wxy/2
 
 mask_base, mask_ext = os.path.splitext(defaults['--mask_file'])
 if mask_ext in ('.tif','.h5'):
-    if mask_ext=='.h5':
-        tif_1km=defaults['--mask_file'].replace('.h5', '_1km.tif')
+    if mask_ext=='.h5' and '_100m' in mask_base:
+        tif_1km=defaults['--mask_file'].replace('_100m.h5', '_1km.tif')
+    elif '_full' in mask_base:
+        tif_1km=defaults['--mask_file'].replace('_full.h5', '_1km.tif')
     else:
         tif_1km=defaults['--mask_file'].replace('100m','1km').replace('125m','1km')
     print(tif_1km)
@@ -157,6 +165,7 @@ if mask_ext in ('.tif','.h5'):
     mask_G=pad_mask_canvas(temp, 200)
     mask_G.z=snd.binary_dilation(mask_G.z, structure=np.ones([1, int(3*Hxy/1000)+1], dtype='bool'))
     mask_G.z=snd.binary_dilation(mask_G.z, structure=np.ones([int(3*Hxy/1000)+1, 1], dtype='bool'))
+
     x0=np.unique(np.round(mask_G.x/Hxy)*Hxy)
     y0=np.unique(np.round(mask_G.y/Hxy)*Hxy)
     x0, y0 = np.meshgrid(x0, y0)
@@ -175,9 +184,10 @@ elif mask_ext in ['.shp','.db']:
     good=np.ones_like(xg, dtype=bool)
 
 
+
 if XR is not None:
     good &= (xg>=XR[0]) & (xg <= XR[1]) & (yg > YR[0]) & (yg < YR[1])
-
+print(f'checking {np.sum(good)} points')
 xg=xg[good]
 yg=yg[good]
 
@@ -191,9 +201,14 @@ elif args.step=='corners':
     delta_x=[-1, 1, -1, 1.]
     delta_y=[-1, -1, 1, 1.]
 
+print(f'min_xy={args.min_xy}')
+print(f'max_xy={args.max_xy}')
 
 queued=[];
-queue_file=f"1415_queue_{defaults['--region']}_{args.step}.txt"
+if args.queue_file is not None:
+    queue_file=args.queue_file
+else:
+    queue_file=f"1415_queue_{defaults['--region']}_{args.step}.txt"
 
 with open(queue_file,'w') as qh:
     for xy0 in zip(xg, yg):
@@ -204,6 +219,12 @@ with open(queue_file,'w') as qh:
                     continue
             if args.max_R is not None:
                 if np.abs(xy1[0]+1j*xy1[1]) >= args.max_R:
+                    continue
+            if args.min_xy is not None:
+                if np.abs(xy1).max() < args.min_xy:
+                    continue
+            if args.max_xy is not None:
+                if np.any(np.abs(xy1) > args.max_xy):
                     continue
             if tuple(xy1) in queued:
                 continue
