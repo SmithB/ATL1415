@@ -63,13 +63,23 @@ tile_W=2.e5
 
 tile_re = re.compile('E(.*)_N(.*).h5')
 
-region_dir=sys.argv[1]
-region=sys.argv[2]
+import argparse
+parser = argparse.ArgumentParser()
+parser.add_argument('region_dir', type=str)
+parser.add_argument('region', type=str)
+parser.add_argument('--step', type=str, default='matched')
+parser.add_argument('--pad', type=float, default=5000)
+parser.add_argument('--feather', type=float, default=10000)
+parser.add_argument('--skip_sigma', action='store_true')
+parser.add_argument('--environment','-e', type=str, default='IS2', help="environment that each job will activate")
+args=parser.parse_args()
 
-step='prelim'
-skip_sigma = step=='prelim'
-print(f"Skip sigma is {skip_sigma}, step is {step}")
+region_dir=args.region_dir
+region=args.region
 
+step=args.step
+
+print(f"Skip sigma is {args.skip_sigma}, step is {step}")
 print("region_dir is " +region_dir)
 
 fields=make_fields()
@@ -95,7 +105,7 @@ for count, xy in enumerate(xyc):
     tile_bounds_1km = "_".join([str(int(ii/1000)) for ii in tile_bounds])
     tile_bounds_str = " ".join([str(ii) for ii in tile_bounds])
     
-    task_file=f'tile_run_{region}/task_{count}'
+    task_file=f'tile_run_{region}/task_{count+1}'
     with open(task_file,'w') as fh:
         fh.write("source activate IS2\n") 
         for group in fields.keys():
@@ -104,8 +114,8 @@ for count, xy in enumerate(xyc):
                 feather=0
                 spacing_str="-S 40000 40000"
             else:
-                pad=5000
-                feather=10000
+                pad=args.pad
+                feather=args.feather
                 spacing_str=""
 
             out_dir = os.path.join(tile_dir_200km, group)
@@ -115,7 +125,7 @@ for count, xy in enumerate(xyc):
 
             fh.write("#\n")
             fh.write(f"make_mosaic.py -w -R -d {region_dir} -g '{step}/E*.h5' -r {search_bounds_str} -f {feather} -p {pad} -c {tile_bounds_str} -G {group} -F {non_sigma_fields[group]} -O {out_file} {spacing_str}\n")
-            if not skip_sigma:
+            if not args.skip_sigma:
                 fh.write(f"make_mosaic.py -w  -d {region_dir} -g 'prelim/E*.h5' -r {search_bounds_str} -f {feather} -p {pad} -c {tile_bounds_str} -G {group} -F {sigma_fields[group]} -O {out_file} {spacing_str}\n")
     st=os.stat(task_file)
     os.chmod(task_file, st.st_mode | stat.S_IEXEC)   
