@@ -273,7 +273,7 @@ if __name__=='__main__':
     parser.add_argument('-R','--Release', type=str, help="3-digit release number for output filename")
     parser.add_argument('-v','--version', type=str, help="2-digit version number for output filename")
     parser.add_argument('-list11','--ATL11_lineage_dir', type=str, help='directory in which to look for ATL11 .h5 filenames')
-    parser.add_argument('-tiles','--tiles_dir', type=str, help='directory in which to look for tile .h5 files, defaults to [base_dir]/centers')
+    parser.add_argument('-tiles','--tiles_dir', type=str, help='directory in which to look for tile .h5 files, defaults to [base_dir]/prelim')
     parser.add_argument('--ATL11_index', type=str, help='GeoIndex file pointing to ATL11 data')
     args, _=parser.parse_known_args()
 
@@ -282,7 +282,7 @@ if __name__=='__main__':
         args.ATL11_lineage_dir=os.path.dirname(os.path.dirname(args.ATL11_index))
 
     if args.tiles_dir is None:
-        args.tiles_dir=os.path.join(args.base_dir, 'matched')
+        args.tiles_dir=os.path.join(args.base_dir, 'prelim')
 
     print('args:',args)
 

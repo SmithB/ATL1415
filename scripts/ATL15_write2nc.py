@@ -428,8 +428,8 @@ if __name__=='__main__':
         args.ATL11_lineage_dir=os.path.dirname(os.path.dirname(args.ATL11_index))
 
     if args.tiles_dir is None:
-        args.tiles_dir=os.path.join(args.base_dir, 'matched')
-
+        args.tiles_dir=os.path.join(args.base_dir, 'prelim')
+    
     print('args',args)
 
     fileout = ATL15_write2nc(args)
