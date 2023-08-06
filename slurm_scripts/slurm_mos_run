@@ -5,7 +5,7 @@
 #SBATCH --ntasks=4
 #SBATCH --partition=packable
 #SBATCH --qos=at15_pk
-#SBATCH --array=1-21
+#SBATCH --array=1-25
 #SBATCH -o 1415_GL_mos.%A_%a
 
 echo "-------------check memory for the node -----------"
