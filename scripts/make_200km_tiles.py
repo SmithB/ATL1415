@@ -62,14 +62,16 @@ def make_200km_tiles(region_dir):
 tile_W=2.e5
 
 tile_re = re.compile('E(.*)_N(.*).h5')
-
+avg_re = re.compile('_(\d+)m')
 import argparse
 parser = argparse.ArgumentParser()
 parser.add_argument('region_dir', type=str)
 parser.add_argument('region', type=str)
 parser.add_argument('--step', type=str, default='matched')
-parser.add_argument('--pad', type=float, default=5000)
-parser.add_argument('--feather', type=float, default=10000)
+parser.add_argument('--pad', type=float)
+parser.add_argument('--feather', type=float)
+parser.add_argument('--W', type=int, default=60000)
+parser.add_argument('--spacing', type=int, default=40000)
 parser.add_argument('--skip_sigma', action='store_true')
 parser.add_argument('--environment','-e', type=str, default='IS2', help="environment that each job will activate")
 args=parser.parse_args()
@@ -78,6 +80,15 @@ region_dir=args.region_dir
 region=args.region
 
 step=args.step
+
+# make the pad and feather work for 44 km tiles:
+overlap=args.W-args.spacing
+if args.pad is None:
+    args.pad = overlap/4
+if args.feather is None:
+    args.feather = overlap/2
+print(f"***pad={args.pad}, feather={args.feather}, overlap={overlap}")
+
 
 print(f"Skip sigma is {args.skip_sigma}, step is {step}")
 print("region_dir is " +region_dir)
@@ -109,15 +120,19 @@ for count, xy in enumerate(xyc):
     with open(task_file,'w') as fh:
         fh.write("source activate IS2\n") 
         for group in fields.keys():
-            if "40000m" in group:
-                pad=0
-                feather=0
-                spacing_str="-S 40000 40000"
-            else:
-                pad=args.pad
-                feather=args.feather
-                spacing_str=""
-
+            pad=args.pad
+            feather=args.feather
+            spacing_str=""
+            avg_scale=avg_re.search(group)
+            if avg_scale is not None:
+                avg_scale=float(avg_scale.groups()[0])
+                # NOTE - this is to deal with the truncated 20-km averages in 
+                # release 003.  May need to be fixed in the future (avg_scale > overlap makes more sense)
+                if avg_scale >= overlap:
+                    pad=0
+                    feather=0
+                if "40000m" in group:
+                    spacing_str="-S 40000 40000"
             out_dir = os.path.join(tile_dir_200km, group)
             if not os.path.isdir(out_dir):
                 os.mkdir(out_dir)
