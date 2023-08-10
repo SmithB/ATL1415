@@ -342,6 +342,8 @@ def ATL15_write2nc(args):
 
                             # get data from .h5
                             if fld.startswith('delta_h'):  # fields with complicated name changes
+                                #print("from:" + lags['file'][jj])
+                                print("\t reading:" + str([dzg, dz_dict[field]]))
                                 data = np.array(lags['file'][jj][dzg][dz_dict[field]])
                                 data[np.isnan(ice_area_mask)] = np.nan
                                 if fld=='delta_h':  # add group description
