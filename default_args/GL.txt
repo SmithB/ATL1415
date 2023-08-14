@@ -1,8 +1,6 @@
---ATL11_index=ATL11/rel005_0314/north/index/GeoIndex.h5
 --tide_mask_file=Arctic/BedMachineGreenland-2021-04-20_shelf_125m.tif
 --tide_model=Gr1km-v2
 --mask_file=Arctic/GrimpOceanMask_100m_201805_202110.h5
 --E_d2z0dx2_file=Arctic/GL_Ed2z0dx2.tif
 --region=GL
---Hemisphere=1
 

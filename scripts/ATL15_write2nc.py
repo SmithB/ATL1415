@@ -342,6 +342,8 @@ def ATL15_write2nc(args):
 
                             # get data from .h5
                             if fld.startswith('delta_h'):  # fields with complicated name changes
+                                #print("from:" + lags['file'][jj])
+                                print("\t reading:" + str([dzg, dz_dict[field]]))
                                 data = np.array(lags['file'][jj][dzg][dz_dict[field]])
                                 data[np.isnan(ice_area_mask)] = np.nan
                                 if fld=='delta_h':  # add group description
@@ -428,8 +430,8 @@ if __name__=='__main__':
         args.ATL11_lineage_dir=os.path.dirname(os.path.dirname(args.ATL11_index))
 
     if args.tiles_dir is None:
-        args.tiles_dir=os.path.join(args.base_dir, 'matched')
-
+        args.tiles_dir=os.path.join(args.base_dir, 'prelim')
+    
     print('args',args)
 
     fileout = ATL15_write2nc(args)

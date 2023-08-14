@@ -1,4 +1,2 @@
---ATL11_index=ATL11/rel005_0314/north/index/GeoIndex.h5
 --mask_file=RGI_reduced/06_rgi60_Iceland_reduced.db
---Hemisphere=1
 --region=IS
