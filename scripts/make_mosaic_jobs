@@ -5,7 +5,7 @@ source activate IS2
 base=$1
 region=`basename $base`
 
-mosaic_run="mosaic_run_"$region
+mosaic_run=${region}_mosaic
 
 if [ -f $base/bounds.txt  ]; then
     crop="-c "$(head -1 $base/bounds.txt)
@@ -39,7 +39,7 @@ fi
 
 for lag in _lag1 _lag4 _lag8 _lag12 _lag16; do
     task=$(($task+1))
-        echo "lag=$lag"
+        #echo "lag=$lag"
         field=dzdt$lag
         echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $crop -R -w  -d $base  -g  $glob_str  -p $pad -f $feather -O $base/dzdt$lag.h5 --in_group dzdt$lag/ -F $field cell_area" >> $mosaic_run/task_${task}
         if [ $compute_sigma == 'True' ]; then
@@ -51,7 +51,7 @@ done
 for group in avg_dz_40000m avg_dz_20000m avg_dz_10000m; do
     field=$group
 
-    echo "$group $field"
+    #echo "$group $field"
     this_pad=$pad
     this_feather=$feather
     this_S=""
@@ -82,7 +82,7 @@ for group in avg_dz_40000m avg_dz_20000m avg_dz_10000m; do
 	field_list="$field cell_area"
 	task=$(($task+1))
 
-        echo "lag=$lag, group=$group, task=$task"
+        #echo "lag=$lag, group=$group, task=$task"
         echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $crop -R $this_w  -d $base  -g  $glob_str  -p $this_pad -f $this_feather $this_S -O $base/$out$lag.h5 --in_group $field/ -F $field_list" > $mosaic_run/task_${task}
 	if [ $compute_sigma == 'True' ]; then
 	    sigma_field=sigma_${group}${lag}
@@ -117,6 +117,6 @@ else
 fi
 mv $mosaic_run/task* $mosaic_run/queue
 
-cp slurm_scripts/slurm_mos_run $mosaic_run
+cat slurm_scripts/slurm_mos_run | sed s/LAST_TASK/$task/ | sed s/XX/$region/ >> $mosaic_run/slurm_mos_run
 pushd $mosaic_run
 sbatch slurm_mos_run

@@ -22,6 +22,7 @@ os.environ["OPENBLAS_NUM_THREADS"]=n_threads
 
 import numpy as np
 from LSsurf.smooth_fit import smooth_fit
+from SMBcorr import assign_firn_variable
 import pointCollection as pc
 
 import re
