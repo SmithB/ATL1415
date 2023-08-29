@@ -32,6 +32,7 @@ def make_fields():
     return fields
 
 def make_200km_tiles(region_dir):
+    print("looking for tiles for "+region_dir)
     tile_ctr_file=os.path.join(region_dir,'200km_tile_list.txt')
 
     if os.path.isfile(tile_ctr_file):
@@ -160,4 +161,4 @@ for count, xy in enumerate(xyc):
 with open('slurm_scripts/slurm_mos_run','r') as fh_in:
     with open(run_dir+'/slurm_mos_run','w') as fh_out:
         for line in fh_in:
-            fh_out.write(line.replace('LAST_TASK', str(count+1)))
+            fh_out.write(line.replace('LAST_TASK', str(count+1)).replace('_XX_', '_'+args.name+'_'))
