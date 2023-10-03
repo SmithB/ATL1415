@@ -238,7 +238,6 @@ def apply_tides(D, xy0, W,
                 EPSG=None,
                 verbose=False):
 
-
     '''
     read in the tide mask, calculate ocean tide elevations, and
     apply dynamic atmospheric correction (dac) and tide to ice-shelf elements
@@ -275,6 +274,8 @@ def apply_tides(D, xy0, W,
             return
     # find ice shelf points
     is_els=tide_mask.interp(D.x, D.y) > 0.5
+    # need to assign the 'floating' field in case the SMB routines need it
+    D.assign(floating=is_els)
     if verbose:
         print(f"\t\t{np.mean(is_els)*100}% shelf data")
         print(f"\t\ttide model: {tide_model}")
@@ -623,6 +624,16 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
                     tide_adjustment_file=tide_adjustment_file,
                     tide_adjustment_format=tide_adjustment_format,
                     EPSG=EPSG, verbose=verbose)
+    elif 'floating' not in data.fields:
+        # fix for firn runs where the floating variable did not get assigned
+        if tide_mask_file is not None and tide_mask_data is None:
+            try:
+                tide_mask = pc.grid.data().from_geotif(tide_mask_file,
+                                                       bounds=[np.array([-0.6, 0.6])*Wxy+xy0[0], np.array([-0.6, 0.6])*Wxy+xy0[1]])
+                if tide_mask.shape is not None:
+                    data.assign(floating=tide_mask.interp(data.x, data.y) > 0.5)
+            except IndexError:
+                data.assign(floating=np.zeros_like(data.x, dtype=bool))
 
     if geoid_tol is not None:
         data.index((data.z - data.geoid_h) > geoid_tol)
