@@ -57,7 +57,7 @@ def ATL14_write2nc(args):
             crs_var.spatial_epsg = '3413'
             crs_var.spatial_ref = 'PROJCS["WGS 84 / NSIDC Sea Ice Polar Stereographic North",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Polar_Stereographic"],PARAMETER["latitude_of_origin",70],PARAMETER["central_meridian",-45],PARAMETER["scale_factor",1],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["X",EAST],AXIS["Y",NORTH],AUTHORITY["EPSG","3413"]]'
             crs_var.crs_wkt = ('PROJCS["WGS 84 / NSIDC Sea Ice Polar Stereographic North",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Polar_Stereographic"],PARAMETER["latitude_of_origin",70],PARAMETER["central_meridian",-45],PARAMETER["scale_factor",1],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["X",EAST],AXIS["Y",NORTH],AUTHORITY["EPSG","3413"]]')
-        elif args.region == 'AA':
+        elif args.region in ['A1','A2','A3','A4']:
             crs_var = nc.createVariable('Polar_Stereographic',np.byte,())
             crs_var.standard_name = 'Polar_Stereographic'
             crs_var.grid_mapping_name = 'polar_stereographic'
@@ -261,7 +261,7 @@ if __name__=='__main__':
     parser=argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter, fromfile_prefix_chars='@')
     parser.add_argument('-b','--base_dir', type=str, default=os.getcwd(), help='directory in which to look for mosaicked .h5 files')
     parser.add_argument('-rr','--region', type=str, help='2-letter region indicator \n'
-                                                         '\t AA: Antarctica \n'
+                                                         '\t A[1-4]: Antarctica, by quadrant \n'
                                                          '\t AK: Alaska \n'
                                                          '\t CN: Arctic Canada North \n'
                                                          '\t CS: Arctic Canada South \n'
@@ -273,7 +273,7 @@ if __name__=='__main__':
     parser.add_argument('-R','--Release', type=str, help="3-digit release number for output filename")
     parser.add_argument('-v','--version', type=str, help="2-digit version number for output filename")
     parser.add_argument('-list11','--ATL11_lineage_dir', type=str, help='directory in which to look for ATL11 .h5 filenames')
-    parser.add_argument('-tiles','--tiles_dir', type=str, help='directory in which to look for tile .h5 files, defaults to [base_dir]/centers')
+    parser.add_argument('-tiles','--tiles_dir', type=str, help='directory in which to look for tile .h5 files, defaults to [base_dir]/prelim')
     parser.add_argument('--ATL11_index', type=str, help='GeoIndex file pointing to ATL11 data')
     args, _=parser.parse_known_args()
 
@@ -282,7 +282,7 @@ if __name__=='__main__':
         args.ATL11_lineage_dir=os.path.dirname(os.path.dirname(args.ATL11_index))
 
     if args.tiles_dir is None:
-        args.tiles_dir=os.path.join(args.base_dir, 'centers')
+        args.tiles_dir=os.path.join(args.base_dir, 'prelim')
 
     print('args:',args)
 

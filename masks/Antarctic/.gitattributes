@@ -1,0 +1,5 @@
+Greene_22_shelf_plus_10m_mask_1km.tif filter=lfs diff=lfs merge=lfs -text
+Greene_22_shelf_plus_10m_mask_2022_update.h5 filter=lfs diff=lfs merge=lfs -text
+Greene_22_shelf_plus_10m_mask_240m.tif filter=lfs diff=lfs merge=lfs -text
+Greene_22_shelf_plus_10m_mask_full.h5 filter=lfs diff=lfs merge=lfs -text
+Greene_22_shelf_plus_10m_mask.h5 filter=lfs diff=lfs merge=lfs -text

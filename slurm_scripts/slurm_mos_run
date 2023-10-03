@@ -5,8 +5,8 @@
 #SBATCH --ntasks=4
 #SBATCH --partition=packable
 #SBATCH --qos=at15_pk
-#SBATCH --array=1-21
-#SBATCH -o 1415_GL_mos.%A_%a
+#SBATCH --array=1-LAST_TASK
+#SBATCH -o 1415_XX_mos.%A_%a
 
 echo "-------------check memory for the node -----------"
 grep -i -e memfree -e memtotal -e swaptotal /proc/meminfo

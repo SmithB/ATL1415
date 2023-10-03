@@ -4,31 +4,44 @@ source activate IS2
 
 base=$1
 
-rm $base/*.h5
+if [ "$#" -ne 1 ]; then
+    step=$2
+else
+    step='matched'
+fi
+
+[ -d $base/mosaics ] || mkdir $base/mosaics
+
+rm $base/mosaics/*.h5
 
 
 pad=5000
 feather=10000
 
 compute_sigma='True'
+#compute_sigma='False'
 
 field=dz
 if [ $compute_sigma == 'True' ]; then
    field="dz sigma_dz"
 fi
 
-glob_str='matched/*.h5'
+glob_str=$step'/*.h5'
 
-python3 ~/git_repos/pointCollection/scripts/make_mosaic.py  -w  -d $base  -g $glob_str  -p $pad -f $feather -O $base/dz.h5 --in_group dz/ -F count misfit_rms misfit_scaled_rms mask cell_area $field
+echo "----------------------------"
+echo "searching for tiles using:"
+echo $glob_str
+echo "----------------------------"
+python3 ~/git_repos/pointCollection/scripts/make_mosaic.py  -w  -d $base  -g $glob_str  -p $pad -f $feather -O $base/mosaics/dz.h5 --in_group dz/ -F count misfit_rms misfit_scaled_rms mask cell_area $field -v
 
 
-for lag in _lag1 _lag4 _lag8 _lag12; do
+for lag in _lag1 _lag4 _lag8 _lag12 _lag16; do
         echo "lag=$lag"
         field=dzdt$lag
         if [ $compute_sigma == 'True' ]; then
              field="$field sigma_$field"
         fi
-        python3 ~/git_repos/pointCollection/scripts/make_mosaic.py -w  -d $base  -g  $glob_str  -p $pad -f $feather -O $base/dz$lag.h5 --in_group dzdt$lag/ -F $field
+        python3 ~/git_repos/pointCollection/scripts/make_mosaic.py -w  -d $base  -g  $glob_str  -p $pad -f $feather -O $base/mosaics/dz$lag.h5 --in_group dzdt$lag/ -F $field
 done
 
 for group in avg_dz_40000m avg_dz_20000m avg_dz_10000m; do
@@ -53,10 +66,10 @@ for group in avg_dz_40000m avg_dz_20000m avg_dz_10000m; do
     fi
     out=`echo $group | sed s/000m/km/ | sed s/avg_//`
     
-    python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $this_w  -d $base  -g  $glob_str  -p $this_pad -f $this_feather $this_S -O $base/$out.h5 --in_group $group/ -F $field cell_area
+    python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $this_w  -d $base  -g  $glob_str  -p $this_pad -f $this_feather $this_S -O $base/mosaics/$out.h5 --in_group $group/ -F $field cell_area
     
     group=`echo $group | sed s/dz/dzdt/`
-    for lag in _lag1 _lag4 _lag8 _lag12; do
+    for lag in _lag1 _lag4 _lag8 _lag12 _lag16; do
         echo "lag=$lag"
         field=$group$lag
 	field_list=$field
@@ -64,7 +77,7 @@ for group in avg_dz_40000m avg_dz_20000m avg_dz_10000m; do
              field_list="$field_list sigma_$field"
         fi
 
-        python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $this_w  -d $base  -g  $glob_str  -p $this_pad -f $this_feather $this_S -O $base/$out$lag.h5 --in_group $field/ -F $field_list
+        python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $this_w  -d $base  -g  $glob_str  -p $this_pad -f $this_feather $this_S -O $base/mosaics/$out$lag.h5 --in_group $field/ -F $field_list
     done
 done
 
@@ -79,9 +92,9 @@ for field in $field_list; do
     echo $field
     if [ -d $base/200km_tiles/z0 ] ; then
 	echo "200km"
-	python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $this_replace  -d ${base}/200km_tiles/z0  -g "*.h5" -O $base/z0.h5 --in_group z0/ -F  $field 
+	python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $this_replace  -d ${base}/200km_tiles/z0  -g "*.h5" -O $base/mosaics/z0.h5 --in_group z0/ -F  $field 
     else
-	python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $this_replace -w -d $base  -g "*/*.h5"  -p $pad -f $feather -O $base/z0.h5 --in_group z0/ -F  $field 
+	python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $this_replace -w -d $base  -g "*/*.h5"  -p $pad -f $feather -O $base/mosaics/z0.h5 --in_group z0/ -F  $field 
     fi
     this_replace=""
 done

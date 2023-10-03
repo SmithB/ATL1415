@@ -11,6 +11,7 @@ import os, glob, sys
 from netCDF4 import Dataset
 import shutil
 import h5py
+import pkg_resources
 #import pointCollection as pc
 #from PointDatabase.mapData import mapData
 
@@ -100,7 +101,8 @@ def ATL14_browse_plots(args):
     print('making file', brwfile)
     if os.path.isfile(brwfile):
         os.remove(brwfile)
-    shutil.copyfile('ATL1415/resources/BRW_template.h5',brwfile)
+    template_file = pkg_resources.resource_filename('ATL1415','resources/BRW_template.h5')
+    shutil.copyfile(template_file,brwfile)
     with h5py.File(brwfile,'r+') as hf:
         hf.require_group('/default')
         for ii, name in enumerate(sorted(glob.glob(f'{args.base_dir.rstrip("/")}/ATL14_{args.region}_{args.cycles}_100m_{args.Release}_{args.version}_BRW_default*.png'))):

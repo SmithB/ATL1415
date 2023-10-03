@@ -21,7 +21,8 @@ os.environ["MKL_NUM_THREADS"]=n_threads
 os.environ["OPENBLAS_NUM_THREADS"]=n_threads
 
 import numpy as np
-from LSsurf.smooth_xytb_fit_aug import smooth_xytb_fit_aug
+from LSsurf.smooth_fit import smooth_fit
+from SMBcorr import assign_firn_variable
 import pointCollection as pc
 
 import re
@@ -30,7 +31,6 @@ import h5py
 import traceback
 from ATL1415.reread_data_from_fits import reread_data_from_fits
 from ATL1415.make_mask_from_vector import make_mask_from_vector
-from SMBcorr import assign_firn_variable
 import pyTMD
 import scipy.optimize
 
@@ -214,12 +214,13 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, \
             'along_track':np.zeros_like(D_x.x, dtype=bool)})]
     try:
         D=pc.data().from_list(D_list+XO_list).ravel_fields()
-        D.index(np.isfinite(D.z))
-
     except ValueError:
         # catch empty data
         return None, file_list
-
+    if hasattr(D,'z'):
+        D.index(np.isfinite(D.z))
+    else:
+        return None, file_list
     D.index(( D.fit_quality ==0 ) | ( D.fit_quality == 2 ))
     print(f'xover_count={xover_count}')
     return D, file_list
@@ -236,7 +237,6 @@ def apply_tides(D, xy0, W,
                 cutoff=200,
                 EPSG=None,
                 verbose=False):
-
 
     '''
     read in the tide mask, calculate ocean tide elevations, and
@@ -274,6 +274,8 @@ def apply_tides(D, xy0, W,
             return
     # find ice shelf points
     is_els=tide_mask.interp(D.x, D.y) > 0.5
+    # need to assign the 'floating' field in case the SMB routines need it
+    D.assign(floating=is_els)
     if verbose:
         print(f"\t\t{np.mean(is_els)*100}% shelf data")
         print(f"\t\ttide model: {tide_model}")
@@ -423,6 +425,8 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
             geoid_tol=None, \
             sigma_tol=None,\
             mask_file=None,\
+            rock_mask_file=None,\
+            rock_mask_reject_value=None,\
             geoid_file=None,\
             tide_mask_file=None,\
             tide_directory=None,\
@@ -480,7 +484,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
     '''
     SRS_proj4, EPSG=get_SRS_info(hemisphere)
 
-    E_RMS0={'d2z0_dx2':200000./3000/3000, 'd3z_dx2dt':3000./3000/3000, 'd2z_dxdt':3000/3000, 'd2z_dt2':5000}
+    E_RMS0={'d2z0_dx2':200000./3000/3000, 'd3z_dx2dt':3000./3000/3000, 'd2z_dt2':5000}
     E_RMS0.update(E_RMS)
 
     W={'x':Wxy, 'y':Wxy,'t':np.diff(t_span)}
@@ -513,27 +517,24 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
         for key, mask in mask_data.items():
             mask.assign({'z':mask.mask})
     elif region is not None:
-        if region=='AA':
+        if region in ['AA', 'GL']:
             pad=np.array([-1.e4, 1.e4])
             mask_data=pc.grid.data().from_h5(mask_file,
                                              bounds=[bds['x']+pad, bds['y']+pad],
-                                            bands=np.arange(17, 24))
+                                             t_range=bds['t']+np.array([-1, 1]))
+            if rock_mask_file is not None:
+                rock_mask=pc.grid.data().from_file(rock_mask_file, bounds=mask_data.bounds())
+                rock_mask.reject=rock_mask.mask==rock_mask_reject_value
+                rock=rock_mask.interp(mask_data.x, mask_data.y, gridded=True, field='reject') > 0.5
+                for band in range(mask_data.z.shape[2]):
+                    mask_data.z[:,:,band] *= (rock==0)
             while mask_data.t[-1] < ctr['t']+W['t']/2:
                 # append a copy of the last field in the mask data to the end of the mask data
                 mask_data.z = np.concatenate([mask_data.z,mask_data.z[:,:,-1:]], axis=2)
                 mask_data.t = np.concatenate([mask_data.t,mask_data.t[-1:]+1], axis=0)
             mask_data.__update_size_and_shape__()
-            #mask_data=pc.grid.data().from_geotif(mask_file, bounds=[xy0[0]+np.array([-1.2, 1.2])*Wxy/2, xy0[1]+np.array([-1.2, 1.2])*Wxy/2])
-            #import scipy.ndimage as snd
-            #mask_data.z=snd.binary_erosion(snd.binary_erosion(mask_data.z, np.ones([1,3])), np.ones([3,1]))
+            mask_data.z[~np.isfinite(mask_data.z)]=0.
             mask_file=None
-        elif region=='GL':
-            if mask_file.endswith('.nc'):
-                mask_data, tide_mask_data = read_bedmachine_greenland(mask_file, xy0, Wxy)
-            elif mask_file.endswith('.tif'):
-                pad=np.array([-1.e4, 1.e4])
-                mask_data=pc.grid.data().from_geotif(mask_file,
-                                                bounds=[bds['x']+pad, bds['y']+pad])
         elif mask_file.endswith('.shp') or mask_file.endswith('.db'):
             mask_data=make_mask_from_vector(mask_file, W, ctr, spacing['z0'], srs_proj4=SRS_proj4)
 
@@ -623,6 +624,16 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
                     tide_adjustment_file=tide_adjustment_file,
                     tide_adjustment_format=tide_adjustment_format,
                     EPSG=EPSG, verbose=verbose)
+    elif 'floating' not in data.fields:
+        # fix for firn runs where the floating variable did not get assigned
+        if tide_mask_file is not None and tide_mask_data is None:
+            try:
+                tide_mask = pc.grid.data().from_geotif(tide_mask_file,
+                                                       bounds=[np.array([-0.6, 0.6])*Wxy+xy0[0], np.array([-0.6, 0.6])*Wxy+xy0[1]])
+                if tide_mask.shape is not None:
+                    data.assign(floating=tide_mask.interp(data.x, data.y) > 0.5)
+            except IndexError:
+                data.assign(floating=np.zeros_like(data.x, dtype=bool))
 
     if geoid_tol is not None:
         data.index((data.z - data.geoid_h) > geoid_tol)
@@ -631,7 +642,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
         return {'data':data}
 
     # call smooth_xytb_fitting
-    S=smooth_xytb_fit_aug(data=data,
+    S=smooth_fit(data=data,
                       ctr=ctr, W=W,
                       spacing=spacing, E_RMS=E_RMS0,
                       reference_epoch=reference_epoch,
@@ -808,6 +819,8 @@ def main(argv):
     parser.add_argument('--geoid_tol', type=float, help='points closer than this to the geoid will be rejected')
     parser.add_argument('--sigma_tol', type=float, help='points with sigma greater than this value will be edited')
     parser.add_argument('--mask_file', type=lambda p: os.path.abspath(os.path.expanduser(p)))
+    parser.add_argument('--rock_mask_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='mask indicating exposed rock')
+    parser.add_argument('--rock_mask_reject_value', type=float, default=1, help='value within the rock mask file that indicates rock')
     parser.add_argument('--geoid_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help="file containing geoid information")
     parser.add_argument('--tide_mask_file', type=lambda p: os.path.abspath(os.path.expanduser(p)))
     parser.add_argument('--tide_directory', type=lambda p: os.path.abspath(os.path.expanduser(p)))
@@ -836,7 +849,11 @@ def main(argv):
     args.avg_scales = [np.int64(temp) for temp in args.avg_scales.split(',')]
 
     spacing={'z0':args.grid_spacing[0], 'dz':args.grid_spacing[1], 'dt':args.grid_spacing[2]}
-    E_RMS={'d2z0_dx2':args.E_d2z0dx2, 'd3z_dx2dt':args.E_d3zdx2dt, 'd2z_dxdt':args.E_d3zdx2dt*args.data_gap_scale,  'd2z_dt2':args.E_d2zdt2}
+    E_RMS={'d2z0_dx2':args.E_d2z0dx2, 'd3z_dx2dt':args.E_d3zdx2dt, 'd2z_dt2':args.E_d2zdt2}
+
+    if args.data_gap_scale > 0:
+        E_RMS[ 'd2z_dxdt'] = args.E_d3zdx2dt*args.data_gap_scale
+    print("E_RMS="+str(E_RMS))
 
     reread_dirs=None
     dest_dir=args.base_directory
@@ -941,6 +958,8 @@ def main(argv):
            dzdt_lags=args.dzdt_lags, \
            N_subset=args.N_subset,\
            mask_file=args.mask_file, \
+           rock_mask_file=args.rock_mask_file, \
+           rock_mask_reject_value=args.rock_mask_reject_value,\
            region=args.region, \
            geoid_file=args.geoid_file,\
            tide_mask_file=args.tide_mask_file, \
