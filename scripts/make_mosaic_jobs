@@ -24,6 +24,8 @@ pad=5000
 feather=10000
 
 compute_sigma='True'
+compute_SMB='True'
+
 
 field=dz
 
@@ -36,6 +38,11 @@ echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $crop -R  -w  -
 if [ $compute_sigma == 'True' ]; then
   echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $crop -w  -d $base  -g 'prelim/*.h5'  -p $pad -f $feather -O $base/dz.h5 --in_group dz/ -F sigma_dz" >> $mosaic_run/task_${task}
 fi
+if [ $compute_SMB == 'True' ]; then
+  echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $crop -w  -d $base  -g 'prelim/*.h5'  -p $pad -f $feather -O $base/dz.h5 --in_group dz/ -F SMB_a FAC" >> $mosaic_run/task_${task}
+fi
+
+
 
 for lag in _lag1 _lag4 _lag8 _lag12 _lag16; do
     task=$(($task+1))
