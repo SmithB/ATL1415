@@ -894,9 +894,9 @@ def main(argv):
     if args.xy0 is None and args.calc_error_file is not None or args.data_file is not None:
         # get xy0 from the filename
         if args.calc_error_file is not None:
-            re_match=re.compile('E(.*)_N(.*).h5').search(args.calc_error_file)
+            re_match=re.compile('E(.*)_N(.*).h5').search(os.path.basename(args.calc_error_file))
         elif args.data_file is not None:
-            re_match=re.compile('E(.*)_N(.*).h5').search(args.data_file)
+            re_match=re.compile('E(.*)_N(.*).h5').search(os.path.basename(args.data_file))
         args.xy0=[float(re_match.group(ii))*1000 for ii in [1, 2]]
 
     if args.E_d2z0dx2_file is not None and args.calc_error_file is None:
