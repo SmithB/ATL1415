@@ -145,3 +145,4 @@ firn_run*
 
 # reduced-resolution masks
 *_reduced_1km.tif
+*_reduced_*m.tif
