@@ -17,6 +17,9 @@ for arg in sys.argv:
     except Exception:
         pass
 
+if n_threads=="1" and "SLURM_NTASKS" in os.environ:
+    n_threads=os.environ['SLURM_NTASKS']
+    print(f"n_threads={n_threads}")
 os.environ["MKL_NUM_THREADS"]=n_threads
 os.environ["OPENBLAS_NUM_THREADS"]=n_threads
 
@@ -221,7 +224,9 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, \
         D.index(np.isfinite(D.z))
     else:
         return None, file_list
-    D.index(( D.fit_quality ==0 ) | ( D.fit_quality == 2 ))
+    # accept crossover points, along-track points that include at least 5 cycles, and along-track-points that have good fit_quality stats
+    D.index( (D.along_track & (D.n_cycles>5)) |
+            (( D.fit_quality ==0 ) | ( D.fit_quality == 2 )))
     print(f'xover_count={xover_count}')
     return D, file_list
 
@@ -519,7 +524,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
     elif region is not None:
         if region in ['AA', 'GL']:
             pad=np.array([-1.e4, 1.e4])
-            mask_data=pc.grid.data().from_h5(mask_file,
+            mask_data=pc.grid.data().from_file(mask_file,
                                              bounds=[bds['x']+pad, bds['y']+pad],
                                              t_range=bds['t']+np.array([-1, 1]))
             if rock_mask_file is not None:
