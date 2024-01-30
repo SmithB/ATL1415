@@ -34,6 +34,7 @@ import h5py
 import traceback
 from ATL1415.reread_data_from_fits import reread_data_from_fits
 from ATL1415.make_mask_from_vector import make_mask_from_vector
+from ATL1415.SMB_corr_from_grid import SMB_corr_from_grid
 import pyTMD
 import scipy.optimize
 
@@ -95,7 +96,7 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, \
                         'ref_surf':['e_slope','n_slope', 'x_atc', 'fit_quality', 'dem_h', 'geoid_h']}
     xover_fields = pc.ATL11.crossover_data().__default_XO_field_dict__()
     xover_fields = xover_fields[list(xover_fields.keys())[0]] + ['spot_crossing']
- 
+
     try:
         # catch empty data
         D11_list=pc.geoIndex().from_file(index_file).query_xy_box(
@@ -442,6 +443,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
             firn_correction=None, \
             firn_directory=None,\
             firn_version=None,\
+            firn_grid_file=None,\
             avg_scales=None,\
             edge_pad=None,\
             error_res_scale=None,\
@@ -609,7 +611,13 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
         if 'h_firn' in data.fields:
             # if there is a firn varaible already, undo the correction
             data.z += data.h_firn
-        assign_firn_variable(data, firn_correction, firn_directory, hemisphere,
+        if firn_grid_file is not None:
+            if firn_correction=='MERRA2_hybrid':
+                # defaults work here:
+                SMB_corr_from_grid(data,
+                    model_file=os.path.join(firn_directory,firn_grid_file))
+        else:
+            assign_firn_variable(data, firn_correction, firn_directory, hemisphere,
                              model_version=firn_version, subset_valid=False)
         # make the correction
         data.z -= data.h_firn
@@ -836,6 +844,7 @@ def main(argv):
     parser.add_argument('--firn_directory', type=str, help='directory containing firn model')
     parser.add_argument('--firn_model', type=str, help='firn model name')
     parser.add_argument('--firn_version', type=str, help='firn version')
+    parser.add_argument('--firn_grid_file', type=str, help='gridded firn model file that can be interpolated directly.')
     parser.add_argument('--reference_epoch', type=int, default=0, help="Reference epoch number, for which dz=0")
     parser.add_argument('--data_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='read data from this file alone')
     parser.add_argument('--restart_edit', action='store_true')
@@ -976,6 +985,7 @@ def main(argv):
            firn_directory=args.firn_directory,\
            firn_version=args.firn_version,\
            firn_correction=args.firn_model,\
+           firn_grid_file=args.firn_grid_file,\
            max_iterations=args.max_iterations, \
            sigma_extra_bin_spacing=args.sigma_extra_bin_spacing,\
            sigma_extra_max=args.sigma_extra_max,\

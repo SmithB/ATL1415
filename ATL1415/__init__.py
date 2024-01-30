@@ -5,3 +5,4 @@ from .ATL14_attrs_meta import *
 from .reread_data_from_fits import *
 from .make_slurm_file import *
 from .assign_firn_variable import *
+from .SMB_corr_from_grid import SMB_corr_from_grid
