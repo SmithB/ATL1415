@@ -83,7 +83,7 @@ if '--ATL11_index' in defaults and not os.path.isfile(defaults['--ATL11_index'])
         if os.path.isfile(temp2):
             defaults['--ATL11_index']=temp2
         else:
-            raise(OSError(f"ATL11 index file {defaults['--ATL11_index']} does not exist"))        
+            raise(OSError(f"ATL11 index file {defaults['--ATL11_index']} does not exist in \n\t{temp1}\n\t or\n\t {temp2}"))
 
 
 # if ATL11 release is specified and ATL11 geoindex is not specified, guess the location
