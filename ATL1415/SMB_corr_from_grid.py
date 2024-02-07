@@ -96,16 +96,20 @@ def SMB_corr_from_grid(data, model_file=None, time=None, var_mapping=None,
 
     bounds=data.bounds()
     t_range = [np.nanmin(time), np.nanmax(time)]
+    #print(t_range)
 
+    # get the time resolution, increase slightly to catch cases where we are requesting one time step
+    # and it falls on a time value
     with h5py.File(model_file,'r') as h5f:
         if 't' in h5f:
-            delta_t=np.diff(np.array(h5f['t'][0:2]))
+            delta_t=np.diff(np.array(h5f['t'][0:2]))*1.05
         else:
-            delta_t=np.diff(np.array(h5f['time'][0:2]))
+            delta_t=np.diff(np.array(h5f['time'][0:2]))*1.05
     # first, try to read a narrow range of data
     smbfd=pc.grid.data().from_file(model_file, bounds=[np.array(jj)+pad_f for jj in bounds],
                                    t_range=[t_range[0]-delta_t, t_range[1]+delta_t],
                                    field_mapping=var_mapping)
+
     if not(np.all(np.isfinite(smbfd.SMB_a))):
         # if there are NaNs in the SMB fields, fill the gaps with smooth extrapoation
         smbfd=pc.grid.data().from_nc(model_file, bounds=[np.array(jj)+pad_c for jj in bounds],
