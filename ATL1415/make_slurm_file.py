@@ -9,10 +9,10 @@ def make_slurm_file(dst_file, subs=None, source_file='packable_job.txt', css=Fal
     # get the template file from [the current package source directory]/templates
     in_file=os.path.join(resources.files('ATL1415'),'resources','slurm_templates',source_file)
 
-    print(css)
+    #print(css)
     if subs is None:
         subs={}
-    print(subs)
+    #print(subs)
     in_re=re.compile('(\[\[(.*)=(.*)\]\])')
     with open(in_file,'r') as fh_in:
         with open(dst_file,'w') as fh_out:
@@ -27,7 +27,7 @@ def make_slurm_file(dst_file, subs=None, source_file='packable_job.txt', css=Fal
                       continue
                   pattern=m.group(1)
                   key=m.group(2)
-                  print(key)
+                  #print(key)
                   val=m.group(3)
                   if key in subs:
                       val=subs[key]
