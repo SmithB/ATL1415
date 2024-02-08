@@ -434,6 +434,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
             rock_mask_file=None,\
             rock_mask_reject_value=None,\
             geoid_file=None,\
+            E_d3zdx2dt_scale_file=None,\
             tide_mask_file=None,\
             tide_directory=None,\
             tide_adjustment=False,\
@@ -482,6 +483,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
         tide_adjustment_file: (string)  File for adjusting tide and dac values for ice shelf flexure
         tide_adjustment_format: (string) file format of the scaling factor grid
         tide_model: (string)  Name of the tide model to use for a given domain
+        E_d3zdx2dt_scale_file: (string) Filename containing scaling to be applied to the d3zdx2dt parameter
         avg_scales: (list of floats) scales over which the output grids will be averaged and errors will be calculated
         error_res_scale: (float) If errors are calculated, the grid resolution will be coarsened by this factor
         calc_error_file: (string) Output file for which errors will be calculated.
@@ -501,9 +503,6 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
     # work out which mask to use based on the region
     tide_mask_data=None
     mask_data=None
-    I_AM_SKIPPING_THE_EXISTING_MASK_DATA=False
-    if I_AM_SKIPPING_THE_EXISTING_MASK_DATA:
-        print("I_AM_SKIPPING_THE_EXISTING_MASK_DATA")
 
     read_mask_file=None
     if data_file is not None:
@@ -517,7 +516,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
         from ATL1415.update_masks_with_geoid import update_masks_with_geoid
         mask_update_function=update_masks_with_geoid
 
-    if read_mask_file is not None and I_AM_SKIPPING_THE_EXISTING_MASK_DATA is False:
+    if read_mask_file is not None:
         print("READING MASK DATA")
         mask_data={'z0':pc.grid.data().from_h5(read_mask_file, group='z0', fields=['mask']),
                    'dz':pc.grid.data().from_h5(read_mask_file, group='dz', fields=['mask'])}
@@ -555,6 +554,12 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
 
     # initialize file_list to empty in case we're rereading the data
     file_list=[]
+
+    constraint_scaling_maps=None
+    if E_d3zdx2dt_scale_file is not None:
+        constraint_scaling_maps={'d3z_dx2dt': pc.grid.data().from_file(
+            E_d3zdx2dt_scale_file,
+            bounds = [ii+Wxy*np.array([-0.6, 0.6]) for ii in xy0])}
 
     # figure out where to get the data
     if data_file is not None:
@@ -660,6 +665,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
                       spacing=spacing, E_RMS=E_RMS0,
                       reference_epoch=reference_epoch,
                       compute_E=compute_E,
+                      constraint_scaling_maps=constraint_scaling_maps,
                       sigma_extra_bin_spacing=sigma_extra_bin_spacing,
                       sigma_extra_max=sigma_extra_max,
                       prior_edge_args=prior_edge_args,
@@ -819,6 +825,7 @@ def main(argv):
     parser.add_argument('--E_d2z0dx2', type=float, default=0.02)
     parser.add_argument('--E_d3zdx2dt', type=float, default=0.0003)
     parser.add_argument('--E_d2z0dx2_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='file from which to read the expected d2z0dx2 values')
+    parser.add_argument('--E_d3zdx2dt_scale_file', type=str, help='grid file containing scaling values for the E_d3zdx2dt parameter')
     parser.add_argument('--data_gap_scale', type=float,  default=2500)
     parser.add_argument('--sigma_geo', type=float,  default=6.5)
     parser.add_argument('--sigma_radial', type=float,  default=0.03)
@@ -961,6 +968,7 @@ def main(argv):
 
     S=ATL11_to_ATL15(args.xy0, ATL11_index=args.ATL11_index,
            Wxy=args.Width, E_RMS=E_RMS, t_span=args.time_span, spacing=spacing, \
+           E_d3zdx2dt_scale_file=args.E_d3zdx2dt_scale_file,\
            bias_params=args.bias_params,\
            prior_edge_args=prior_edge_args, \
            sigma_geo=args.sigma_geo, \
