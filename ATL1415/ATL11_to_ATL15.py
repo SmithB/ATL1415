@@ -17,9 +17,10 @@ for arg in sys.argv:
     except Exception:
         pass
 
+# if THREADS was not specified as an input argument, check if it's set by slurm
 if n_threads=="1" and "SLURM_NTASKS" in os.environ:
     n_threads=os.environ['SLURM_NTASKS']
-    print(f"n_threads={n_threads}")
+
 os.environ["MKL_NUM_THREADS"]=n_threads
 os.environ["OPENBLAS_NUM_THREADS"]=n_threads
 
