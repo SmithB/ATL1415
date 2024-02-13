@@ -44,6 +44,7 @@ parser.add_argument('defaults_files', nargs='+', type=str)
 parser.add_argument('--region_file', '-R', type=str)
 parser.add_argument('--xy_list_file', type=str)
 parser.add_argument('--skip_errors','-s', action='store_true')
+parser.add_argument('--errors_only', action='store_true')
 parser.add_argument('--tile_spacing', type=int)
 parser.add_argument('--prior_edge_include', type=float, default=1000)
 parser.add_argument('--environment','-e', type=str)
@@ -253,7 +254,10 @@ with open(queue_file,'w') as qh:
                     continue
                 cmd='%s --xy0 %d %d --%s @%s ' % (prog, xy1[0], xy1[1], args.step, defaults_file)
                 if calc_errors:
-                    cmd += '; '+cmd+' --calc_error_for_xy'
+                    if args.errors_only:
+                        cmd +=   '--calc_error_for_xy'
+                    else:
+                        cmd += '; '+cmd+' --calc_error_for_xy'
             else:
                 prelim_file='%s/prelim/E%d_N%d.h5' % (region_dir, xy1[0]/1000, xy1[1]/1000)
 
