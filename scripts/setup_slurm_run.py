@@ -111,7 +111,8 @@ def __main__():
     R_vals=[0, 1.e7]
     if args.jobs_per_task is None:
         R_dict={1.e8:{'dir':'queue_6cpu', 'ncpu':6, 'xy':[], 'src_file':[]},
-        4.e5:{'dir':'queue_6cpu','ncpu':6, 'xy':[], 'src_file':[]},
+        5.0e5:{'dir':'queue_6cpu','ncpu':6, 'xy':[], 'src_file':[]},
+        4.0e5:{'dir':'queue_12cpu','ncpu':12, 'xy':[], 'src_file':[]},        
         3.0e5:{'dir':'queue_18cpu','ncpu':18, 'xy':[], 'src_file':[]},
         2.e5:{'dir':'queue_28cpu','ncpu':28, 'xy':[], 'src_file':[]}}
         R_vals=list(R_dict.keys())[::-1]

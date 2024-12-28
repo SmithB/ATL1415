@@ -43,6 +43,7 @@ parser.add_argument('step', type=str)
 parser.add_argument('defaults_files', nargs='+', type=str)
 parser.add_argument('--region_file', '-R', type=str)
 parser.add_argument('--xy_list_file', type=str)
+parser.add_argument('--tile_list_file', type=str)
 parser.add_argument('--skip_errors','-s', action='store_true')
 parser.add_argument('--errors_only', action='store_true')
 parser.add_argument('--tile_spacing', type=int)
@@ -52,6 +53,7 @@ parser.add_argument('--min_R', type=float)
 parser.add_argument('--max_R', type=float)
 parser.add_argument('--min_xy', type=float)
 parser.add_argument('--max_xy', type=float)
+parser.add_argument('--bounds', type=float, nargs=4)
 parser.add_argument('--queue_file','-q', type=str)
 parser.add_argument('--replace', action='store_true')
 args = parser.parse_args()
@@ -79,7 +81,10 @@ if args.region_file is not None:
             temp[m.group(1)]=[float(m.group(2)), float(m.group(3))]
     XR=temp['XR']
     YR=temp['YR']
-
+if args.bounds is not None:
+    XR=[args.bounds[0], args.bounds[1]]
+    YR=[args.bounds[2], args.bounds[3]]
+    
 defaults_re=re.compile('(.*)\s*=\s*(.*)')
 
 # read in all defaults files (must be of syntax --key=value or -key=value)
@@ -157,6 +162,13 @@ else:
     Wxy=args.tile_spacing
 
 Hxy=Wxy/2
+
+tile_list=None
+if args.tile_list_file is not None:
+    tile_list=[]
+    with open(args.tile_list_file,'r') as fh:
+        for line in fh:
+            tile_list += [line.rstrip()]
 
 if args.xy_list_file is not None:
     print("reading xy_list_file : " + args.xy_list_file)
@@ -268,7 +280,9 @@ with open(queue_file,'w') as qh:
                         cmd += '; '+cmd+' --calc_error_for_xy'
             else:
                 prelim_file='%s/prelim/E%d_N%d.h5' % (region_dir, xy1[0]/1000, xy1[1]/1000)
-
+                if tile_list is not None:
+                    if os.path.basename(prelim_file) not in tile_list:
+                        continue
                 matched_file=prelim_file.replace('prelim','matched')
                 if not os.path.isfile(prelim_file):
                     print(prelim_file)
