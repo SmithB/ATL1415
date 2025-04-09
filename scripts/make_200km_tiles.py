@@ -18,7 +18,7 @@ def make_fields():
 
     time_ranges={}
     time_ranges['dz']=[2019, 2050]
-    lags=['_lag1', '_lag4', '_lag8', '_lag12','_lag16', '_lag20']
+    lags=['_lag1', '_lag4', '_lag8', '_lag12','_lag16', '_lag20', '_lag24']
     for lag in lags:
         field_str='dzdt'+lag
         fields[field_str] = ["dzdt"+lag, "sigma_dzdt"+lag, "cell_area"]
