@@ -88,7 +88,7 @@ if '--ATL11_index' in defaults and not os.path.isfile(defaults['--ATL11_index'])
 
 # if ATL11 release is specified and ATL11 geoindex is not specified, guess the location
 if '--ATL11_index' not in defaults and '--ATL11_release' in defaults:
-    defaults['--ATL11_index'] = os.path.join(defaults['--ATL14_root'], 'ATL11_rel'+defaults['--ATL11_release'], hemisphere_name, 'index','GeoIndex.h5')
+    defaults['--ATL11_index'] = os.path.join(defaults['--ATL14_root'], 'ATL11_'+defaults['--ATL11_release'], hemisphere_name, 'index','GeoIndex.h5')
     defaults.pop('--ATL11_release')
 
 if not os.path.isfile(defaults['--ATL11_index']):

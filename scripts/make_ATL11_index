@@ -50,7 +50,7 @@ for hemi in 'north' 'south'; do
 	    base=`basename $file`
 	    [ -L $hemi_dir/$base ] || ln -s $file $hemi_dir
 	
-	    index_file=$index_dir"/"$base
+	    index_file="./"$base
 	    [ -f $index_file ] && continue
 	    echo "$env_str pushd $index_dir; $prog  --hemisphere $hemisphere --type ATL11 -g ../$base --index_file $index_file --Relative" >> index_queue.txt    
 	done

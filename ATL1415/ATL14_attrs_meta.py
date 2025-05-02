@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import numpy as np
+import numpy.ma as ma
 import sys, os
 from netCDF4 import Dataset
 import netCDF4
@@ -11,7 +12,7 @@ import json
 import re
 import glob
 import uuid
-import pkg_resources
+from importlib import resources
 import warnings
 from datetime import datetime
 from ATL1415.version import softwareVersion,softwareDate,softwareTitle,identifier,series_version
@@ -71,6 +72,7 @@ def write_atl14meta(dst,fileout,ncTemplate,args):
     dst['METADATA/DatasetIdentification'].setncattr('creationDate', str(datetime.now().date()))
     root_info.update({'fileName': os.path.basename(fileout)})
     dst['METADATA/DatasetIdentification'].setncattr('fileName', os.path.basename(fileout))
+    dst['METADATA/DatasetIdentification'].setncattr('VersionID', os.path.basename(fileout).split('_')[4])
     root_info.update({'identifier_product_format_version': series_version()})
     dst['METADATA/SeriesIdentification'].setncattr('VersionID', series_version())
     dst['METADATA/ProcessStep/PGE'].setncattr('softwareDate', softwareDate())
@@ -188,15 +190,10 @@ def set_geobounds(dst,fileout,root_info):
     lonmin,lonmax,latmin,latmax = multipoint.GetEnvelope()
     if (lonmin == -180.0) | (lonmax == 180.0):
         lonmin,lonmax = (-180.0,180.0)
-    root_info.update({'geospatial_lon_min': lonmin})
-    root_info.update({'geospatial_lon_max': lonmax})
-    root_info.update({'geospatial_lat_min': latmin})
-    root_info.update({'geospatial_lat_max': latmax})
-
 # set variables and attributes, from JSON polygons, if present
     try:
       region = os.path.basename(fileout).split("_")[1]
-      polyfile = pkg_resources.resource_filename('ATL1415','resources/region_extent_polygons.json')
+      polyfile = os.path.join(resources.files('ATL1415'),'resources','region_extent_polygons.json')
       with open (polyfile) as poly_f:
         poly_data = poly_f.read()
       reg_poly = region+'_poly'
@@ -206,6 +203,10 @@ def set_geobounds(dst,fileout,root_info):
       dst['/orbit_info'].variables['bounding_polygon_dim1'][:] = np.arange(1,np.size(x)+1)
       dst['/orbit_info'].variables['bounding_polygon_lon1'][:] = np.array(x)[:]
       dst['/orbit_info'].variables['bounding_polygon_lat1'][:] = np.array(y)[:]
+      latmin = min(np.array(y))
+      latmax = max(np.array(y))
+      lonmin=ma.min(ma.masked_where(abs(np.array(y)) > 88.0, np.array(x)))
+      lonmax=ma.max(ma.masked_where(abs(np.array(y)) > 88.0, np.array(x)))
     except:
       warnings.filterwarnings("always")
       warnings.warn("Deprecated. Use polygon from json file", DeprecationWarning)
@@ -216,4 +217,8 @@ def set_geobounds(dst,fileout,root_info):
     dst['/METADATA/Extent'].setncattr('eastBoundLongitude',lonmax)
     dst['/METADATA/Extent'].setncattr('northBoundLatitude',latmax)
     dst['/METADATA/Extent'].setncattr('southBoundLatitude',latmin)
+    root_info.update({'geospatial_lon_min': lonmin})
+    root_info.update({'geospatial_lon_max': lonmax})
+    root_info.update({'geospatial_lat_min': latmin})
+    root_info.update({'geospatial_lat_max': latmax})
 

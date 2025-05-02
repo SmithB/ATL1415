@@ -5,6 +5,9 @@ source activate IS2
 base=$1
 region=`basename $base`
 
+# specify "prelim" as the second argument, default is "matched"
+[ -z "$2" ] && step="matched" || step=$2
+
 mosaic_run=${region}_mosaic
 
 if [ -f $base/bounds.txt  ]; then
@@ -24,33 +27,38 @@ pad=5000
 feather=10000
 
 compute_sigma='True'
-compute_SMB='True'
+compute_SMB='False'
+#compute_SMB='True'
 
 
 field=dz
 
-glob_str="'matched/*.h5'"
+glob_str="'$step/*.h5'"
 
 task=0
 
+TR="--t_range 2019 2050"
 task=$(($task+1))
-echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $crop -R  -w  -d $base  -g $glob_str  -p $pad -f $feather -O $base/dz.h5 --in_group dz/ -F count misfit_rms misfit_scaled_rms mask cell_area $field" > $mosaic_run/task_${task}
+echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $crop $TR -R  -w  -d $base  -g $glob_str  -p $pad -f $feather -O $base/dz.h5 --in_group dz/ -F count misfit_rms misfit_scaled_rms mask cell_area $field" > $mosaic_run/task_${task}
 if [ $compute_sigma == 'True' ]; then
-  echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $crop -w  -d $base  -g 'prelim/*.h5'  -p $pad -f $feather -O $base/dz.h5 --in_group dz/ -F sigma_dz" >> $mosaic_run/task_${task}
+  echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $crop $TR -w  -d $base  -g 'prelim/*.h5'  -p $pad -f $feather -O $base/dz.h5 --in_group dz/ -F sigma_dz" >> $mosaic_run/task_${task}
 fi
 if [ $compute_SMB == 'True' ]; then
-  echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $crop -w  -d $base  -g 'prelim/*.h5'  -p $pad -f $feather -O $base/dz.h5 --in_group dz/ -F SMB_a FAC" >> $mosaic_run/task_${task}
+  echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $crop -w $TR -d $base  -g 'prelim/*.h5'  -p $pad -f $feather -O $base/dz.h5 --in_group dz/ -F SMB_a FAC" >> $mosaic_run/task_${task}
 fi
 
 
 
-for lag in _lag1 _lag4 _lag8 _lag12 _lag16; do
+for lag in _lag1 _lag4 _lag8 _lag12 _lag16 _lag20; do
+    TR='--t_range '$(echo $lag | sed s/_lag// | awk '{print 2019+0.25*$1/2, 2050}')
+
     task=$(($task+1))
         #echo "lag=$lag"
         field=dzdt$lag
-        echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $crop -R -w  -d $base  -g  $glob_str  -p $pad -f $feather -O $base/dzdt$lag.h5 --in_group dzdt$lag/ -F $field cell_area" >> $mosaic_run/task_${task}
+	TR='--t_range '$(echo $lag | sed s/_lag// | awk '{print 2019+0.25*$1/2, 2050}')
+        echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $crop $TR -R -w  -d $base  -g  $glob_str  -p $pad -f $feather -O $base/dzdt$lag.h5 --in_group dzdt$lag/ -F $field cell_area" >> $mosaic_run/task_${task}
         if [ $compute_sigma == 'True' ]; then
-	    echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $crop -w  -d $base  -g  'prelim/*.h5'  -p $pad -f $feather -O $base/dzdt$lag.h5 --in_group dzdt$lag/ -F sigma_$field" >> $mosaic_run/task_${task} 
+	    echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $crop $TR -w  -d $base  -g  'prelim/*.h5'  -p $pad -f $feather -O $base/dzdt$lag.h5 --in_group dzdt$lag/ -F sigma_$field" >> $mosaic_run/task_${task} 
         fi
 done
 
@@ -75,32 +83,36 @@ for group in avg_dz_40000m avg_dz_20000m avg_dz_10000m; do
 	this_w=""
     fi
     out=`echo $group | sed s/000m/km/ | sed s/avg_//`
+    TR="--t_range 2019 2050"
     task=$(($task+1))
-    echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $crop $this_w -R -d $base  -g  $glob_str  -p $this_pad -f $this_feather $this_S -O $base/$out.h5 --in_group $group/ -F $field cell_area" > $mosaic_run/task_${task}
+    echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $crop $this_w $TR -R -d $base  -g  $glob_str  -p $this_pad -f $this_feather $this_S -O $base/$out.h5 --in_group $group/ -F $field cell_area" > $mosaic_run/task_${task}
     if [ $compute_sigma == 'True' ]; then
-	    echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $crop $this_w -d $base  -g  'prelim/*.h5'  -p $this_pad -f $this_feather $this_S -O $base/$out.h5 --in_group $group/ -F sigma_$group" >> $mosaic_run/task_${task}
+	    echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $crop $this_w $TR -d $base  -g  'prelim/*.h5'  -p $this_pad -f $this_feather $this_S -O $base/$out.h5 --in_group $group/ -F sigma_$group" >> $mosaic_run/task_${task}
     fi
 
     
     group=`echo $group | sed s/dz/dzdt/`
     out=`echo $out | sed s/dz/dzdt/`
-    for lag in _lag1 _lag4 _lag8 _lag12 _lag16; do
+    for lag in _lag1 _lag4 _lag8 _lag12 _lag16 _lag20; do
         field=$group$lag
 	field_list="$field cell_area"
 	task=$(($task+1))
 
+	TR='--t_range '$(echo $lag | sed s/_lag// | awk '{print 2019+0.25*$1/2, 2050}')
+
         #echo "lag=$lag, group=$group, task=$task"
-        echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $crop -R $this_w  -d $base  -g  $glob_str  -p $this_pad -f $this_feather $this_S -O $base/$out$lag.h5 --in_group $field/ -F $field_list" > $mosaic_run/task_${task}
+        echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $crop $TR  -R $this_w  -d $base  -g  $glob_str  -p $this_pad -f $this_feather $this_S -O $base/$out$lag.h5 --in_group $field/ -F $field_list" > $mosaic_run/task_${task}
 	if [ $compute_sigma == 'True' ]; then
 	    sigma_field=sigma_${group}${lag}
-	    echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $crop $this_w -d $base  -g  'prelim/*.h5'  -p $this_pad -f $this_feather $this_S -O $base/$out$lag.h5 --in_group $field/ -F $sigma_field" >> $mosaic_run/task_${task}
+	    echo "python3 ~/git_repos/pointCollection/scripts/make_mosaic.py $crop $TR $this_w -d $base  -g  'prelim/*.h5'  -p $this_pad -f $this_feather $this_S -O $base/$out$lag.h5 --in_group $field/ -F $sigma_field" >> $mosaic_run/task_${task}
 	fi
     done
 done
 
 
-field_list="z0 misfit_rms misfit_scaled_rms mask cell_area count"
+# z0
 
+field_list="z0 misfit_rms misfit_scaled_rms mask cell_area count"
 
 task=$(($task+1))
 
@@ -126,4 +138,4 @@ mv $mosaic_run/task* $mosaic_run/queue
 
 cat slurm_scripts/slurm_mos_run | sed s/LAST_TASK/$task/ | sed s/XX/$region/ >> $mosaic_run/slurm_mos_run
 pushd $mosaic_run
-sbatch slurm_mos_run
+#sbatch slurm_mos_run

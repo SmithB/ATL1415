@@ -16,20 +16,24 @@ def make_fields():
 
     fields['dz']="dz sigma_dz count misfit_rms misfit_scaled_rms mask cell_area".split(' ')
 
-    lags=['_lag1', '_lag4', '_lag8', '_lag12','_lag16']
+    time_ranges={}
+    time_ranges['dz']=[2019, 2050]
+    lags=['_lag1', '_lag4', '_lag8', '_lag12','_lag16', '_lag20', '_lag24']
     for lag in lags:
-        fields['dzdt'+lag]=["dzdt"+lag, "sigma_dzdt"+lag, "cell_area"]
-
+        field_str='dzdt'+lag
+        fields[field_str] = ["dzdt"+lag, "sigma_dzdt"+lag, "cell_area"]
+        time_ranges[field_str] = [2019+0.25*int(lag.replace('_lag',''))/2, 2050] 
     for res in ["_40000m", "_20000m", "_10000m"]:
         fields['avg_dz'+res] = ["avg_dz"+res, "sigma_avg_dz"+res,'cell_area']
+        time_ranges['avg_dz'+res] = [2019, 2050]
         for lag in lags:
             field_str='avg_dzdt'+res+lag
             fields[field_str]=[field_str, 'sigma_'+field_str, 'cell_area']
-
+            time_ranges[field_str] = [2019+0.25*int(lag.replace('_lag',''))/2, 2050] 
     #for key, item in fields.items():
     #print(key+" : "+str(item))
     #print(fields)
-    return fields
+    return fields, time_ranges
 
 def make_200km_tiles(region_dir):
     print("looking for tiles for "+region_dir)
@@ -75,7 +79,7 @@ parser.add_argument('--W', type=int, default=60000)
 parser.add_argument('--spacing', type=int, default=40000)
 parser.add_argument('--skip_sigma', action='store_true')
 parser.add_argument('--name', type=str)
-parser.add_argument('--environment','-e', type=str, default='IS2', help="environment that each job will activate")
+parser.add_argument('--environment','-e', type=str, default='ATL14', help="environment that each job will activate")
 args=parser.parse_args()
 
 region_dir=args.region_dir
@@ -94,7 +98,7 @@ print(f"***pad={args.pad}, feather={args.feather}, overlap={overlap}")
 print(f"Skip sigma is {args.skip_sigma}, step is {step}")
 print("region_dir is " +region_dir)
 
-fields=make_fields()
+fields, time_ranges=make_fields()
 xyc=make_200km_tiles(region_dir)
 
 tile_dir_200km=os.path.join(region_dir,'200km_tiles')
@@ -152,9 +156,14 @@ for count, xy in enumerate(xyc):
             out_file = os.path.join(out_dir, f"{group}{tile_bounds_1km}.h5")
 
             fh.write("#\n")
-            fh.write(f"make_mosaic.py -w -R -d {region_dir} -g '{step}/E*.h5' -r {search_bounds_str} -f {feather} -p {pad} -c {tile_bounds_str} -G {group} -F {non_sigma_fields[group]} -O {out_file} {spacing_str}\n")
+
+            if group=='z0':
+                time_str=''
+            else:
+                time_str = f"--t_range {time_ranges[group][0]} {time_ranges[group][1]}"
+            fh.write(f"make_mosaic.py -w -R -d {region_dir} -g '{step}/E*.h5' -r {search_bounds_str} -f {feather} -p {pad} -c {tile_bounds_str} -G {group} -F {non_sigma_fields[group]} -O {out_file} {spacing_str} {time_str}\n")
             if not args.skip_sigma:
-                fh.write(f"make_mosaic.py -w  -d {region_dir} -g 'prelim/E*.h5' -r {search_bounds_str} -f {feather} -p {pad} -c {tile_bounds_str} -G {group} -F {sigma_fields[group]} -O {out_file} {spacing_str}\n")
+                fh.write(f"make_mosaic.py -w  -d {region_dir} -g 'prelim/E*.h5' -r {search_bounds_str} -f {feather} -p {pad} -c {tile_bounds_str} -G {group} -F {sigma_fields[group]} -O {out_file} {spacing_str} {time_str}\n")
     st=os.stat(task_file)
     os.chmod(task_file, st.st_mode | stat.S_IEXEC)   
 

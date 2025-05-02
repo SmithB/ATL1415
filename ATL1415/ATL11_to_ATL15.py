@@ -17,9 +17,10 @@ for arg in sys.argv:
     except Exception:
         pass
 
+# if THREADS was not specified as an input argument, check if it's set by slurm
 if n_threads=="1" and "SLURM_NTASKS" in os.environ:
     n_threads=os.environ['SLURM_NTASKS']
-    print(f"n_threads={n_threads}")
+
 os.environ["MKL_NUM_THREADS"]=n_threads
 os.environ["OPENBLAS_NUM_THREADS"]=n_threads
 
@@ -761,21 +762,30 @@ def mask_components_by_time(dz):
 
 
 def interp_ds(ds, scale):
+
+    delta_xy=[(ds.x[1]-ds.x[0])/scale, (ds.y[1]-ds.y[0])/scale]
+    xi=np.arange(ds.x[0], ds.x[-1]+delta_xy[0], delta_xy[0])
+    yi=np.arange(ds.y[0], ds.y[-1]+delta_xy[1], delta_xy[1])
+    out=pc.grid.data().from_dict({'x':xi,'y':yi})
+    if len(ds.shape)==2:
+        out.time=ds.time
     for field in ds.fields:
-        delta_xy=[(ds.x[1]-ds.x[0])/scale, (ds.y[1]-ds.y[0])/scale]
-        xi=np.arange(ds.x[0], ds.x[-1]+delta_xy[0], delta_xy[0])
-        yi=np.arange(ds.y[0], ds.y[-1]+delta_xy[1], delta_xy[1])
         z0=getattr(ds, field)
+        # for sigma fields, fill in the areas around the valid points with
+        # a smoothed version of the error field
         if len(ds.shape)==2:
-            zi=pc.grid.data().from_dict({'x':ds.x, 'y':ds.y, 'z':z0}).interp(xi, yi, gridded=True)
-            return pc.grid.data().from_dict({'x':xi, 'y':yi, field:zi})
+            if 'sigma' in field:
+                z0=pc.grid.fill_edges( z0, w_smooth=1, ndv=0)
+            out.assign({field:pc.grid.data().from_dict({'x':ds.x, 'y':ds.y, 'z':z0}).interp(xi, yi, gridded=True)})
         else:
+            if 'sigma' in field:
+                z0=pc.grid.fill_edges(z0, w_smooth=1, dim=2, ndv=0)
             zi=np.zeros([xi.size, yi.size, ds.time.size])
             for epoch in range(ds.time.size):
                 temp=pc.grid.data().from_dict({'x':ds.x, 'y':ds.y, 'z':np.squeeze(z0[:,:,epoch])})
                 zi[:,:,epoch] = temp.interp(xi, yi, gridded=True)
-            return pc.grid.data().from_dict({'x':xi, 'y':yi, 'time':ds.time, field:zi})
-
+            out.assign({field:zi})
+    return out
 def save_errors_to_file( S, filename, dzdt_lags=None, reference_epoch=None, grid_datasets=None):
 
     for key, ds in S['E'].items():

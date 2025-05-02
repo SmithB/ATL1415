@@ -43,7 +43,9 @@ parser.add_argument('step', type=str)
 parser.add_argument('defaults_files', nargs='+', type=str)
 parser.add_argument('--region_file', '-R', type=str)
 parser.add_argument('--xy_list_file', type=str)
+parser.add_argument('--tile_list_file', type=str)
 parser.add_argument('--skip_errors','-s', action='store_true')
+parser.add_argument('--errors_only', action='store_true')
 parser.add_argument('--tile_spacing', type=int)
 parser.add_argument('--prior_edge_include', type=float, default=1000)
 parser.add_argument('--environment','-e', type=str)
@@ -51,6 +53,7 @@ parser.add_argument('--min_R', type=float)
 parser.add_argument('--max_R', type=float)
 parser.add_argument('--min_xy', type=float)
 parser.add_argument('--max_xy', type=float)
+parser.add_argument('--bounds', type=float, nargs=4)
 parser.add_argument('--queue_file','-q', type=str)
 parser.add_argument('--replace', action='store_true')
 args = parser.parse_args()
@@ -63,6 +66,9 @@ if args.skip_errors:
     calc_errors=False
 else:
     calc_errors=True
+
+if args.errors_only:
+    args.replace=True
     
 XR=None
 YR=None
@@ -75,7 +81,10 @@ if args.region_file is not None:
             temp[m.group(1)]=[float(m.group(2)), float(m.group(3))]
     XR=temp['XR']
     YR=temp['YR']
-
+if args.bounds is not None:
+    XR=[args.bounds[0], args.bounds[1]]
+    YR=[args.bounds[2], args.bounds[3]]
+    
 defaults_re=re.compile('(.*)\s*=\s*(.*)')
 
 # read in all defaults files (must be of syntax --key=value or -key=value)
@@ -114,6 +123,8 @@ release_dir = os.path.join(defaults['--ATL14_root'], "rel"+defaults['--Release']
 hemi_dir=os.path.join(release_dir, hemisphere_name)
 if "--base_directory" in defaults:
     region_dir=defaults['--base_directory']
+elif '-b' in defaults:
+    region_dir=defaults['-b']
 else:
     region_dir=os.path.join(hemi_dir, defaults['--region'])
 
@@ -152,6 +163,13 @@ else:
 
 Hxy=Wxy/2
 
+tile_list=None
+if args.tile_list_file is not None:
+    tile_list=[]
+    with open(args.tile_list_file,'r') as fh:
+        for line in fh:
+            tile_list += [line.rstrip()]
+
 if args.xy_list_file is not None:
     print("reading xy_list_file : " + args.xy_list_file)
     # if a list file exists, read it to get the initial centers
@@ -172,10 +190,13 @@ else:
     if mask_ext in ('.tif','.h5'):
         if mask_ext=='.h5' and '_100m' in mask_base:
             tif_1km=defaults['--mask_file'].replace('_100m.h5', '_1km.tif')
+        elif  mask_ext=='.h5' and '_240m' in mask_base:
+             tif_1km=defaults['--mask_file'].replace('_240m.h5', '_1km.tif')
         elif '_full' in mask_base:
             tif_1km=defaults['--mask_file'].replace('_full.h5', '_1km.tif')
         else:
             tif_1km=defaults['--mask_file'].replace('100m','1km').replace('125m','1km')
+        print()
         print(tif_1km)
         print()
         temp=pc.grid.data().from_geotif(tif_1km)
@@ -253,10 +274,15 @@ with open(queue_file,'w') as qh:
                     continue
                 cmd='%s --xy0 %d %d --%s @%s ' % (prog, xy1[0], xy1[1], args.step, defaults_file)
                 if calc_errors:
-                    cmd += '; '+cmd+' --calc_error_for_xy'
+                    if args.errors_only:
+                        cmd +=   '--calc_error_for_xy'
+                    else:
+                        cmd += '; '+cmd+' --calc_error_for_xy'
             else:
                 prelim_file='%s/prelim/E%d_N%d.h5' % (region_dir, xy1[0]/1000, xy1[1]/1000)
-
+                if tile_list is not None:
+                    if os.path.basename(prelim_file) not in tile_list:
+                        continue
                 matched_file=prelim_file.replace('prelim','matched')
                 if not os.path.isfile(prelim_file):
                     print(prelim_file)

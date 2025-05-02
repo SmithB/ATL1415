@@ -28,6 +28,8 @@ fi
 
 glob_str=$step'/*.h5'
 
+echo "working on $base/mosaics/dz.h5"
+
 echo "----------------------------"
 echo "searching for tiles using:"
 echo $glob_str
