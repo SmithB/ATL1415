@@ -74,7 +74,7 @@ def select_best_xovers(D):
             ii[count]=i_pt[np.argsort(D.h_corr_sigma[i_pt])[0]]
     D.index(ii)
 
-def read_ATL11(xy0, Wxy, index_file, SRS_proj4, \
+def read_ATL11(xy0, Wxy, index_file, SRS_proj4, xover_tile_root=None,\
                sigma_geo=6.5, sigma_radial=0.03):
     '''
     read ATL11 data from an index file
@@ -98,11 +98,11 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, \
     xover_fields = pc.ATL11.crossover_data().__default_XO_field_dict__()
     xover_fields = xover_fields[list(xover_fields.keys())[0]] + ['spot_crossing']
 
+    bounds = [xy0[0]+np.array([-Wxy/2, Wxy/2]), xy0[1]+np.array([-Wxy/2, Wxy/2])]
     try:
         # catch empty data
         D11_list=pc.geoIndex().from_file(index_file).query_xy_box(
-            xy0[0]+np.array([-Wxy/2, Wxy/2]), \
-            xy0[1]+np.array([-Wxy/2, Wxy/2]), fields=field_dict_11)
+            *bounds, fields=field_dict_11)
     except ValueError:
         return None, []
     if D11_list is None:
@@ -156,25 +156,27 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, \
             continue
         # N.B.  D11 is getting indexed in this step, and it's leading to the warning in
         # line 76.  Can fix by making crossover_data.from_h5 copy D11 on input
-        D_x = pc.ATL11.crossover_data().from_h5(D11.filename, pair=D11.pair, D_at=D11,\
-                                                crossover_fields=xover_fields)
-        if D_x is None:
-            continue
-        # constant fields in D11 apply to all cycles, but are mapped
-        # only to some specific cycle of the reference cycle
-        constant_fields = ['fit_quality', 'dem_h', 'geoid_h']
-        for field in constant_fields:
-            temp=getattr(D_x, field)
-            val=np.nanmax(temp[:,:,0], axis=1)
-            for cycle in range(D_x.shape[1]):
-                temp[:, cycle, 1] = val
-        #temp={'fit_quality':np.nanmax(D_x.fit_quality[:,:,0], axis=1),
-        #      'dem_h':np.nanmax(D_x.dem_h[:,:,0], axis=1)}
-        #for cycle in range(D_x.shape[1]):
-        #    D_x.fit_quality[:,cycle,1]=temp['fit_quality']
-        #    D_x.dem_h[:,cycle,1]=temp['dem_h']
 
-        D_x.get_xy(proj4_string=SRS_proj4)
+        D_x=[]
+        D_r=[]
+        xover_cycles=[1, 2]
+        for x_cycle in xover_cycles:
+            schema_file = os.path.join(xover_tile_dir,
+                                       f'cycle_{x_cycle:02d}',
+                                       '200km_tiles.json')
+            xover_files = pc.tilingSchema().from_file(schema_file).filenames_for_box(*bounds)
+            for xover_file in xover_files:
+                D_x += pc.data().from_h5(xover_file, group='crossing_track').get_xy(proj4_string=SRS_proj4)
+                D_r += pc.data().from_h5(xover_file, group='datum_track', fields=['rgt','ref_pt','pair_track','cycle_number'])
+                keep = (D_x.x >= bounds[0][0]) & (D_x.x <= bounds[0][1]) &\
+                     (D_x.y >= bounds[1][0]) & (D_x.y <= bounds[1][1])
+                D_x[-1].index(keep)
+                D_r[-1].index(keep)
+        D_x = pc.data().from_list(D_x)
+        D_r = pc.data().from_list(D_r)
+       ######HERE#####
+       i_ref = pc.unique_by_rows(np.c_[D11.rgt, D11.pair_track, D11.ref_pt], return_index=True)
+        for field in ['geoid_h', 
 
         good=np.isfinite(D_x.h_corr)[:,0:2,1].ravel()
         for field in D_x.fields:
