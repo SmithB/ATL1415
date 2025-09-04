@@ -29,6 +29,11 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, xover_tile_root=None, sigma_geo=
     D_at, ATL11_file_list = read_ATL11_at(bounds, index_file, SRS_proj4,
                   sigma_geo=sigma_geo,
                   sigma_radial=sigma_radial)
+
+    # by default, the xovers tiles should be in a subdirectory of the ATL11 directory,
+    if xover_tile_root is None:
+        xover_tile_root = os.path.join(os.path.dirname(os.path.dirname(index_file)), 'xover_tiles')
+
     D_xo, xover_file_list = read_ATL11_xovers(bounds, xover_tile_root, D_at, SRS_proj4,
                                               xover_cycles=xover_cycles)
     return pc.data().from_list(D_at, D_xo), ATL11_file_list + xover_file_list
@@ -55,8 +60,6 @@ def read_ATL11_at(bounds, index_file, SRS_proj4,
                         '__calc_internal__' : ['rgt'],
                         'cycle_stats' : {'tide_ocean','dac'},
                         'ref_surf':['e_slope','n_slope', 'x_atc', 'fit_quality', 'dem_h', 'geoid_h']}
-    xover_fields = pc.ATL11.crossover_data().__default_XO_field_dict__()
-    xover_fields = xover_fields[list(xover_fields.keys())[0]] + ['spot_crossing']
 
     try:
         # catch empty data
@@ -109,7 +112,7 @@ def read_ATL11_at(bounds, index_file, SRS_proj4,
 
     return pc.data().from_list(D_list)
 
-def read_ATL11_xovers(bounds, xover_tile_dir, D_at, SRS_proj4, xover_cycles=[1,2]):
+def read_ATL11_xovers(bounds, D_at, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2]):
 
     D_x=[]
     D_r=[]
