@@ -618,7 +618,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
             # if there is a firn varaible already, undo the correction
             data.z += data.h_firn
         if firn_grid_file is not None:
-            if firn_correction=='MERRA2_hybrid':
+            if firn_correction=='MERRA2_hybrid' or firn_correction=='GEMB':
                 # defaults work here:
                 SMB_corr_from_grid(data,
                     model_file=os.path.join(firn_directory,firn_grid_file))

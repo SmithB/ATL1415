@@ -82,7 +82,7 @@ def SMB_corr_from_grid(data, model_file=None, time=None, var_mapping=None,
     """
 
     if var_mapping is None:
-        var_mapping={'SMB_a':'SMB_a','FAC':'FAC','h_a':'h_a'}
+        var_mapping={'SMB_a':'SMB_a','FAC':'FAC'}#,'h_a':'h_a'}
 
     w_smooth=1
     pad_f=np.array([-2.6e4, 2.6e4])
