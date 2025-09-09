@@ -25,6 +25,10 @@ share/python-wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+notebooks/
+masks/*/*.tif
+masks/*/*.nc
+masks/*/*.h5
 MANIFEST
 
 # PyInstaller
