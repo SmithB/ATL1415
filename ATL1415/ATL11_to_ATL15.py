@@ -239,7 +239,9 @@ def set_three_sigma_edit_with_DEM(data, xy0, Wxy, DEM_file, DEM_tol, W_med=None)
             good[ii] &= (np.abs(r_DEM[ii] - np.nanmedian(r_DEM[ii])) < DEM_tol)
     data.three_sigma_edit &= good
 
-def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, E_RMS={}, \
+def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
+            ATL11_xover_dir=None,\
+            E_RMS={}, \
             t_span=[2019.25, 2020.5], \
             spacing={'z0':2.5e2, 'dz':5.e2, 'dt':0.25},  \
             sigma_geo=6.5,\
@@ -646,6 +648,7 @@ def main(argv):
         fromfile_prefix_chars="@")
     parser.add_argument('--xy0', type=float, nargs=2, help="fit center location")
     parser.add_argument('--ATL11_index', type=lambda p: os.path.abspath(os.path.expanduser(p)), required=True, help="ATL11 index file")
+    parser.add_argument('--ATL11_xover_dir', type=str, help="ATL11 crossover directory.  Tiles should be in cycle_xx subdirectories")
     parser.add_argument('--Width','-W',  type=float, help="Width of grid")
     parser.add_argument('--time_span','-t', type=str, help="time span, first year,last year AD (comma separated, no spaces)")
     parser.add_argument('--grid_spacing','-g', type=str, help='grid spacing:DEM (meters),dh maps xy (meters),dh_maps time (years): comma-separated, no spaces', default='250.,4000.,1.')
@@ -808,7 +811,8 @@ def main(argv):
 
     print("ATL11_to_ATL15: working on "+args.out_name)
 
-    S=ATL11_to_ATL15(args.xy0, ATL11_index=args.ATL11_index,
+    S=ATL11_to_ATL15(args.xy0, ATL11_index=args.ATL11_index,\
+           ATL11_xover_dir=args.ATL11_xover_dir,\
            Wxy=args.Width, E_RMS=E_RMS, t_span=args.time_span, spacing=spacing, \
            E_d3zdx2dt_scale_file=args.E_d3zdx2dt_scale_file,\
            bias_params=args.bias_params,\
