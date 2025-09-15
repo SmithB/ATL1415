@@ -10,15 +10,15 @@ import numpy as np
 import os
 
 
-def select_best_xovers(D):
-    _, i_pts = pc.unique_by_rows(np.c_[D.rgt, D.cycle_number, D.beam_pair], return_dict=True)
+def select_best_xover_index(D):
+    _, i_pts = pc.unique_by_rows(np.c_[D.rgt, D.cycle_number, D.pair_track], return_dict=True)
     ii = np.zeros(len(i_pts), dtype=int)
     for count, (pt, i_pt) in enumerate(i_pts.items()):
         if len(i_pt)==0:
             ii[count]=i_pt
         else:
             ii[count]=i_pt[np.argsort(D.h_corr_sigma[i_pt])[0]]
-    D.index(ii)
+    return ii
 
 
 def read_ATL11(xy0, Wxy, index_file, SRS_proj4, xover_tile_root=None, sigma_geo=6.5, sigma_radial=0.03, xover_cycles=[1,2]):
@@ -32,12 +32,12 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, xover_tile_root=None, sigma_geo=
 
     if xover_tile_root is None:
         return D_at, ATL11_file_list
-    
+
     # Otherwise, read the crossover tiles
     D_xo, xover_file_list = read_ATL11_xovers(bounds, D_at, SRS_proj4,
-                                              xover_tile_dir = xover_tile_root, 
+                                              xover_tile_dir = xover_tile_root,
                                               xover_cycles = xover_cycles)
-    return pc.data().from_list(D_at, D_xo), ATL11_file_list + xover_file_list
+    return pc.data().from_list([D_at, D_xo]), ATL11_file_list + xover_file_list
 
 
 def read_ATL11_at(bounds, index_file, SRS_proj4,
@@ -115,15 +115,38 @@ def read_ATL11_at(bounds, index_file, SRS_proj4,
 
     return pc.data().from_list(D_list), D11_files
 
-def read_ATL11_xovers(bounds, D_at, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2]):
+def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2]):
+    '''
+    read crossover data from tiles
+
+    Parameters
+    ----------
+    bounds : 2-iterable of 2-iterables
+        iter.
+    SRS_proj4 : str
+        proj4 string for the spatial reference system to be used.
+    xover_tile_dir : str, optional
+        tile directory to be read. The default is None.
+    xover_cycles : iterble of ints, optional
+        crossover cycles to be read. The default is [1,2].
+
+    Returns
+    -------
+    D_xo : pointCollection.data
+        data object containing crossover data.
+    xover_files_used : list
+        crossover files read.
+
+    '''
 
     D_x=[]
-    D_r=[]
+    D_d=[]
     for x_cycle in xover_cycles:
         schema_file = os.path.join(xover_tile_dir,
                                    f'cycle_{x_cycle:02d}',
                                    '200km_tiling.json')
         xover_files = pc.tilingSchema().from_file(schema_file).filenames_for_box(bounds)
+        xover_files_used = []
         for xover_file in xover_files:
             D_xi = pc.data().from_h5(xover_file, group='crossing_track').get_xy(proj4_string=SRS_proj4)
             keep = (D_xi.x >= bounds[0][0]) & (D_xi.x <= bounds[0][1]) &\
@@ -131,47 +154,45 @@ def read_ATL11_xovers(bounds, D_at, SRS_proj4, xover_tile_dir=None, xover_cycles
             if not np.any(keep):
                 continue
             D_xi.index(keep)
-            D_ri = pc.data().from_h5(xover_file, group='datum_track', fields=['rgt','ref_pt','pair_track','cycle_number'])
-            D_ri.index(keep)
+            D_di = pc.data().from_h5(xover_file, group='datum_track',
+                                     fields=['rgt','ref_pt','pair_track','cycle_number',
+                                             'dem_h','geoid_h','fit_quality',
+                                             'n_slope','e_slope'])
+            D_di.index(keep)
             D_x += [D_xi]
-            D_r += [D_ri]
+            D_d += [D_di]
+            xover_files_used += [xover_file]
 
     D_x = pc.data().from_list(D_x)
-    D_r = pc.data().from_list(D_r)
-    # Make sortable indexes for the along-track data
-    rtp_at = np.core.records.fromarrays([D_at.rgt, D_at.pair, D_at.ref_pt])
-    rtp_xo = np.core.records.fromarrays([D_r.rgt, D_r.pair_track, D_r.ref_pt])
-    i_at = rtp_at.argsort()
-    i_xo = i_at[np.searchsorted(rtp_xo, rtp_at[i_at])]
-    # map parameters from the along-track data to the across-track data
-    for field in ['geoid_h', 'dem_h','n_slope', 'e_slope','sigma_corr']:
-        D_x.assign({field : getattr(D_at, field)[i_xo]})
+    D_d = pc.data().from_list(D_d)
 
     # choose the smallest_sigma xover for each rgt and pair
-    select_best_xovers(D_x)
+    ii = select_best_xover_index(D_x)
+    D_x=D_x[ii]
+    D_d=D_d[ii]
 
-    blank = np.zeros_like(D_x.h_corr) + np.NaN
-    D_xo = [pc.data().from_dict({
+    blank = np.zeros_like(D_x.h_corr) + np.nan
+    D_xo = pc.data().from_dict({
         'z':D_x.h_corr,
         'sigma':D_x.h_corr_sigma,
-        'sigma_corr': D_x.h_corr,
+        'sigma_corr': D_x.h_corr_sigma_systematic,
         'x':D_x.x,
         'y':D_x.y,
         'latitude':D_x.latitude,
         'longitude':D_x.longitude,
-        'dem_h':D_x.dem_h,
-        'geoid_h':D_x.geoid_h,
+        'dem_h':D_d.dem_h,
+        'geoid_h':D_d.geoid_h,
         'rgt':D_x.rgt,
-        'pair':D_x.beam_pair,
-        'ref_pt':blank,
+        'pair':D_x.pair_track,
+        'ref_pt':D_d.ref_pt,
         'cycle':D_x.cycle_number,
         'n_cycles':blank,
-        'fit_quality':D_r.fit_quality,
+        'fit_quality':D_d.fit_quality,
         'tide_ocean':D_x.tide_ocean,
         'dac':D_x.dac,
         'delta_time':D_x.delta_time,
-        'n_slope':D_x.n_slope,
-        'e_slope':D_x.e_slope,
+        'n_slope':D_d.n_slope,
+        'e_slope':D_d.e_slope,
         'time': D_x.delta_time/24/3600/365.25+2018,
-        'along_track':np.zeros_like(D_x.x, dtype=bool)})]
-    return D_xo, xover_files
+        'along_track':np.zeros_like(D_x.x, dtype=bool)})
+    return D_xo, xover_files_used
