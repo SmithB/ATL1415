@@ -21,7 +21,9 @@ def select_best_xover_index(D):
     return ii
 
 
-def read_ATL11(xy0, Wxy, index_file, SRS_proj4, xover_tile_root=None, sigma_geo=6.5, sigma_radial=0.03, xover_cycles=[1,2]):
+def read_ATL11(xy0, Wxy, index_file, SRS_proj4, xover_tile_root=None,
+               sigma_geo=6.5, sigma_radial=0.03, xover_cycles=[1,2],
+               verbose=False):
 
 
     bounds = [xy0[0]+np.array([-Wxy/2, Wxy/2]), xy0[1]+np.array([-Wxy/2, Wxy/2])]
@@ -34,9 +36,10 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, xover_tile_root=None, sigma_geo=
         return D_at, ATL11_file_list
 
     # Otherwise, read the crossover tiles
-    D_xo, xover_file_list = read_ATL11_xovers(bounds, D_at, SRS_proj4,
+    D_xo, xover_file_list = read_ATL11_xovers(bounds, SRS_proj4,
                                               xover_tile_dir = xover_tile_root,
-                                              xover_cycles = xover_cycles)
+                                              xover_cycles = xover_cycles,
+                                              verbose=verbose)
     return pc.data().from_list([D_at, D_xo]), ATL11_file_list + xover_file_list
 
 
@@ -115,7 +118,7 @@ def read_ATL11_at(bounds, index_file, SRS_proj4,
 
     return pc.data().from_list(D_list), D11_files
 
-def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2]):
+def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2], verbose=False):
     '''
     read crossover data from tiles
 
@@ -129,6 +132,8 @@ def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2]
         tile directory to be read. The default is None.
     xover_cycles : iterble of ints, optional
         crossover cycles to be read. The default is [1,2].
+    verbose : bool, optional
+        if True, report status
 
     Returns
     -------
@@ -148,6 +153,10 @@ def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2]
         xover_files = pc.tilingSchema().from_file(schema_file).filenames_for_box(bounds)
         xover_files_used = []
         for xover_file in xover_files:
+            if not os.path.isfile(xover_file):
+                if verbose:
+                    print(f'read_ATL11_xovers: {xover_file} not found')
+                continue
             D_xi = pc.data().from_h5(xover_file, group='crossing_track').get_xy(proj4_string=SRS_proj4)
             keep = (D_xi.x >= bounds[0][0]) & (D_xi.x <= bounds[0][1]) &\
                  (D_xi.y >= bounds[1][0]) & (D_xi.y <= bounds[1][1])
@@ -195,4 +204,6 @@ def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2]
         'e_slope':D_d.e_slope,
         'time': D_x.delta_time/24/3600/365.25+2018,
         'along_track':np.zeros_like(D_x.x, dtype=bool)})
+    if verbose:
+        print(f"read_ATL11_xovers: read {D_xo.size} crossing_track measurements from {len(xover_files_used)} files")
     return D_xo, xover_files_used
