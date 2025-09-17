@@ -244,6 +244,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
             E_RMS={}, \
             t_span=[2019.25, 2020.5], \
             spacing={'z0':2.5e2, 'dz':5.e2, 'dt':0.25},  \
+            z0_average_scale=None,\
             sigma_geo=6.5,\
             sigma_radial=0.03,\
             dzdt_lags=[1, 4],\
@@ -407,7 +408,8 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
         data, tile_reread_list = reread_data_from_fits(xy0, Wxy, reread_dirs, template='E%d_N%d.h5')
     else:
         data, file_list = read_ATL11(xy0, Wxy, ATL11_index, SRS_proj4,
-                                     sigma_geo=sigma_geo, sigma_radial=sigma_radial)
+                                     sigma_geo=sigma_geo, sigma_radial=sigma_radial,
+                                     xover_tile_root=ATL11_xover_dir)
         if sigma_tol is not None and data is not None:
             data.index(data.sigma < sigma_tol)
         if data is not None:
@@ -513,6 +515,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
                       error_res_scale=error_res_scale,
                       ancillary_data=ancillary_data,
                       mask_update_function=mask_update_function,
+                      z0_average_scale = z0_average_scale,
                       avg_scales=avg_scales)
     S['file_list'] = file_list
     return S
@@ -702,7 +705,7 @@ def main(argv):
     parser.add_argument('--restart_edit', action='store_true')
     parser.add_argument('--calc_error_file','-c', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='file containing data for which errors will be calculated')
     parser.add_argument('--calc_error_for_xy', action='store_true', help='calculate the errors for the file specified by the x0, y0 arguments')
-    parser.add_argument('--error_res_scale','-s', type=float, nargs=2, default=[4, 2], help='if the errors are being calculated (see calc_error_file), scale the grid resolution in x and y to be coarser')
+    parser.add_argument('--error_res_scale','-s', type=float, nargs=2, default=[5, 2], help='if the errors are being calculated (see calc_error_file), scale the grid resolution in x and y to be coarser')
     parser.add_argument('--bias_params', type=str, default="rgt,cycle", help='one bias parameter will be assigned for each unique combination of these ATL11 parameters (comma-separated list with no spaces)')
     parser.add_argument('--region', type=str, help='region for which calculation is being performed')
     parser.add_argument('--verbose','-v', action="store_true")
@@ -795,6 +798,7 @@ def main(argv):
     if args.tide_adjustment_file is not None:
         args.tide_adjustment=True
 
+    z0_average_scale = spacing['dz']
     if args.error_res_scale is not None:
         if args.calc_error_file is not None:
             for ii, key in enumerate(['z0','dz']):
@@ -853,6 +857,7 @@ def main(argv):
            DEM_tol=args.DEM_tol, \
            geoid_tol=args.geoid_tol,\
            sigma_tol=args.sigma_tol, \
+           z0_average_scale = z0_average_scale,\
            write_data_only=args.write_data_only)
 
     status=0
