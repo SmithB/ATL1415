@@ -118,7 +118,7 @@ def read_ATL11_at(bounds, index_file, SRS_proj4,
 
     return pc.data().from_list(D_list), D11_files
 
-def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2], verbose=False):
+def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2], verbose=True):
     '''
     read crossover data from tiles
 
