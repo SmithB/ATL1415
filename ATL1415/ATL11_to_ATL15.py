@@ -712,12 +712,20 @@ def main(argv):
     parser.add_argument('--write_data_only', action='store_true', help='save data without processing')
     args, unknown=parser.parse_known_args()
 
-    args.grid_spacing = [np.float64(temp) for temp in args.grid_spacing.split(',')]
     args.dzdt_lags = [np.int64(temp) for temp in args.dzdt_lags.split(',')]
     args.time_span = [np.float64(temp) for temp in args.time_span.split(',')]
     args.avg_scales = [np.int64(temp) for temp in args.avg_scales.split(',')]
 
-    spacing={'z0':args.grid_spacing[0], 'dz':args.grid_spacing[1], 'dt':args.grid_spacing[2]}
+    spacing={}
+    for dim, this_sp in zip(['z0','dz','dt'], args.grid_spacing.split(',')):
+        if '/' in this_sp:
+            # this is a fractional spacing (e.g. 1/12 year)
+            this_sp = this_sp.split('/')
+            this_sp = float(this_sp[0])/float(this_sp[1])
+        else:
+            this_sp = float(this_sp)
+        spacing[dim] = this_sp
+    args.grid_spacing = [spacing['z0'], spacing['dz'], spacing['dt']]
     E_RMS={'d2z0_dx2':args.E_d2z0dx2, 'd3z_dx2dt':args.E_d3zdx2dt, 'd2z_dt2':args.E_d2zdt2}
 
     if args.data_gap_scale > 0:
