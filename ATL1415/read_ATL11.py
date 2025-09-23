@@ -11,7 +11,19 @@ import os
 
 
 def select_best_xover_index(D):
-    _, i_pts = pc.unique_by_rows(np.c_[D.rgt, D.cycle_number, D.pair_track], return_dict=True)
+    """
+    Select the best crossing-track data for each crossover location
+
+    For each crossover (defined by a unique ref rgt, crossing rgt, ref pair, and crossing pair),
+    select the measurement from each cycle with the smallest error in corrected height
+
+    input:
+        D: pointCollection.data structure containing crossing track data
+    output:
+        ii: numpy array of indexes of minimum-error points
+    """
+
+    _, i_pts = pc.unique_by_rows(np.c_[D.rgt, D.ref_rgt, D.pair_track, D.ref_pair, D.cycle_number], return_dict=True)
     ii = np.zeros(len(i_pts), dtype=int)
     for count, (pt, i_pt) in enumerate(i_pts.items()):
         if len(i_pt)==0:
