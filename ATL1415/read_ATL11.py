@@ -44,6 +44,10 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, xover_tile_root=None,
                   sigma_geo=sigma_geo,
                   sigma_radial=sigma_radial)
 
+    # exit if no data returned
+    if D_at is None:
+        return None, []
+
     if xover_tile_root is None:
         return D_at, ATL11_file_list
 
@@ -183,7 +187,8 @@ def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2]
             D_x += [D_xi]
             D_d += [D_di]
             xover_files_used += [xover_file]
-
+    if len(D_x)==0 or not hasattr(D_x[0],'rgt'):
+        return None, []
     D_x = pc.data().from_list(D_x)
     D_d = pc.data().from_list(D_d)
 
