@@ -421,6 +421,7 @@ if __name__=='__main__':
     parser.add_argument('-R','--Release', type=str, help="3-digit release number for output filename")
     parser.add_argument('-v','--version', type=str, help="2-digit version number for output filename")
     parser.add_argument('--ATL11_index', type=str, help='GeoIndex file pointing to ATL11 data')
+    parser.add_argument('--ATL11_xover_dir', type=str, help="directory containing ATL11 crossover cycle directories")
     parser.add_argument('-list11','--ATL11_lineage_dir', type=str, help='directory in which to look for ATL11 .h5 filenames')
     parser.add_argument('-tiles','--tiles_dir', type=str, help='directory in which to look for tile .h5 files')
     args, unknown = parser.parse_known_args()

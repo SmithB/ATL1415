@@ -12,6 +12,7 @@ import json
 import re
 import glob
 import uuid
+import timescale
 from importlib import resources
 import warnings
 from datetime import datetime
@@ -82,6 +83,62 @@ def write_atl14meta(dst,fileout,ncTemplate,args):
     for key, keyval in root_info.items():
         dst.setncattr(key, keyval)
 
+def attributes_for_ATL11_file(file, delta_time_range, args):
+
+    # regular expression for extracting ATL11 parameters
+    rx = re.compile(r'(ATL\d{2})_(\d{4})(\d{2})_(\d{2})(\d{2})_(\d{3})_(\d{2}).*?.h5$')
+    lineage_attrs=['end_cycle', 'end_geoseg', 'end_orbit', 'end_region', 'end_rgt',
+                    'fileName', 'shortName', 'start_cycle', 'start_geoseg',
+                    'start_orbit', 'start_region', 'start_rgt',
+                    'uuid', 'version', 'release']
+    # initialize the file_attribute (fa) dict:
+    fa= {attr : 'NOT_SET' for attr in lineage_attrs}
+    fa['fileName'] = os.path.basename(file)
+    # extract attributes from filename
+    try:
+        fa['shortName'], \
+        fa['start_rgt'], \
+        fa['start_region'],\
+        fa['start_cycle'],\
+        fa['end_cycle'],\
+        fa['release'],\
+        fa['version'] = rx.search(file).groups()
+        atl11path = args.ATL11_lineage_dir
+        this_format='along-track'
+    except Exception:
+        rx=re.compile('(ATL11xo)_.._E.*_N.*_c(\d\d)_(\d\d\d)_(\d\d).h5$')
+        fa['shortName'],\
+        fa['start_cycle'],\
+        fa['release'],\
+        fa['version'] = rx.search(file).groups()
+        fa['end_cycle'] = fa['start_cycle']
+        atl11path = os.path.join(args.ATL11_xover_dir, f'cycle_{fa["start_cycle"]}')
+        this_format='xo'
+    with h5py.File(os.path.join(atl11path,file),'r') as fileID:
+        # extract ATL11 attributes from files
+        fa['uuid'] = fileID['METADATA']['DatasetIdentification'].attrs['uuid'].decode('utf-8')
+        fa['start_geoseg'] = fileID['ancillary_data/start_geoseg'][0]
+        fa['end_geoseg'] = fileID['ancillary_data/end_geoseg'][0]
+        if this_format=='xo':
+            # start_rgt and end_rgt are not in the filename, read them from the file
+            fa['start_rgt'] = fileID['ancillary_data/start_rgt'][0]
+            fa['end_rgt'] = fileID['ancillary_data/end_rgt'][0]
+        else:
+            #start_region, end_region, start_orbit, end_orbit are not defined for an ATL11xo file
+            fa['start_orbit'] = fileID['ancillary_data/start_orbit'][0]
+            fa['end_orbit'] = fileID['ancillary_data/end_orbit'][0]
+            fa['end_region'] = fa['start_region']
+        sdeltatime = fileID['ancillary_data/start_delta_time'][0]
+        edeltatime = fileID['ancillary_data/end_delta_time'][0]
+        # track earliest and latest delta time and UTC
+        if sdeltatime < delta_time_range['start']:
+            delta_time_range['start'] = sdeltatime
+        if edeltatime > delta_time_range['end']:
+            delta_time_range['end'] = edeltatime
+    fa['end_rgt'] = fa['start_rgt']
+    
+    return fa
+
 # To recursively step through groups
 def walktree(top):
     yield top.groups.values()
@@ -93,11 +150,9 @@ def set_lineage(dst,root_info,args):
     atl11path = args.ATL11_lineage_dir
 # list of lineage attributes
     lineage = []
-# regular expression for extracting ATL11 parameters
-    rx = re.compile(r'(ATL\d{2})_(\d{4})(\d{2})_(\d{2})(\d{2})_(\d{3})_(\d{2})(.*?).h5$')
 # For each tile:
-    min_start_delta_time = np.finfo(np.float64()).max
-    max_end_delta_time = np.finfo(np.float64()).tiny
+    delta_time_range = {'start':np.finfo(np.float64()).max,
+                        'end': np.finfo(np.float64()).tiny}
     ATL11_files=set()
     for tile in glob.iglob(os.path.join(tilepath,'*.h5')):
         with h5py.File(tile,'r') as h5f:
@@ -105,56 +160,28 @@ def set_lineage(dst,root_info,args):
             if inputs[0]=='b':
                 inputs=inputs[1:]
             ATL11_files.update(inputs.replace("'",'').split(','))
-    for FILE in ATL11_files:
-        # extract parameters from filename
-        PRD,TRK,GRAN,SCYC,ECYC,RL,VERS,AUX = rx.findall(FILE).pop()
-        with h5py.File(os.path.join(atl11path,FILE),'r') as fileID:
-            # extract ATL11 attributes from files
-            UUID = fileID['METADATA']['DatasetIdentification'].attrs['uuid'].decode('utf-8')
-            SGEOSEG = fileID['ancillary_data/start_geoseg'][0]
-            EGEOSEG = fileID['ancillary_data/end_geoseg'][0]
-            SORBIT = fileID['ancillary_data/start_orbit'][0]
-            EORBIT = fileID['ancillary_data/end_orbit'][0]
-            sdeltatime = fileID['ancillary_data/start_delta_time'][0]
-            edeltatime = fileID['ancillary_data/end_delta_time'][0]
-            # track earliest and latest delta time and UTC
-            if sdeltatime < min_start_delta_time:
-                sUTCtime = fileID['ancillary_data/data_start_utc'][0].decode('utf-8')
-                min_start_delta_time = sdeltatime
-            if edeltatime > max_end_delta_time:
-                eUTCtime = fileID['ancillary_data/data_end_utc'][0].decode('utf-8')
-                max_end_delta_time = edeltatime
-
-        # merge attributes as a tuple
-        attrs = (FILE,PRD,int(TRK),int(GRAN),int(SCYC),int(ECYC),int(VERS),UUID,int(SGEOSEG),
-                int(EGEOSEG),int(SORBIT),int(EORBIT))
+    for file in ATL11_files:
+        fa = attributes_for_ATL11_file(file, delta_time_range, args)
         # add attributes to list, if not already present
-        if attrs not in lineage:
-            lineage.append(attrs)
+        if fa not in lineage:
+            lineage.append(fa)
+    # convert starting and ending delta times to UTC
+    sUTCtime, eUTCtime = [
+        timescale.timescale.from_deltatime(delta_time, epoch=timescale.time._atlas_sdp_epoch, standard='GPS').to_string()
+                for delta_time in [delta_time_range['start'], delta_time_range['end']] ]
     # reduce to unique lineage attributes (no repeat files)
     #    sorted(set(lineage))
-
-# sort and set lineage attributes
-    slineage = sorted(lineage,key=lambda x: (x[0]))
-    dst['METADATA/Lineage/ATL11'].setncattr('fileName',list(zip(*slineage))[0])
-    dst['METADATA/Lineage/ATL11'].setncattr('shortName',list(zip(*slineage))[1])
-    dst['METADATA/Lineage/ATL11'].setncattr('start_rgt',list(zip(*slineage))[2])
-    dst['METADATA/Lineage/ATL11'].setncattr('end_rgt',list(zip(*slineage))[2])
-    dst['METADATA/Lineage/ATL11'].setncattr('start_region',list(zip(*slineage))[3])
-    dst['METADATA/Lineage/ATL11'].setncattr('end_region',list(zip(*slineage))[3])
-    dst['METADATA/Lineage/ATL11'].setncattr('start_cycle',list(zip(*slineage))[4])
-    dst['METADATA/Lineage/ATL11'].setncattr('end_cycle',list(zip(*slineage))[5])
-    dst['METADATA/Lineage/ATL11'].setncattr('version',list(zip(*slineage))[6])
-    dst['METADATA/Lineage/ATL11'].setncattr('uuid',list(zip(*slineage))[7])
-    dst['METADATA/Lineage/ATL11'].setncattr('start_geoseg',list(zip(*slineage))[8])
-    dst['METADATA/Lineage/ATL11'].setncattr('end_geoseg',list(zip(*slineage))[9])
-    dst['METADATA/Lineage/ATL11'].setncattr('start_orbit',list(zip(*slineage))[10])
-    dst['METADATA/Lineage/ATL11'].setncattr('end_orbit',list(zip(*slineage))[11])
+    slineage={ key:[] for key in lineage[0] }
+    for l_i in sorted(lineage, key=lambda x: (x['fileName'])):
+        for key, val in l_i.items():
+            slineage[key].append(val)
+    for field, val in slineage.items():
+        dst['METADATA/Lineage/ATL11'].setncattr(field, val)
 
 # set time attributes
     root_info.update({'time_coverage_start': sUTCtime})
     root_info.update({'time_coverage_end': eUTCtime})
-    root_info.update({'time_coverage_duration': max_end_delta_time-min_start_delta_time})
+    root_info.update({'time_coverage_duration': delta_time_range['start'] - delta_time_range['end']})
     dst['/METADATA/Extent'].setncattr('rangeBeginningDateTime',sUTCtime)
     dst['/METADATA/Extent'].setncattr('rangeEndingDateTime',eUTCtime)
 
