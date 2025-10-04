@@ -409,7 +409,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
     else:
         data, file_list = read_ATL11(xy0, Wxy, ATL11_index, SRS_proj4,
                                      sigma_geo=sigma_geo, sigma_radial=sigma_radial,
-                                     xover_tile_root=ATL11_xover_dir)
+                                     xover_tile_root=ATL11_xover_dir, hemisphere=hemisphere)
         if sigma_tol is not None and data is not None:
             data.index(data.sigma < sigma_tol)
         if data is not None:

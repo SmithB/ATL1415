@@ -35,7 +35,7 @@ def select_best_xover_index(D):
 
 def read_ATL11(xy0, Wxy, index_file, SRS_proj4, xover_tile_root=None,
                sigma_geo=6.5, sigma_radial=0.03, xover_cycles=[1,2],
-               verbose=False):
+               verbose=False, hemisphere=None):
 
 
     bounds = [xy0[0]+np.array([-Wxy/2, Wxy/2]), xy0[1]+np.array([-Wxy/2, Wxy/2])]
@@ -55,7 +55,7 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, xover_tile_root=None,
     D_xo, xover_file_list = read_ATL11_xovers(bounds, SRS_proj4,
                                               xover_tile_dir = xover_tile_root,
                                               xover_cycles = xover_cycles,
-                                              verbose=verbose)
+                                              verbose=verbose, hemisphere=hemisphere)
     return pc.data().from_list([D_at, D_xo]), ATL11_file_list + xover_file_list
 
 
@@ -134,7 +134,7 @@ def read_ATL11_at(bounds, index_file, SRS_proj4,
 
     return pc.data().from_list(D_list), D11_files
 
-def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2], verbose=True):
+def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2], hemisphere=None, verbose=True):
     '''
     read crossover data from tiles
 
@@ -160,12 +160,17 @@ def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2]
 
     '''
 
+    if hemisphere==-1:
+        hemi='AA'
+    else:
+        hemi='AR'
+
     D_x=[]
     D_d=[]
     for x_cycle in xover_cycles:
         schema_file = os.path.join(xover_tile_dir,
                                    f'cycle_{x_cycle:02d}',
-                                   '200km_tiling.json')
+                                   f'200km_tiling_{hemi}.json')
         xover_files = pc.tilingSchema().from_file(schema_file).filenames_for_box(bounds)
         xover_files_used = []
         for xover_file in xover_files:
@@ -184,6 +189,7 @@ def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2]
                                              'dem_h','geoid_h','fit_quality',
                                              'n_slope','e_slope'])
             D_di.index(keep)
+            D_xi.assign(cycle_number=np.zeros_like(D_xi.x)+x_cycle)
             D_x += [D_xi]
             D_d += [D_di]
             xover_files_used += [xover_file]
@@ -191,7 +197,7 @@ def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2]
         return None, []
     D_x = pc.data().from_list(D_x)
     D_d = pc.data().from_list(D_d)
-
+    D_x.assign(ref_rgt = D_d.rgt, ref_pair=D_d.pair_track)
     # choose the smallest_sigma xover for each rgt and pair
     ii = select_best_xover_index(D_x)
     D_x=D_x[ii]
