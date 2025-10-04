@@ -49,7 +49,7 @@ fi
 
 
 
-for lag in _lag1 _lag4 _lag8 _lag12 _lag16 _lag20; do
+for lag in _lag1 _lag4 _lag8 _lag12 _lag16 _lag20 _lag24; do
     TR='--t_range '$(echo $lag | sed s/_lag// | awk '{print 2019+0.25*$1/2, 2050}')
 
     task=$(($task+1))
@@ -93,7 +93,7 @@ for group in avg_dz_40000m avg_dz_20000m avg_dz_10000m; do
     
     group=`echo $group | sed s/dz/dzdt/`
     out=`echo $out | sed s/dz/dzdt/`
-    for lag in _lag1 _lag4 _lag8 _lag12 _lag16 _lag20; do
+    for lag in _lag1 _lag4 _lag8 _lag12 _lag16 _lag20 _lag24; do
         field=$group$lag
 	field_list="$field cell_area"
 	task=$(($task+1))
