@@ -37,7 +37,7 @@ glob_str="'$step/*.h5'"
 
 task=0
 
-TR="--t_range 2019.25 2050"
+TR="--t_range 2019 2050"
 task=$(($task+1))
 echo "make_mosaic.py $crop $TR -R  -w  -d $base  -g $glob_str  -p $pad -f $feather -O $base/dz.h5 --in_group dz/ -F count misfit_rms misfit_scaled_rms mask cell_area $field" > $mosaic_run/task_${task}
 if [ $compute_sigma == 'True' ]; then

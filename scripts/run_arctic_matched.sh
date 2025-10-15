@@ -9,7 +9,7 @@
 release_file=$1
 shift
 
-loc_file=$2
+loc_file=$1
 shift
 
 if [ ! -f $release_file ]; then
