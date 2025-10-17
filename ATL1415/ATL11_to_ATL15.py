@@ -256,6 +256,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
             sigma_extra_max=None,\
             prior_edge_args=None,\
             data_file=None, \
+            ATL14_reference_file=None,\
             restart_edit=False, \
             max_iterations=5, \
             N_subset=8,  \
@@ -347,7 +348,8 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
         read_mask_file=calc_error_file
 
     mask_update_function=None
-    if geoid_file is not None:
+    ancillary_data={}
+    if geoid_file is not None and ATL14_reference_file is None:
         ancillary_data={'geoid_file':geoid_file}
         from ATL1415.update_masks_with_geoid import update_masks_with_geoid
         mask_update_function=update_masks_with_geoid
@@ -464,8 +466,9 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
         # make the correction
         data.z -= data.h_firn
 
-    # to reject ATL06/11 blunders
-    set_three_sigma_edit_with_DEM(data, xy0, Wxy, DEM_file, DEM_tol)
+    # to reject ATL06/11 blunders (don't do this if we are using an ATL14 reference and we're calculating errors)
+    if calc_error_file is None or ATL14_reference_file is None:
+        set_three_sigma_edit_with_DEM(data, xy0, Wxy, DEM_file, DEM_tol)
 
     # apply the tides if a directory has been provided
     # NEW 2/19/2021: apply the tides only if we have not read the data from first-round fits.
@@ -490,12 +493,25 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
             except IndexError:
                 data.assign(floating=np.zeros_like(data.x, dtype=bool))
 
-    if geoid_tol is not None:
+    # edit data points that are below the geoid
+    if geoid_tol is not None and calc_error_file is None:
         data.index((data.z - data.geoid_h) > geoid_tol)
+
+    if ATL14_reference_file is not None and calc_error_file is None:
+        data.assign(z_ref = pc.grid.data().from_nc(ATL14_reference_file, bounds=data.bounds(pad=1.e3), field='h')\
+                    .interp(data.x, data.y, field='h'))
+        data.assign(sigma_zref = pc.grid.data().from_nc(ATL14_reference_file, bounds=data.bounds(pad=1.e3), field='h_sigma')\
+                    .interp(data.x, data.y, field='h_sigma'))
+        E_RMS['z0'] = np.nanmedian(data.sigma_zref)
+        data.z -= data.z_ref
+        data.index(np.isfinite(data.z) & (np.abs(data.z) < DEM_tol))
 
     if write_data_only:
         return {'data':data}
 
+    if verbose:
+        print("ATL11_to_ATL15: summary of data before fitting:")
+        print(data.summary())
     # call smooth_xytb_fitting
     S=smooth_fit(data=data,
                       ctr=ctr, W=W,
@@ -665,6 +681,7 @@ def main(argv):
     parser.add_argument('--matched', action="store_true")
     parser.add_argument('--prior_edge_include', type=float, help='include prior constraints over this width at the edge of each tile')
     parser.add_argument('--prior_sigma_scale', type=float, default=1, help='scale prior error estimates by this value')
+    parser.add_argument('--ATL14_reference_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='if specified, subtract the ATL14 heights from this file')
     parser.add_argument('--tile_spacing', type=float, default=60000.)
     parser.add_argument('--sigma_extra_bin_spacing', type=float, default=None, help='width over which data are collected to calculate the extra error estimates')
     parser.add_argument('--sigma_extra_max', type=float, default=None, help='maximum value for sigma_extra,')
@@ -700,7 +717,8 @@ def main(argv):
     parser.add_argument('--firn_model', type=str, help='firn model name')
     parser.add_argument('--firn_version', type=str, help='firn version')
     parser.add_argument('--firn_grid_file', type=str, help='gridded firn model file that can be interpolated directly.')
-    parser.add_argument('--reference_epoch', type=int, default=0, help="Reference epoch number, for which dz=0")
+    parser.add_argument('--reference_epoch', type=int, help="Reference epoch number, for which dz=0")
+    parser.add_argument('--reference_time', type=float, help="time value that will be used to choose the reference epoch if it is not specified")
     parser.add_argument('--data_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='read data from this file alone')
     parser.add_argument('--restart_edit', action='store_true')
     parser.add_argument('--calc_error_file','-c', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='file containing data for which errors will be calculated')
@@ -715,7 +733,7 @@ def main(argv):
     args.dzdt_lags = [np.int64(temp) for temp in args.dzdt_lags.split(',')]
     args.time_span = [np.float64(temp) for temp in args.time_span.split(',')]
     args.avg_scales = [np.int64(temp) for temp in args.avg_scales.split(',')]
-
+    
     spacing={}
     for dim, this_sp in zip(['z0','dz','dt'], args.grid_spacing.split(',')):
         if '/' in this_sp:
@@ -726,6 +744,15 @@ def main(argv):
             this_sp = float(this_sp)
         spacing[dim] = this_sp
     args.grid_spacing = [spacing['z0'], spacing['dz'], spacing['dt']]
+
+    if args.reference_epoch is None:
+        if args.reference_time is None:
+            raise(ValueError("Need to specify either reference_epoch or reference_time"))
+        args.reference_epoch = np.argmin(np.abs(
+            np.arange(args.time_span[0], args.time_span[1]+0.01*args.grid_spacing[2], args.grid_spacing[2])-args.reference_time))
+        print(f"reference_epoch = {args.reference_epoch}")
+
+    
     E_RMS={'d2z0_dx2':args.E_d2z0dx2, 'd3z_dx2dt':args.E_d3zdx2dt, 'd2z_dt2':args.E_d2zdt2}
 
     if args.data_gap_scale > 0:
@@ -833,6 +860,7 @@ def main(argv):
            sigma_radial=args.sigma_radial, \
            hemisphere=args.Hemisphere, reread_dirs=reread_dirs, \
            data_file=args.data_file, \
+           ATL14_reference_file=args.ATL14_reference_file,\
            restart_edit=args.restart_edit, \
            out_name=args.out_name,
            dzdt_lags=args.dzdt_lags, \
