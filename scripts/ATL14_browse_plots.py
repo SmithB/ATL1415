@@ -17,7 +17,11 @@ import pkg_resources
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
-from _usgs import _usgs
+import matplotlib.colors as mcolors
+#import matplotlib.colormaps as cmaps
+#import matplotlib.cm as cmaps
+from matplotlib import colormaps
+#from _usgs import _usgs
 import cartopy.crs as ccrs
 import cartopy.feature as cfeature
 import imageio.v2
@@ -25,9 +29,9 @@ import datetime as dt
 
 def ATL14_browse_plots(args):
     # set the color map
-    cmap = _usgs()
+#    cmap = _usgs()
 
-    # get projection
+# get projection
     if args.Hemisphere==1:
         # set cartopy projection as EPSG 3413
         projection = ccrs.Stereographic(central_longitude=-45.0,
@@ -71,7 +75,7 @@ def ATL14_browse_plots(args):
     ax.gridlines(crs=ccrs.PlateCarree())
     h05 = stats.mstats.scoreatpercentile(h[~np.isnan(h)].ravel(),5)
     h95 = stats.mstats.scoreatpercentile(h[~np.isnan(h)].ravel(),95)
-    handle = ax.imshow(h, extent=extent, cmap=cmap, vmin=h05, vmax=h95, origin='lower', interpolation='nearest')
+    handle = ax.imshow(h, extent=extent, cmap='cividis', vmin=h05, vmax=h95, origin='lower', interpolation='nearest')
     fig.colorbar(handle,ax=ax,label='DEM, m',shrink=1/2, extend='both')
     ax.set_title(f'DEM: {os.path.basename(filein)}')
     if args.Hemisphere==1:
@@ -111,10 +115,10 @@ def ATL14_browse_plots(args):
                                      img.shape, data=img.data, \
                                      chunks=img.shape, \
                                      compression='gzip',compression_opts=6)
-            dset.attrs['CLASS'] = np.string_('IMAGE')
-            dset.attrs['IMAGE_VERSION'] = np.string_('1.2')
-            dset.attrs['IMAGE_SUBCLASS'] = np.string_('IMAGE_TRUECOLOR')
-            dset.attrs['INTERLACE_MODE'] = np.string_('INTERLACE_PIXEL')
+            dset.attrs['CLASS'] = np.bytes_('IMAGE')
+            dset.attrs['IMAGE_VERSION'] = np.bytes_('1.2')
+            dset.attrs['IMAGE_SUBCLASS'] = np.bytes_('IMAGE_TRUECOLOR')
+            dset.attrs['INTERLACE_MODE'] = np.bytes_('INTERLACE_PIXEL')
 
 
 #    plt.show(block=False)
