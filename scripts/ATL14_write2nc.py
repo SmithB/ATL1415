@@ -15,7 +15,9 @@ import ast
 import pkg_resources
 from netCDF4 import Dataset
 #import matplotlib.pyplot as plt
-from ATL1415 import ATL14_attrs_meta
+#from ATL1415 import ATL14_attrs_meta
+from ATL1415 import ATL14_attrs_meta, make_nc_projection_variable
+
 
 #from ATL11.h5util import create_attribute
 
@@ -40,42 +42,43 @@ def ATL14_write2nc(args):
     with Dataset(fileout,'w',clobber=True) as nc:
         nc.setncattr('GDAL_AREA_OR_POINT','Area')
         nc.setncattr('Conventions','CF-1.6')
-
-        if args.region in ['AK','CN','CS','GL','IS','SV','RA']:
-            crs_var = nc.createVariable('Polar_Stereographic',np.byte,())
-            crs_var.standard_name = 'Polar_Stereographic'
-            crs_var.grid_mapping_name = 'polar_stereographic'
-            crs_var.straight_vertical_longitude_from_pole = -45.0
-            crs_var.latitude_of_projection_origin = 90.0
-            crs_var.standard_parallel = 70.0
-            crs_var.scale_factor_at_projection_origin = 1.
-            crs_var.false_easting = 0.0
-            crs_var.false_northing = 0.0
-            crs_var.semi_major_axis = 6378.137
-            crs_var.semi_minor_axis = 6356.752
-            crs_var.inverse_flattening = 298.257223563
-            crs_var.spatial_epsg = '3413'
-            crs_var.spatial_ref = 'PROJCS["WGS 84 / NSIDC Sea Ice Polar Stereographic North",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Polar_Stereographic"],PARAMETER["latitude_of_origin",70],PARAMETER["central_meridian",-45],PARAMETER["scale_factor",1],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["X",EAST],AXIS["Y",NORTH],AUTHORITY["EPSG","3413"]]'
-            crs_var.crs_wkt = ('PROJCS["WGS 84 / NSIDC Sea Ice Polar Stereographic North",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Polar_Stereographic"],PARAMETER["latitude_of_origin",70],PARAMETER["central_meridian",-45],PARAMETER["scale_factor",1],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["X",EAST],AXIS["Y",NORTH],AUTHORITY["EPSG","3413"]]')
-        elif args.region in ['A1','A2','A3','A4']:
-            crs_var = nc.createVariable('Polar_Stereographic',np.byte,())
-            crs_var.standard_name = 'Polar_Stereographic'
-            crs_var.grid_mapping_name = 'polar_stereographic'
-            crs_var.straight_vertical_longitude_from_pole = 0.0
-            crs_var.latitude_of_projection_origin = -90.0
-            crs_var.standard_parallel = -71.0
-            crs_var.scale_factor_at_projection_origin = 1.
-            crs_var.false_easting = 0.0
-            crs_var.false_northing = 0.0
-            crs_var.semi_major_axis = 6378.137
-            crs_var.semi_minor_axis = 6356.752
-            crs_var.inverse_flattening = 298.257223563
-            crs_var.spatial_epsg = '3031'
-            crs_var.spatial_ref = 'PROJCS["WGS 84 / Antarctic Polar Stereographic",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Polar_Stereographic"],PARAMETER["latitude_of_origin",-71],PARAMETER["central_meridian",0],PARAMETER["scale_factor",1],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","3031"]]'
-            crs_var.crs_wkt = ('PROJCS["WGS 84 / Antarctic Polar Stereographic",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Polar_Stereographic"],PARAMETER["latitude_of_origin",-71],PARAMETER["central_meridian",0],PARAMETER["scale_factor",1],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","3031"]]')
+        crs_var_root = make_nc_projection_variable(args.region, nc)
+        # if args.region in ['AK','CN','CS','GL','IS','SV','RA']:
+        #     crs_var = nc.createVariable('Polar_Stereographic',np.byte,())
+        #     crs_var.standard_name = 'Polar_Stereographic'
+        #     crs_var.grid_mapping_name = 'polar_stereographic'
+        #     crs_var.straight_vertical_longitude_from_pole = -45.0
+        #     crs_var.latitude_of_projection_origin = 90.0
+        #     crs_var.standard_parallel = 70.0
+        #     crs_var.scale_factor_at_projection_origin = 1.
+        #     crs_var.false_easting = 0.0
+        #     crs_var.false_northing = 0.0
+        #     crs_var.semi_major_axis = 6378.137
+        #     crs_var.semi_minor_axis = 6356.752
+        #     crs_var.inverse_flattening = 298.257223563
+        #     crs_var.spatial_epsg = '3413'
+        #     crs_var.spatial_ref = 'PROJCS["WGS 84 / NSIDC Sea Ice Polar Stereographic North",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Polar_Stereographic"],PARAMETER["latitude_of_origin",70],PARAMETER["central_meridian",-45],PARAMETER["scale_factor",1],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["X",EAST],AXIS["Y",NORTH],AUTHORITY["EPSG","3413"]]'
+        #     crs_var.crs_wkt = ('PROJCS["WGS 84 / NSIDC Sea Ice Polar Stereographic North",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Polar_Stereographic"],PARAMETER["latitude_of_origin",70],PARAMETER["central_meridian",-45],PARAMETER["scale_factor",1],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["X",EAST],AXIS["Y",NORTH],AUTHORITY["EPSG","3413"]]')
+        # elif args.region in ['A1','A2','A3','A4']:
+        #     crs_var = nc.createVariable('Polar_Stereographic',np.byte,())
+        #     crs_var.standard_name = 'Polar_Stereographic'
+        #     crs_var.grid_mapping_name = 'polar_stereographic'
+        #     crs_var.straight_vertical_longitude_from_pole = 0.0
+        #     crs_var.latitude_of_projection_origin = -90.0
+        #     crs_var.standard_parallel = -71.0
+        #     crs_var.scale_factor_at_projection_origin = 1.
+        #     crs_var.false_easting = 0.0
+        #     crs_var.false_northing = 0.0
+        #     crs_var.semi_major_axis = 6378.137
+        #     crs_var.semi_minor_axis = 6356.752
+        #     crs_var.inverse_flattening = 298.257223563
+        #     crs_var.spatial_epsg = '3031'
+        #     crs_var.spatial_ref = 'PROJCS["WGS 84 / Antarctic Polar Stereographic",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Polar_Stereographic"],PARAMETER["latitude_of_origin",-71],PARAMETER["central_meridian",0],PARAMETER["scale_factor",1],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","3031"]]'
+        #     crs_var.crs_wkt = ('PROJCS["WGS 84 / Antarctic Polar Stereographic",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Polar_Stereographic"],PARAMETER["latitude_of_origin",-71],PARAMETER["central_meridian",0],PARAMETER["scale_factor",1],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","3031"]]')
 
         # make tile_stats group (ATBD 4.1.2.1, Table 3)
         tilegrp = nc.createGroup('tile_stats')
+
         tileFile = pkg_resources.resource_filename('ATL1415','resources/tile_stats_output_attrs.csv')
         with open(tileFile,'r', encoding='utf-8-sig') as tilefile:
             tile_reader=list(csv.DictReader(tilefile))
@@ -98,7 +101,7 @@ def ATL14_write2nc(args):
             for file in files:
                 try:
                     tile_stats['x']['data'].append(int(re.match(r'^.*E(.*)\_.*$',file).group(1)))
-                except Exception as e:
+                except Exception:
                     print(f"problem with [ {file} ], skipping")
                     continue
                 tile_stats['y']['data'].append(int(re.match(r'^.*N(.*)\..*$',file).group(1)))
@@ -141,18 +144,24 @@ def ATL14_write2nc(args):
             tile_stats[key]['mapped'] = np.ma.masked_where(tile_stats[key]['mapped'] == 0, tile_stats[key]['mapped'])
 
         # make dimensions, fill them as variables
-        tilegrp.createDimension('y',len(np.arange(np.min(tile_stats['y']['data']),np.max(tile_stats['y']['data'])+40,40)))
-        tilegrp.createDimension('x',len(np.arange(np.min(tile_stats['x']['data']),np.max(tile_stats['x']['data'])+40,40)))
+        tile_stats_res = 4e3
+        ts_y = np.arange(np.min(tile_stats['y']['data']), np.max(tile_stats['y']['data'])+1, tile_stats_res)
+        ts_x = np.arange(np.min(tile_stats['x']['data']), np.max(tile_stats['x']['data'])+1, tile_stats_res)
 
+
+        tilegrp.createDimension('y', len(ts_y))
+        tilegrp.createDimension('x', len(ts_x))
+        crs_var_tiles = make_nc_projection_variable(args.region, tilegrp)
+        crs_var_tiles.GeoTransform = (ts_x[0], tile_stats_res, 0, ts_y[0], 0, tile_stats_res)
         # create tile_stats/ variables in .nc file
         for field in tile_field_names:
             tile_field_attrs = {row['field']: {tile_attr_names[ii]:row[tile_attr_names[ii]] for ii in range(len(tile_attr_names))} for row in tile_reader if field in row['field']}
             if field == 'x':
                 dsetvar = tilegrp.createVariable('x', tile_field_attrs[field]['datatype'], ('x',), fill_value=np.finfo(tile_field_attrs[field]['datatype']).max, zlib=True)
-                dsetvar[:] = np.arange(np.min(tile_stats['x']['data']),np.max(tile_stats['x']['data'])+40,40.) * 1000 # convert from km to meter
+                dsetvar[:] = ts_x
             elif field == 'y':
                 dsetvar = tilegrp.createVariable('y', tile_field_attrs[field]['datatype'], ('y',), fill_value=np.finfo(tile_field_attrs[field]['datatype']).max, zlib=True)
-                dsetvar[:] = np.arange(np.min(tile_stats['y']['data']),np.max(tile_stats['y']['data'])+40,40.) * 1000 # convert from km to meter
+                dsetvar[:] = ts_y
             elif field == 'N_data' or field == 'N_bias':
                 dsetvar = tilegrp.createVariable(field, tile_field_attrs[field]['datatype'],('y','x'),fill_value=np.iinfo(tile_field_attrs[field]['datatype']).max, zlib=True)
             else:
@@ -225,7 +234,7 @@ def ATL14_write2nc(args):
             if field == 'ice_area':  # 'ice_mask'
                 dsetvar.setncattr('grid_mapping','Polar_Stereographic')
 
-        crs_var.GeoTransform = (xll,dx,0,yll,0,dy)
+        crs_var_root.GeoTransform = (xll,dx,0,yll,0,dy)
 
         for field in [item for item in field_names if item != 'x' and item != 'y' and item != 'ice_area']:
             field_attrs = {row['field']: {attr_names[ii]:row[attr_names[ii]] for ii in range(len(attr_names))} for row in reader if field in row['field']}

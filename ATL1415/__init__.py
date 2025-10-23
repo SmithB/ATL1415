@@ -7,3 +7,4 @@ from .make_slurm_file import *
 from .assign_firn_variable import *
 from .SMB_corr_from_grid import SMB_corr_from_grid
 from .read_ATL11 import *
+from .make_nc_projection_variable import *
