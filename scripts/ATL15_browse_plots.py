@@ -129,10 +129,10 @@ def ATL15_browse_plots(args):
                                          img.shape, data=img.data, \
                                          chunks=img.shape, \
                                          compression='gzip',compression_opts=6)
-                dset.attrs['CLASS'] = np.string_('IMAGE')
-                dset.attrs['IMAGE_VERSION'] = np.string_('1.2')
-                dset.attrs['IMAGE_SUBCLASS'] = np.string_('IMAGE_TRUECOLOR')
-                dset.attrs['INTERLACE_MODE'] = np.string_('INTERLACE_PIXEL')
+                dset.attrs['CLASS'] = np.bytes_('IMAGE')
+                dset.attrs['IMAGE_VERSION'] = np.bytes_('1.2')
+                dset.attrs['IMAGE_SUBCLASS'] = np.bytes_('IMAGE_TRUECOLOR')
+                dset.attrs['INTERLACE_MODE'] = np.bytes_('INTERLACE_PIXEL')
 
     #    plt.show(block=False)
     #    plt.pause(0.001)
