@@ -137,6 +137,8 @@ dmypy.json
 
 # Emacs temporary files
 *~
+# Emacs auto-save files
+*#*#
 
 # Queue files
 *queue*.txt
@@ -150,3 +152,9 @@ firn_run*
 # reduced-resolution masks
 *_reduced_1km.tif
 *_reduced_*m.tif
+
+# there's too much cruft in scripts.  add these with -f (or don't)
+scripts/*
+
+# region files don't need to go in the archive (these are mostly obsolete, and were mostly for test runs)
+region_files/*

@@ -11,7 +11,19 @@ import os
 
 
 def select_best_xover_index(D):
-    _, i_pts = pc.unique_by_rows(np.c_[D.rgt, D.cycle_number, D.pair_track], return_dict=True)
+    """
+    Select the best crossing-track data for each crossover location
+
+    For each crossover (defined by a unique ref rgt, crossing rgt, ref pair, and crossing pair),
+    select the measurement from each cycle with the smallest error in corrected height
+
+    input:
+        D: pointCollection.data structure containing crossing track data
+    output:
+        ii: numpy array of indexes of minimum-error points
+    """
+
+    _, i_pts = pc.unique_by_rows(np.c_[D.rgt, D.ref_rgt, D.pair_track, D.ref_pair, D.cycle_number], return_dict=True)
     ii = np.zeros(len(i_pts), dtype=int)
     for count, (pt, i_pt) in enumerate(i_pts.items()):
         if len(i_pt)==0:
@@ -23,7 +35,7 @@ def select_best_xover_index(D):
 
 def read_ATL11(xy0, Wxy, index_file, SRS_proj4, xover_tile_root=None,
                sigma_geo=6.5, sigma_radial=0.03, xover_cycles=[1,2],
-               verbose=False):
+               verbose=False, hemisphere=None):
 
 
     bounds = [xy0[0]+np.array([-Wxy/2, Wxy/2]), xy0[1]+np.array([-Wxy/2, Wxy/2])]
@@ -32,6 +44,10 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, xover_tile_root=None,
                   sigma_geo=sigma_geo,
                   sigma_radial=sigma_radial)
 
+    # exit if no data returned
+    if D_at is None:
+        return None, []
+
     if xover_tile_root is None:
         return D_at, ATL11_file_list
 
@@ -39,7 +55,7 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, xover_tile_root=None,
     D_xo, xover_file_list = read_ATL11_xovers(bounds, SRS_proj4,
                                               xover_tile_dir = xover_tile_root,
                                               xover_cycles = xover_cycles,
-                                              verbose=verbose)
+                                              verbose=verbose, hemisphere=hemisphere)
     return pc.data().from_list([D_at, D_xo]), ATL11_file_list + xover_file_list
 
 
@@ -118,7 +134,7 @@ def read_ATL11_at(bounds, index_file, SRS_proj4,
 
     return pc.data().from_list(D_list), D11_files
 
-def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2], verbose=False):
+def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2], hemisphere=None, verbose=True):
     '''
     read crossover data from tiles
 
@@ -144,12 +160,17 @@ def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2]
 
     '''
 
+    if hemisphere==-1:
+        hemi='AA'
+    else:
+        hemi='AR'
+
     D_x=[]
     D_d=[]
     for x_cycle in xover_cycles:
         schema_file = os.path.join(xover_tile_dir,
                                    f'cycle_{x_cycle:02d}',
-                                   '200km_tiling.json')
+                                   f'200km_tiling_{hemi}.json')
         xover_files = pc.tilingSchema().from_file(schema_file).filenames_for_box(bounds)
         xover_files_used = []
         for xover_file in xover_files:
@@ -168,13 +189,15 @@ def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2]
                                              'dem_h','geoid_h','fit_quality',
                                              'n_slope','e_slope'])
             D_di.index(keep)
+            D_xi.assign(cycle_number=np.zeros_like(D_xi.x)+x_cycle)
             D_x += [D_xi]
             D_d += [D_di]
             xover_files_used += [xover_file]
-
+    if len(D_x)==0 or not hasattr(D_x[0],'rgt'):
+        return None, []
     D_x = pc.data().from_list(D_x)
     D_d = pc.data().from_list(D_d)
-
+    D_x.assign(ref_rgt = D_d.rgt, ref_pair=D_d.pair_track)
     # choose the smallest_sigma xover for each rgt and pair
     ii = select_best_xover_index(D_x)
     D_x=D_x[ii]
