@@ -723,16 +723,18 @@ def main(argv):
     parser.add_argument('--restart_edit', action='store_true')
     parser.add_argument('--calc_error_file','-c', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='file containing data for which errors will be calculated')
     parser.add_argument('--calc_error_for_xy', action='store_true', help='calculate the errors for the file specified by the x0, y0 arguments')
-    parser.add_argument('--error_res_scale','-s', type=float, nargs=2, default=[5, 2], help='if the errors are being calculated (see calc_error_file), scale the grid resolution in x and y to be coarser')
+    parser.add_argument('--error_res_scale','-s', type=str, default="5,2", help='if the errors are being calculated (see calc_error_file), scale the grid resolution in x and y to be coarser.  2-element comma-separated list')
     parser.add_argument('--bias_params', type=str, default="rgt,cycle", help='one bias parameter will be assigned for each unique combination of these ATL11 parameters (comma-separated list with no spaces)')
     parser.add_argument('--region', type=str, help='region for which calculation is being performed')
     parser.add_argument('--verbose','-v', action="store_true")
     parser.add_argument('--write_data_only', action='store_true', help='save data without processing')
     args, unknown=parser.parse_known_args()
 
+    # handle arguments with commas
     args.dzdt_lags = [np.int64(temp) for temp in args.dzdt_lags.split(',')]
     args.time_span = [np.float64(temp) for temp in args.time_span.split(',')]
     args.avg_scales = [np.int64(temp) for temp in args.avg_scales.split(',')]
+    args.error_res_scale = [np.int64(temp) for temp in args.error_res_scale.split(',')]
     
     spacing={}
     for dim, this_sp in zip(['z0','dz','dt'], args.grid_spacing.split(',')):
@@ -833,7 +835,11 @@ def main(argv):
     if args.tide_adjustment_file is not None:
         args.tide_adjustment=True
 
-    z0_average_scale = spacing['dz']
+    if args.ATL14_reference_file is None:
+        z0_average_scale = spacing['dz']
+    else:
+        z0_average_scale=None
+
     if args.error_res_scale is not None:
         if args.calc_error_file is not None:
             for ii, key in enumerate(['z0','dz']):
