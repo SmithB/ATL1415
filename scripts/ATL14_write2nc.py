@@ -100,11 +100,11 @@ def ATL14_write2nc(args):
             files = [f for f in files if f.endswith('.h5')]
             for file in files:
                 try:
-                    tile_stats['x']['data'].append(int(re.match(r'^.*E(.*)\_.*$',file).group(1)))
+                    tile_stats['x']['data'].append(1000*int(re.match(r'^.*E(.*)\_.*$',file).group(1)))
                 except Exception:
                     print(f"problem with [ {file} ], skipping")
                     continue
-                tile_stats['y']['data'].append(int(re.match(r'^.*N(.*)\..*$',file).group(1)))
+                tile_stats['y']['data'].append(1000*int(re.match(r'^.*N(.*)\..*$',file).group(1)))
 
                 with h5py.File(os.path.join(args.base_dir,sub,file),'r') as h5:
                     tile_stats['N_data']['data'].append( np.sum(h5['data']['three_sigma_edit'][:]) )
@@ -118,16 +118,16 @@ def ATL14_write2nc(args):
                     tile_stats['sigma_tt']['data'].append( h5['E_RMS']['d2z_dt2'][()] )
                     tile_stats['sigma_xxt']['data'].append( h5['E_RMS']['d3z_dx2dt'][()] )
 
+        tile_stats_res = 4e4
+        ts_y = np.arange(np.min(tile_stats['y']['data']), np.max(tile_stats['y']['data'])+1, tile_stats_res)
+        ts_x = np.arange(np.min(tile_stats['x']['data']), np.max(tile_stats['x']['data'])+1, tile_stats_res)
+
         # establish output grids from min/max of x and y
         for key in tile_stats.keys():
             if key == 'N_data' or key == 'N_bias':  # key == 'x' or key == 'y' or
-                tile_stats[key]['mapped'] = np.zeros( [len(np.arange(np.min(tile_stats['y']['data']),np.max(tile_stats['y']['data'])+40,40)),
-                                                        len(np.arange(np.min(tile_stats['x']['data']),np.max(tile_stats['x']['data'])+40,40))],
-                                                        dtype=int)
+                tile_stats[key]['mapped'] = np.zeros( [len(ts_y), len(ts_x)], dtype=int)
             else:
-                tile_stats[key]['mapped'] = np.zeros( [len(np.arange(np.min(tile_stats['y']['data']),np.max(tile_stats['y']['data'])+40,40)),
-                                                        len(np.arange(np.min(tile_stats['x']['data']),np.max(tile_stats['x']['data'])+40,40))],
-                                                        dtype=float)
+                tile_stats[key]['mapped'] = np.zeros( [len(ts_y), len(ts_x)], dtype=float)
 
         # put data into grids
         for key in tile_stats.keys():
@@ -138,17 +138,12 @@ def ATL14_write2nc(args):
                 if not np.isfinite(dt):
                     print(f"ATL14_write2nc: found bad tile_stats value in field {key} at x={xt}, y={yt}")
                     continue
-                row=int((yt-np.min(tile_stats['y']['data']))/40)
-                col=int((xt-np.min(tile_stats['x']['data']))/40)
+                row=int((yt-np.min(tile_stats['y']['data']))/tile_stats_res)
+                col=int((xt-np.min(tile_stats['x']['data']))/tile_stats_res)
                 tile_stats[key]['mapped'][row,col] = dt
             tile_stats[key]['mapped'] = np.ma.masked_where(tile_stats[key]['mapped'] == 0, tile_stats[key]['mapped'])
 
         # make dimensions, fill them as variables
-        tile_stats_res = 4e3
-        ts_y = np.arange(np.min(tile_stats['y']['data']), np.max(tile_stats['y']['data'])+1, tile_stats_res)
-        ts_x = np.arange(np.min(tile_stats['x']['data']), np.max(tile_stats['x']['data'])+1, tile_stats_res)
-
-
         tilegrp.createDimension('y', len(ts_y))
         tilegrp.createDimension('x', len(ts_x))
         crs_var_tiles = make_nc_projection_variable(args.region, tilegrp)
