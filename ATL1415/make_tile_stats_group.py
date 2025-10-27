@@ -15,6 +15,22 @@ from ATL1415 import  make_nc_projection_variable
 
 
 def make_tile_stats_group(nc, args):
+    """
+    make the tile_stats group for an ATL14 or ATL15 file
+
+    Parameters
+    ----------
+    nc: netCDF4 file handle
+        file handle for ouput file
+    args: dict
+        dictionary giving input arguments
+
+    Returns:
+    -------
+    tilegrp: netCDF4 group handle
+        group handle for tile_stats group
+
+    """
     tilegrp = nc.createGroup('tile_stats')
     tileFile = pkg_resources.resource_filename('ATL1415','resources/tile_stats_output_attrs.csv')
     with open(tileFile,'r', encoding='utf-8-sig') as tilefile:
@@ -105,7 +121,7 @@ def make_tile_stats_group(nc, args):
         dsetvar.setncattr('grid_mapping','Polar_Stereographic')
 
 
-    crs_var = make_nc_projection_variable(args.region,tilegrp)
+    crs_var = make_nc_projection_variable(args.region, tilegrp)
     crs_var.GeoTransform = str(tilegrp['x'][0])+" "+str(tilegrp['x'][1]-tilegrp['x'][0])+" 0.0 "+str(tilegrp['y'][0])+" 0.0 "+str(tilegrp['y'][1]-tilegrp['y'][0])
 
     return tilegrp

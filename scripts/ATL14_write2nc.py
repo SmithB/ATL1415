@@ -43,7 +43,6 @@ def ATL14_write2nc(args):
         nc.setncattr('GDAL_AREA_OR_POINT','Area')
         nc.setncattr('Conventions','CF-1.6')
         crs_var_root = make_nc_projection_variable(args.region, nc)
-        print("USING make_tile_stats_group")
         tilegrp = make_tile_stats_group(nc, args)
         
         # get handle for input file with ROOT and height_change variables.
