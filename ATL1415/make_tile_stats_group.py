@@ -115,8 +115,11 @@ def make_tile_stats_group(nc, args):
 
         if field != 'x' and field != 'y':
             dsetvar[:] = tile_stats[field]['mapped'][:]
+            dsetvar.setncattr('coordinates', "tile_stats/y tile_stats/x")
+        else:
+            dsetvar.setncattr('coordinates', f"tile_stats/{field}")
 
-        for attr in ['units','dimensions','datatype','coordinates','description','coordinates','long_name','source']:
+        for attr in ['units','dimensions','datatype','description','long_name','source']:
             dsetvar.setncattr(attr,tile_field_attrs[field][attr])
         dsetvar.setncattr('grid_mapping','Polar_Stereographic')
 
