@@ -147,20 +147,25 @@ def ATL14_write2nc(args):
         tilegrp.createDimension('y', len(ts_y))
         tilegrp.createDimension('x', len(ts_x))
         crs_var_tiles = make_nc_projection_variable(args.region, tilegrp)
-        crs_var_tiles.GeoTransform = (ts_x[0], tile_stats_res, 0, ts_y[0], 0, tile_stats_res)
+# bpj        crs_var_tiles.GeoTransform = (ts_x[0], tile_stats_res, 0, ts_y[0], 0, -1*tile_stats_res)
+#        crs_var_tiles.GeoTransform = str(ts_x[0])+" "+str(tile_stats_res)+" 0.0 "+str(ts_y[0])+" 0.0 "+str(-1*tile_stats_res)
         # create tile_stats/ variables in .nc file
         for field in tile_field_names:
             tile_field_attrs = {row['field']: {tile_attr_names[ii]:row[tile_attr_names[ii]] for ii in range(len(tile_attr_names))} for row in tile_reader if field in row['field']}
             if field == 'x':
                 dsetvar = tilegrp.createVariable('x', tile_field_attrs[field]['datatype'], ('x',), fill_value=np.finfo(tile_field_attrs[field]['datatype']).max, zlib=True)
                 dsetvar[:] = ts_x
+                dsetvar.standard_name = 'projection_x_coordinate'
             elif field == 'y':
                 dsetvar = tilegrp.createVariable('y', tile_field_attrs[field]['datatype'], ('y',), fill_value=np.finfo(tile_field_attrs[field]['datatype']).max, zlib=True)
                 dsetvar[:] = ts_y
+                dsetvar.standard_name = 'projection_y_coordinate'
             elif field == 'N_data' or field == 'N_bias':
                 dsetvar = tilegrp.createVariable(field, tile_field_attrs[field]['datatype'],('y','x'),fill_value=np.iinfo(tile_field_attrs[field]['datatype']).max, zlib=True)
+#                dsetvar.grid_mapping = 'Polar_Stereographic'
             else:
                 dsetvar = tilegrp.createVariable(field, tile_field_attrs[field]['datatype'],('y','x'),fill_value=np.finfo(tile_field_attrs[field]['datatype']).max, zlib=True)
+#                dsetvar.grid_mapping = 'Polar_Stereographic'
 
             if field != 'x' and field != 'y':
                 dsetvar[:] = tile_stats[field]['mapped'][:]
@@ -168,6 +173,7 @@ def ATL14_write2nc(args):
             for attr in ['units','dimensions','datatype','coordinates','description','coordinates','long_name','source']:
                 dsetvar.setncattr(attr,tile_field_attrs[field][attr])
             dsetvar.setncattr('grid_mapping','Polar_Stereographic')
+        crs_var_tiles.GeoTransform = str(tilegrp['x'][0])+" "+str(tilegrp['x'][1]-tilegrp['x'][0])+" 0.0 "+str(tilegrp['y'][0])+" 0.0 "+str(tilegrp['y'][1]-tilegrp['y'][0])
 
         # get handle for input file with ROOT and height_change variables.
         FH = h5py.File(args.base_dir.rstrip('/')+'/z0.h5','r')

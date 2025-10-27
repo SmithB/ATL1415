@@ -210,9 +210,11 @@ def ATL15_write2nc(args):
                     if field == 'x':
                         dsetvar = tilegrp.createVariable('x', tile_field_attrs[field]['datatype'], ('x',), fill_value=np.finfo(tile_field_attrs[field]['datatype']).max, zlib=True)
                         dsetvar[:] = np.arange(np.min(tile_stats['x']['data']),np.max(tile_stats['x']['data'])+40,40.) * 1000 # convert from km to meter
+                        dsetvar.setncattr('standard_name','projection_x_coordinate')
                     elif field == 'y':
                         dsetvar = tilegrp.createVariable('y', tile_field_attrs[field]['datatype'], ('y',), fill_value=np.finfo(tile_field_attrs[field]['datatype']).max, zlib=True)
                         dsetvar[:] = np.arange(np.min(tile_stats['y']['data']),np.max(tile_stats['y']['data'])+40,40.) * 1000 # convert from km to meter
+                        dsetvar.setncattr('standard_name','projection_y_coordinate')
                     elif field == 'N_data' or field == 'N_bias':
                         dsetvar = tilegrp.createVariable(field, tile_field_attrs[field]['datatype'],('y','x'),fill_value=np.iinfo(tile_field_attrs[field]['datatype']).max, zlib=True)
                     else:
@@ -227,6 +229,7 @@ def ATL15_write2nc(args):
 
 
                 crs_var = make_nc_projection_variable(args.region,tilegrp)
+                crs_var.GeoTransform = str(tilegrp['x'][0])+" "+str(tilegrp['x'][1]-tilegrp['x'][0])+" 0.0 "+str(tilegrp['y'][0])+" 0.0 "+str(tilegrp['y'][1]-tilegrp['y'][0])
 #########################################
     #            # make comfort figures
     #            extent=[np.min(tile_stats['x']['data'])*fact,np.max(tile_stats['x']['data'])*fact,
