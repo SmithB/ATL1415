@@ -467,7 +467,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
         data.z -= data.h_firn
 
     # to reject ATL06/11 blunders (don't do this if we are using an ATL14 reference and we're calculating errors)
-    if calc_error_file is None or ATL14_reference_file is None:
+    if ATL14_reference_file is None or (calc_error_file is None and data_file is None):
         set_three_sigma_edit_with_DEM(data, xy0, Wxy, DEM_file, DEM_tol)
 
     # apply the tides if a directory has been provided
@@ -494,10 +494,10 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
                 data.assign(floating=np.zeros_like(data.x, dtype=bool))
 
     # edit data points that are below the geoid
-    if geoid_tol is not None and calc_error_file is None:
+    if geoid_tol is not None and (calc_error_file is None and data_file is None):
         data.index((data.z - data.geoid_h) > geoid_tol)
 
-    if ATL14_reference_file is not None and calc_error_file is None:
+    if ATL14_reference_file is not None and (calc_error_file is None and data_file is None):
         data.assign(z_ref = pc.grid.data().from_nc(ATL14_reference_file, bounds=data.bounds(pad=1.e3), field='h')\
                     .interp(data.x, data.y, field='h'))
         data.assign(sigma_zref = pc.grid.data().from_nc(ATL14_reference_file, bounds=data.bounds(pad=1.e3), field='h_sigma')\
