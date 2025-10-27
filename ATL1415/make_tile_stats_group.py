@@ -107,3 +107,5 @@ def make_tile_stats_group(nc, args):
 
     crs_var = make_nc_projection_variable(args.region,tilegrp)
     crs_var.GeoTransform = str(tilegrp['x'][0])+" "+str(tilegrp['x'][1]-tilegrp['x'][0])+" 0.0 "+str(tilegrp['y'][0])+" 0.0 "+str(tilegrp['y'][1]-tilegrp['y'][0])
+
+    return tilegrp

@@ -16,7 +16,7 @@ import pkg_resources
 from netCDF4 import Dataset
 #import matplotlib.pyplot as plt
 #from ATL1415 import ATL14_attrs_meta
-from ATL1415 import ATL14_attrs_meta, make_nc_projection_variable
+from ATL1415 import ATL14_attrs_meta, make_nc_projection_variable, make_tile_stats_group
 
 
 #from ATL11.h5util import create_attribute
@@ -43,138 +43,9 @@ def ATL14_write2nc(args):
         nc.setncattr('GDAL_AREA_OR_POINT','Area')
         nc.setncattr('Conventions','CF-1.6')
         crs_var_root = make_nc_projection_variable(args.region, nc)
-        # if args.region in ['AK','CN','CS','GL','IS','SV','RA']:
-        #     crs_var = nc.createVariable('Polar_Stereographic',np.byte,())
-        #     crs_var.standard_name = 'Polar_Stereographic'
-        #     crs_var.grid_mapping_name = 'polar_stereographic'
-        #     crs_var.straight_vertical_longitude_from_pole = -45.0
-        #     crs_var.latitude_of_projection_origin = 90.0
-        #     crs_var.standard_parallel = 70.0
-        #     crs_var.scale_factor_at_projection_origin = 1.
-        #     crs_var.false_easting = 0.0
-        #     crs_var.false_northing = 0.0
-        #     crs_var.semi_major_axis = 6378.137
-        #     crs_var.semi_minor_axis = 6356.752
-        #     crs_var.inverse_flattening = 298.257223563
-        #     crs_var.spatial_epsg = '3413'
-        #     crs_var.spatial_ref = 'PROJCS["WGS 84 / NSIDC Sea Ice Polar Stereographic North",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Polar_Stereographic"],PARAMETER["latitude_of_origin",70],PARAMETER["central_meridian",-45],PARAMETER["scale_factor",1],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["X",EAST],AXIS["Y",NORTH],AUTHORITY["EPSG","3413"]]'
-        #     crs_var.crs_wkt = ('PROJCS["WGS 84 / NSIDC Sea Ice Polar Stereographic North",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Polar_Stereographic"],PARAMETER["latitude_of_origin",70],PARAMETER["central_meridian",-45],PARAMETER["scale_factor",1],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["X",EAST],AXIS["Y",NORTH],AUTHORITY["EPSG","3413"]]')
-        # elif args.region in ['A1','A2','A3','A4']:
-        #     crs_var = nc.createVariable('Polar_Stereographic',np.byte,())
-        #     crs_var.standard_name = 'Polar_Stereographic'
-        #     crs_var.grid_mapping_name = 'polar_stereographic'
-        #     crs_var.straight_vertical_longitude_from_pole = 0.0
-        #     crs_var.latitude_of_projection_origin = -90.0
-        #     crs_var.standard_parallel = -71.0
-        #     crs_var.scale_factor_at_projection_origin = 1.
-        #     crs_var.false_easting = 0.0
-        #     crs_var.false_northing = 0.0
-        #     crs_var.semi_major_axis = 6378.137
-        #     crs_var.semi_minor_axis = 6356.752
-        #     crs_var.inverse_flattening = 298.257223563
-        #     crs_var.spatial_epsg = '3031'
-        #     crs_var.spatial_ref = 'PROJCS["WGS 84 / Antarctic Polar Stereographic",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Polar_Stereographic"],PARAMETER["latitude_of_origin",-71],PARAMETER["central_meridian",0],PARAMETER["scale_factor",1],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","3031"]]'
-        #     crs_var.crs_wkt = ('PROJCS["WGS 84 / Antarctic Polar Stereographic",GEOGCS["WGS 84",DATUM["WGS_1984",SPHEROID["WGS 84",6378137,298.257223563,AUTHORITY["EPSG","7030"]],AUTHORITY["EPSG","6326"]],PRIMEM["Greenwich",0,AUTHORITY["EPSG","8901"]],UNIT["degree",0.0174532925199433,AUTHORITY["EPSG","9122"]],AUTHORITY["EPSG","4326"]],PROJECTION["Polar_Stereographic"],PARAMETER["latitude_of_origin",-71],PARAMETER["central_meridian",0],PARAMETER["scale_factor",1],PARAMETER["false_easting",0],PARAMETER["false_northing",0],UNIT["metre",1,AUTHORITY["EPSG","9001"]],AXIS["Easting",EAST],AXIS["Northing",NORTH],AUTHORITY["EPSG","3031"]]')
-
-        # make tile_stats group (ATBD 4.1.2.1, Table 3)
-        tilegrp = nc.createGroup('tile_stats')
-
-        tileFile = pkg_resources.resource_filename('ATL1415','resources/tile_stats_output_attrs.csv')
-        with open(tileFile,'r', encoding='utf-8-sig') as tilefile:
-            tile_reader=list(csv.DictReader(tilefile))
-
-        tile_attr_names=[x for x in tile_reader[0].keys() if x != 'field' and x != 'group']
-
-        tile_field_names = [row['field'] for row in tile_reader]
-
-        tile_stats={}        # dict for appending data from the tile files
-        for field in tile_field_names:
-            if field not in tile_stats:
-                tile_stats[field] = { 'data': [], 'mapped':np.array(())}
-
-
-        # work through the tiles in all three subdirectories
-        # for sub in ['centers','edges','corners']:
-        for sub in ['prelim']:
-            files = os.listdir(os.path.join(args.base_dir,sub))
-            files = [f for f in files if f.endswith('.h5')]
-            for file in files:
-                try:
-                    tile_stats['x']['data'].append(1000*int(re.match(r'^.*E(.*)\_.*$',file).group(1)))
-                except Exception:
-                    print(f"problem with [ {file} ], skipping")
-                    continue
-                tile_stats['y']['data'].append(1000*int(re.match(r'^.*N(.*)\..*$',file).group(1)))
-
-                with h5py.File(os.path.join(args.base_dir,sub,file),'r') as h5:
-                    tile_stats['N_data']['data'].append( np.sum(h5['data']['three_sigma_edit'][:]) )
-                    tile_stats['RMS_data']['data'].append( h5['RMS']['data'][()] )  # use () for getting a scalar.
-                    tile_stats['RMS_bias']['data'].append( np.sqrt(np.mean((h5['bias']['val'][:]/h5['bias']['expected'][:])**2)) )
-                    tile_stats['N_bias']['data'].append( len(h5['bias']['val'][:]) )  #### or all BUT the zeros.
-                    tile_stats['RMS_d2z0dx2']['data'].append( h5['RMS']['grad2_z0'][()] )
-                    tile_stats['RMS_d2zdt2']['data'].append( h5['RMS']['d2z_dt2'][()] )
-                    tile_stats['RMS_d2zdx2dt']['data'].append( h5['RMS']['grad2_dzdt'][()] )
-                    tile_stats['sigma_xx0']['data'].append( h5['E_RMS']['d2z0_dx2'][()] )
-                    tile_stats['sigma_tt']['data'].append( h5['E_RMS']['d2z_dt2'][()] )
-                    tile_stats['sigma_xxt']['data'].append( h5['E_RMS']['d3z_dx2dt'][()] )
-
-        tile_stats_res = 4e4
-        ts_y = np.arange(np.min(tile_stats['y']['data']), np.max(tile_stats['y']['data'])+1, tile_stats_res)
-        ts_x = np.arange(np.min(tile_stats['x']['data']), np.max(tile_stats['x']['data'])+1, tile_stats_res)
-
-        # establish output grids from min/max of x and y
-        for key in tile_stats.keys():
-            if key == 'N_data' or key == 'N_bias':  # key == 'x' or key == 'y' or
-                tile_stats[key]['mapped'] = np.zeros( [len(ts_y), len(ts_x)], dtype=int)
-            else:
-                tile_stats[key]['mapped'] = np.zeros( [len(ts_y), len(ts_x)], dtype=float)
-
-        # put data into grids
-        for key in tile_stats.keys():
-            # fact helps convert x,y in km to m
-            if key == 'x' or key == 'y':
-                continue
-            for (yt, xt, dt) in zip(tile_stats['y']['data'], tile_stats['x']['data'], tile_stats[key]['data']):
-                if not np.isfinite(dt):
-                    print(f"ATL14_write2nc: found bad tile_stats value in field {key} at x={xt}, y={yt}")
-                    continue
-                row=int((yt-np.min(tile_stats['y']['data']))/tile_stats_res)
-                col=int((xt-np.min(tile_stats['x']['data']))/tile_stats_res)
-                tile_stats[key]['mapped'][row,col] = dt
-            tile_stats[key]['mapped'] = np.ma.masked_where(tile_stats[key]['mapped'] == 0, tile_stats[key]['mapped'])
-
-        # make dimensions, fill them as variables
-        tilegrp.createDimension('y', len(ts_y))
-        tilegrp.createDimension('x', len(ts_x))
-        crs_var_tiles = make_nc_projection_variable(args.region, tilegrp)
-# bpj        crs_var_tiles.GeoTransform = (ts_x[0], tile_stats_res, 0, ts_y[0], 0, -1*tile_stats_res)
-#        crs_var_tiles.GeoTransform = str(ts_x[0])+" "+str(tile_stats_res)+" 0.0 "+str(ts_y[0])+" 0.0 "+str(-1*tile_stats_res)
-        # create tile_stats/ variables in .nc file
-        for field in tile_field_names:
-            tile_field_attrs = {row['field']: {tile_attr_names[ii]:row[tile_attr_names[ii]] for ii in range(len(tile_attr_names))} for row in tile_reader if field in row['field']}
-            if field == 'x':
-                dsetvar = tilegrp.createVariable('x', tile_field_attrs[field]['datatype'], ('x',), fill_value=np.finfo(tile_field_attrs[field]['datatype']).max, zlib=True)
-                dsetvar[:] = ts_x
-                dsetvar.standard_name = 'projection_x_coordinate'
-            elif field == 'y':
-                dsetvar = tilegrp.createVariable('y', tile_field_attrs[field]['datatype'], ('y',), fill_value=np.finfo(tile_field_attrs[field]['datatype']).max, zlib=True)
-                dsetvar[:] = ts_y
-                dsetvar.standard_name = 'projection_y_coordinate'
-            elif field == 'N_data' or field == 'N_bias':
-                dsetvar = tilegrp.createVariable(field, tile_field_attrs[field]['datatype'],('y','x'),fill_value=np.iinfo(tile_field_attrs[field]['datatype']).max, zlib=True)
-#                dsetvar.grid_mapping = 'Polar_Stereographic'
-            else:
-                dsetvar = tilegrp.createVariable(field, tile_field_attrs[field]['datatype'],('y','x'),fill_value=np.finfo(tile_field_attrs[field]['datatype']).max, zlib=True)
-#                dsetvar.grid_mapping = 'Polar_Stereographic'
-
-            if field != 'x' and field != 'y':
-                dsetvar[:] = tile_stats[field]['mapped'][:]
-
-            for attr in ['units','dimensions','datatype','coordinates','description','coordinates','long_name','source']:
-                dsetvar.setncattr(attr,tile_field_attrs[field][attr])
-            dsetvar.setncattr('grid_mapping','Polar_Stereographic')
-        crs_var_tiles.GeoTransform = str(tilegrp['x'][0])+" "+str(tilegrp['x'][1]-tilegrp['x'][0])+" 0.0 "+str(tilegrp['y'][0])+" 0.0 "+str(tilegrp['y'][1]-tilegrp['y'][0])
-
+        print("USING make_tile_stats_group")
+        tilegrp = make_tile_stats_group(nc, args)
+        
         # get handle for input file with ROOT and height_change variables.
         FH = h5py.File(args.base_dir.rstrip('/')+'/z0.h5','r')
         if 'z0' not in FH:
