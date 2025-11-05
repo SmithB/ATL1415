@@ -616,6 +616,8 @@ def mask_components_by_time(dz):
 
 def interp_ds(ds, scale):
 
+    if scale==1:
+        return ds
     delta_xy=[(ds.x[1]-ds.x[0])/scale, (ds.y[1]-ds.y[0])/scale]
     xi=np.arange(ds.x[0], ds.x[-1]+delta_xy[0], delta_xy[0])
     yi=np.arange(ds.y[0], ds.y[-1]+delta_xy[1], delta_xy[1])

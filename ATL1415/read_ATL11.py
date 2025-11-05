@@ -167,6 +167,7 @@ def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2]
 
     D_x=[]
     D_d=[]
+    D_r=[]
     for x_cycle in xover_cycles:
         schema_file = os.path.join(xover_tile_dir,
                                    f'cycle_{x_cycle:02d}',
@@ -178,42 +179,48 @@ def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2]
                 if verbose:
                     print(f'read_ATL11_xovers: {xover_file} not found')
                 continue
-            D_xi = pc.data().from_h5(xover_file, group='crossing_track').get_xy(proj4_string=SRS_proj4)
-            keep = (D_xi.x >= bounds[0][0]) & (D_xi.x <= bounds[0][1]) &\
-                 (D_xi.y >= bounds[1][0]) & (D_xi.y <= bounds[1][1])
+
+            D_ri = pc.data().from_h5(xover_file).get_xy(proj4_string=SRS_proj4)
+            keep = (D_ri.x >= bounds[0][0]) & (D_ri.x <= bounds[0][1]) &\
+                 (D_ri.y >= bounds[1][0]) & (D_ri.y <= bounds[1][1])
             if not np.any(keep):
                 continue
+            D_ri.index(keep)
+            D_xi = pc.data().from_h5(xover_file, group='crossing_track')
             D_xi.index(keep)
             D_di = pc.data().from_h5(xover_file, group='datum_track',
-                                     fields=['rgt','ref_pt','pair_track','cycle_number',
+                                     fields=['rgt','ref_pt','pair_track',
                                              'dem_h','geoid_h','fit_quality',
                                              'n_slope','e_slope'])
             D_di.index(keep)
-            D_xi.assign(cycle_number=np.zeros_like(D_xi.x)+x_cycle)
+            D_xi.assign(cycle_number=np.zeros_like(D_ri.x)+x_cycle)
             D_x += [D_xi]
             D_d += [D_di]
+            D_r += [D_ri]
             xover_files_used += [xover_file]
     if len(D_x)==0 or not hasattr(D_x[0],'rgt'):
         return None, []
     D_x = pc.data().from_list(D_x)
     D_d = pc.data().from_list(D_d)
+    D_r = pc.data().from_list(D_r)
     D_x.assign(ref_rgt = D_d.rgt, ref_pair=D_d.pair_track)
     # choose the smallest_sigma xover for each rgt and pair
     ii = select_best_xover_index(D_x)
-    D_x=D_x[ii]
-    D_d=D_d[ii]
+    D_x = D_x[ii]
+    D_d = D_d[ii]
+    D_r = D_r[ii]
 
     blank = np.zeros_like(D_x.h_corr) + np.nan
     D_xo = pc.data().from_dict({
         'z':D_x.h_corr,
         'sigma':D_x.h_corr_sigma,
         'sigma_corr': D_x.h_corr_sigma_systematic,
-        'x':D_x.x,
-        'y':D_x.y,
-        'latitude':D_x.latitude,
-        'longitude':D_x.longitude,
-        'dem_h':D_d.dem_h,
-        'geoid_h':D_d.geoid_h,
+        'x':D_r.x,
+        'y':D_r.y,
+        'latitude':D_r.latitude,
+        'longitude':D_r.longitude,
+        'dem_h':D_r.dem_h,
+        'geoid_h':D_r.geoid_h,
         'rgt':D_x.rgt,
         'pair':D_x.pair_track,
         'ref_pt':D_d.ref_pt,
@@ -223,10 +230,10 @@ def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2]
         'tide_ocean':D_x.tide_ocean,
         'dac':D_x.dac,
         'delta_time':D_x.delta_time,
-        'n_slope':D_d.n_slope,
-        'e_slope':D_d.e_slope,
+        'n_slope':D_r.n_slope,
+        'e_slope':D_r.e_slope,
         'time': D_x.delta_time/24/3600/365.25+2018,
-        'along_track':np.zeros_like(D_x.x, dtype=bool)})
+        'along_track':np.zeros_like(D_r.x, dtype=bool)})
     if verbose:
         print(f"read_ATL11_xovers: read {D_xo.size} crossing_track measurements from {len(xover_files_used)} files")
     return D_xo, xover_files_used
