@@ -677,9 +677,6 @@ def main(argv):
     parser.add_argument('--base_directory','-b', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='base directory')
     parser.add_argument('--out_name', '-o', type=lambda p: os.path.abspath(os.path.expanduser(p)), help="output file name")
     parser.add_argument('--prelim', action='store_true')
-    parser.add_argument('--centers', action="store_true")
-    parser.add_argument('--edges', action="store_true")
-    parser.add_argument('--corners', action="store_true")
     parser.add_argument('--matched', action="store_true")
     parser.add_argument('--prior_edge_include', type=float, help='include prior constraints over this width at the edge of each tile')
     parser.add_argument('--prior_sigma_scale', type=float, default=1, help='scale prior error estimates by this value')
@@ -770,23 +767,10 @@ def main(argv):
     else:
         W_edit=args.W_edit
 
-    if args.centers:
-        dest_dir += '/centers'
-        prior_dirs=None
-        W_edit=None
-    elif args.prelim:
+    if args.prelim:
         dest_dir += '/prelim'
         prior_dirs=None
         W_edit=None
-    elif args.edges or args.corners:
-        reread_dirs=[args.base_directory+'/centers']
-        if args.edges:
-            dest_dir += '/edges'
-        prior_dirs=reread_dirs
-    elif args.corners:
-        reread_dirs += [args.base_directory+'/edges']
-        dest_dir +='/corners'
-        prior_dirs=reread_dirs
     elif args.matched:
         dest_dir += '/matched'
         args.max_iterations=1
