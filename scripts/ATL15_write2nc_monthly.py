@@ -17,8 +17,36 @@ import matplotlib.pyplot as plt
 from scipy import stats
 from ATL1415 import ATL14_attrs_meta, make_nc_projection_variable, make_tile_stats_group
 
-def update_attr_dict(attr_dict, args, res_m, res_km):
+def update_attr_dict(attr_template, args, res_m, res_km):
+    '''
+    update the field attributes for the current resolution and lags
 
+    This function updates a template attribute dictionary by selecting
+        appropriate to downsampled or non-downsampled output files, and
+        replacing occurences of {res} and {res_m} with the resolution in km
+        or meters, respectively. It also duplicates lines containing 'lag'
+        to match the required number of lagged measurements specified in
+        input arguments, and translates the duration of each lag into an
+        adjective
+
+    Parameters
+    ----------
+    attr_template : iterable
+        iterable of dicts containing field attribute templates
+    args : namespace
+        input arguments.
+    res_m : str
+        resolution in meters.
+    res_km : str
+        resolution in km.
+
+    Returns
+    -------
+    new_attrs : iterable
+        iterable of dicts containig updated field attribtues.
+
+    '''
+    # define the words used to describe the lagged dh/dt resolutions
     lag_adjectives = {1/12: 'monthly',
                 1/4: 'quarterly',
                 1: 'annual',
@@ -35,29 +63,55 @@ def update_attr_dict(attr_dict, args, res_m, res_km):
     if args.verbose:
         print(lag_names)
     lags = args.dzdt_lags
-    new_dict=[]
+    new_attrs=[]
     average_key='None' if args.avg_scale is None else '{res}'
-    for row in attr_dict:
+    for row in attr_template:
         if row['average'] != average_key:
             continue
         if row['lag'] is None:
-            new_dict.append({key:val.replace('{lag_name}', lag_names[1]) for key, val in row})
+            new_attrs.append({key:val.replace('{lag_name}', lag_names[1]) for key, val in row})
         else:
             for lag in lags:
                 new_row = {attr_name: attr.replace('{lag}', str(lag))\
                                            .replace('{lag_name}', lag_names[lag])
                            for attr_name, attr in row.items()}
-                new_dict.append(new_row)
-    for rcount, row in enumerate(new_dict):
+                new_attrs.append(new_row)
+    for rcount, row in enumerate(new_attrs):
         for attr_name, attr in row.items():
             if '{res}' in attr:
                 attr=attr.replace('{res}', res_km)
             if '{res_m}' in attr:
                 attr=attr.replace('{res_m}', res_m)
             row[attr_name] = attr
-    return new_dict
+    return new_attrs
 
 def make_dataset(field, data, attrs, file_obj, group_obj, nctype, dimScale=False):
+    '''
+    make a dataset in an netcdf output file
+
+    Parameters
+    ----------
+    field : str
+        field to be created.
+    data : numpy.array
+        data.
+    attrs : dict
+        attributes for the field.
+    file_obj : netcdf4 file object
+        file object to be written to .
+    group_obj : netcdf4 group object
+        group object to be written to.
+    nctype : dict
+        definitions for netcdf data types.
+    dimScale : book, optional
+        If true, define the field as a dimension. The default is False.
+
+    Returns
+    -------
+    file_obj : netcdf4 file object
+        file object that was written.
+
+    '''
     dimensions = attrs['dimensions'].split(',')
     dimensions = tuple(x.strip() for x in dimensions)
     if attrs['datatype'].startswith('int'):
@@ -87,21 +141,21 @@ def make_dataset(field, data, attrs, file_obj, group_obj, nctype, dimScale=False
 
     return file_obj
 
-def get_field_attrs(group,  attr_dict):
-    field_attrs={}
-    for row in attr_dict:
+def get_group_attrs(group,  all_attrs):
+    group_attrs={}
+    for row in all_attrs:
         if row['out_group']==group:
             if row['field'] is None or row['field'] == '':
                 group_description = row['description']
                 continue
-            field_attrs[row['field']] = {attr_name: attr for attr_name, attr in row.items()}
-    return field_attrs, group_description
+            group_attrs[row['field']] = {attr_name: attr for attr_name, attr in row.items()}
+    return group_attrs, group_description
 
 def ATL15_write2nc_monthly(args):
 
     attrFile = pkg_resources.resource_filename('ATL1415','resources/ATL15_monthly_output_attrs.csv')
     with open(attrFile,'r',encoding='utf-8-sig') as attrfile:
-        attr_dict=list(csv.DictReader(attrfile))
+        all_attrs = list(csv.DictReader(attrfile))
 
     res = args.grid_spacing[1]
     if args.avg_scale is not None:
@@ -121,24 +175,19 @@ def ATL15_write2nc_monthly(args):
     if args.verbose:
         print('output file:',fileout)
 
-    attr_dict = update_attr_dict(attr_dict, args, res_m, res_km)
-
-    file_handles={}
+    all_attrs = update_attr_dict(all_attrs, args, res_m, res_km)
 
     nctype = {'float64':'f8',
               'float32':'f4',
               'int8':'i1'}
-
-    attr_names=[x for x in attr_dict[0].keys() if x != 'field' and x != 'group']
 
     fh_in={}
 
     with Dataset(fileout,'w',clobber=True) as nc:
         nc.setncattr('GDAL_AREA_OR_POINT','Area')
         nc.setncattr('Conventions','CF-1.6')
-        tilegrp = make_tile_stats_group(nc, args)
+        _ = make_tile_stats_group(nc, args)
 
-        ice_area_mask=None
         for lag in [None] + args.dzdt_lags:
             if lag is None:
                 group = 'delta_h'
@@ -146,7 +195,7 @@ def ATL15_write2nc_monthly(args):
                 group = f'dhdt_lag{lag}'
             if args.verbose:
                 print('-'*20 + '\n'+ group+'\n'+'-'*20)
-            group_attrs, group_description = get_field_attrs(group,  attr_dict)
+            group_attrs, group_description = get_group_attrs(group,  all_attrs)
             nc_group = nc.createGroup(group)
             nc_group.setncattr('description', group_description)
             crs_var = make_nc_projection_variable(args.region, nc.groups[group])
@@ -155,6 +204,7 @@ def ATL15_write2nc_monthly(args):
                 dimscale = False
                 # out field
                 in_file = attrs['source_file']
+                # cache the file handle
                 if in_file not in fh_in:
                     fh_in[in_file] = h5py.File(os.path.join(args.base_dir, in_file),'r')
                 data = np.array(fh_in[in_file][attrs['source_group']][attrs['source_var']])
@@ -169,10 +219,9 @@ def ATL15_write2nc_monthly(args):
                     dimscale = True
                 elif field == 'time':
                     data = (data-2018.)*365.25
-                    ntime = data.shape[0]
                     dimscale = True
                 if data.ndim==3:
-                    #'delta_h' in field or 'dhdt' in field or 'ice_area' in field or 'data_count' in field:
+                    # hdf5 files store data as y, x, t
                     data = np.moveaxis(data,2,0)  # t, y, x
                 if field == 'ice_area':
                     data[data==0.0] = np.nan
