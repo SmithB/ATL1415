@@ -12,7 +12,7 @@ import shutil
 import uuid
 import io, re, os, glob
 import h5py
-import pkg_resources
+import importlib
 
 import matplotlib.pyplot as plt
 #import warnings
@@ -116,8 +116,10 @@ def ATL15_browse_plots(args):
         print(f'Making file {brwfile}')
         if os.path.isfile(brwfile):
             os.remove(brwfile)
-        template_file = pkg_resources.resource_filename('ATL1415','resources/BRW_template.h5')
-        shutil.copyfile(template_file,brwfile)
+        
+        with importlib.resources.as_file('ATL1415.resources', 'BRW_template.h5') as template_file:
+            shutil.copyfile(template_file,brwfile)
+        
         with h5py.File(brwfile,'r+') as hf:
             hf.require_group('/default')
             for ii, name in enumerate(sorted(glob.glob(f'{args.base_dir.rstrip("/")}/ATL15_{args.region}_{args.cycles}{ave}_{args.Release}_{args.version}_BRW_default*.png'))):

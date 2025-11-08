@@ -28,8 +28,8 @@ def write_atl14meta(dst,fileout,ncTemplate,args):
         'time_coverage_end':'', 'time_coverage_start':'', 'identifier_file_uuid':''}
 
     # copy attributes, dimensions, variables, and groups from template
-    if 'ATL15' in os.path.basename(fileout):
-        ncTemplate = ncTemplate.replace('atl14','atl15')
+    #if 'ATL15' in os.path.basename(fileout):
+    #    ncTemplate = ncTemplate.replace('atl14','atl15')
     with Dataset(ncTemplate,'r') as src:
     # copy attributes
         for name in src.ncattrs():

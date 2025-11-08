@@ -5,7 +5,7 @@ Created on Mon Oct 27 09:39:20 2025
 
 @author: ben
 """
-import pkg_resources
+import importlib
 import numpy as np
 import csv
 import os
@@ -32,9 +32,8 @@ def make_tile_stats_group(nc, args):
 
     """
     tilegrp = nc.createGroup('tile_stats')
-    tileFile = pkg_resources.resource_filename('ATL1415','resources/tile_stats_output_attrs.csv')
-    with open(tileFile,'r', encoding='utf-8-sig') as tilefile:
-        tile_reader=list(csv.DictReader(tilefile))
+    with importlib.resources.open_text('ATL1415.resources','tile_stats_output_attrs.csv', encoding='utf-8-sig') as fh:
+        tile_reader = list(csv.DictReader(fh))
 
     tile_attr_names=[x for x in tile_reader[0].keys() if x != 'field' and x != 'group']
 

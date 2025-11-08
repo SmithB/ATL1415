@@ -8,7 +8,7 @@ Created on Fri Jan 24 10:45:47 2020
 import numpy as np
 import  os, h5py, csv, re, glob
 import ast
-import pkg_resources
+import importlib
 from netCDF4 import Dataset
 import matplotlib.pyplot as plt
 #import matplotlib as mpl
@@ -57,9 +57,9 @@ def ATL15_write2nc(args):
         return file_obj
 
     # find which lags are in attributes file
-    attrFile = pkg_resources.resource_filename('ATL1415','resources/ATL15_output_attrs.csv')
-    with open(attrFile,'r',encoding='utf-8-sig') as attrfile:
-        reader=list(csv.DictReader(attrfile))
+    with importlib.resources.open_text('ATL1415.resources', 'ATL15_monthly_output_attrs.csv', encoding='utf-8-sig') as attrfile:
+        with open(attrFile,'r',encoding='utf-8-sig') as attrfile:
+            reader=list(csv.DictReader(attrfile))
     qtrs = []
     for row in reader:
         if row['group'] == 'height_change' and row['field'].startswith('time'):
@@ -242,9 +242,9 @@ def ATL15_write2nc(args):
                         lags['file'][jj].close()
                     except:
                         pass
-
-                ncTemplate=pkg_resources.resource_filename('ATL1415','resources/atl15_metadata_template.nc')
-                ATL14_attrs_meta.write_atl14meta(nc, fileout, ncTemplate, args)
+                #BS: converted from pkg_resources
+                with importlib.resources.path('ATL1415.resources', 'atl15_metadata_template.nc') as ncTemplate:
+                    ATL14_attrs_meta.write_atl14meta(nc, fileout, ncTemplate, args)
 
     return fileout
 

@@ -8,7 +8,7 @@ Created on Fri Jan 24 10:45:47 2020
 import numpy as np
 import  os, h5py, csv, re, glob
 import ast
-import pkg_resources
+import importlib
 from netCDF4 import Dataset
 import matplotlib.pyplot as plt
 #import matplotlib as mpl
@@ -153,8 +153,7 @@ def get_group_attrs(group,  all_attrs):
 
 def ATL15_write2nc_monthly(args):
 
-    attrFile = pkg_resources.resource_filename('ATL1415','resources/ATL15_monthly_output_attrs.csv')
-    with open(attrFile,'r',encoding='utf-8-sig') as attrfile:
+    with importlib.resources.open_text('ATL1415.resources', 'ATL15_monthly_output_attrs.csv', encoding='utf-8-sig') as attrfile:
         all_attrs = list(csv.DictReader(attrfile))
 
     res = args.grid_spacing[1]
@@ -234,8 +233,9 @@ def ATL15_write2nc_monthly(args):
             # we should have an x and a y defined by now
             crs_var.GeoTransform = (xll,dx,0,yll,0,dy)
 
-        ncTemplate=pkg_resources.resource_filename('ATL1415','resources/atl15_metadata_template.nc')
-        ATL14_attrs_meta.write_atl14meta(nc, fileout, ncTemplate, args)
+        #ncTemplate=pkg_resources.resource_filename('ATL1415','resources/atl15_metadata_template.nc')
+        with importlib.resources.path('ATL1415.resources', 'atl15_metadata_template.nc') as ncTemplate: 
+            ATL14_attrs_meta.write_atl14meta(nc, fileout, ncTemplate, args)
     for fh in fh_in.values():
         try:
             fh.close()
