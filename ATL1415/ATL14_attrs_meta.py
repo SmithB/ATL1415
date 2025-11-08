@@ -181,7 +181,7 @@ def set_lineage(dst,root_info,args):
 # set time attributes
     root_info.update({'time_coverage_start': sUTCtime})
     root_info.update({'time_coverage_end': eUTCtime})
-    root_info.update({'time_coverage_duration': delta_time_range['start'] - delta_time_range['end']})
+    root_info.update({'time_coverage_duration': delta_time_range['end'] - delta_time_range['start']})
     dst['/METADATA/Extent'].setncattr('rangeBeginningDateTime',sUTCtime)
     dst['/METADATA/Extent'].setncattr('rangeEndingDateTime',eUTCtime)
 
