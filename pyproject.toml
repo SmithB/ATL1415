@@ -1,0 +1,98 @@
+[build-system]
+requires = ["setuptools>=64", "setuptools_scm>=8"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ATL1415"
+description = "Utilities for creating the NASA ICESat-2 ATL14/15 products"
+keywords = [
+    "ICESat-2",
+    "ATL14",
+    "ATL15",
+    "ATL14/15"
+]
+authors = [
+    {name = "Ben Smith", email = "besmith@uw.edu"}
+]
+maintainers = [
+    {name = "ATL14/15 contributors"}
+]
+
+license = {file = "LICENSE"}
+readme = "README.md"
+version = "2.0.0"
+
+requires-python = ">=3.6"
+dependencies = [
+    "h5py",
+    "matplotlib",
+    "netCDF4",
+    "numpy",
+    "pyproj",
+    "scipy>=1.10.1",
+    "shapely",
+    "cartopy",
+    "imageio",
+    "pointCollection @git+https://github.com/SmithB/pointCollection.git",
+    "LSsurf @ git+ssh://git@github.com/smithb/LSsurf.git",
+    "SMBcorr @ git+ssh://git@github.com/smithb/SMBcorr.git"
+]
+
+classifiers=[
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.6",
+    "Programming Language :: Python :: 3.7",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Physics",
+]
+
+[project.urls]
+Repository = "https://github.com/SmithB/ATL1415"
+Issues = "https://github.com/SmithB/ATL1415/issues"
+
+[project.optional-dependencies]
+all = ["gdal", "notebook", "shapely"]
+dev = ["flake8", "pytest>=4.6", "pytest-cov"]
+
+[project.scripts]
+
+"ATL14_browse_plots.py" = "scripts.ATL14_browse_plots:main"
+"ATL14_write2nc.py" = "scripts.ATL14_write2nc:main"
+"ATL15_browse_plots.py" = "scripts.ATL15_browse_plots:main"
+"ATL15_write2nc.py" = "scripts.ATL15_write2nc:main"
+"ATL15_write2nc_monthly.py" = "scripts.ATL15_write2nc_monthly:main"
+"_usgs.py" = "scripts._usgs:main"
+"check_tile_data_vs_DEM.py" = "scripts.check_tile_data_vs_DEM:main"
+"make_200km_tiles.py" = "scripts.make_200km_tiles:main"
+"make_ATL1415_queue.py" = "scripts.make_ATL1415_queue:main"
+"make_GL_ATL1415_queue.py" = "scripts.make_GL_ATL1415_queue:main"
+"make_field_size_report.py" = "scripts.make_field_size_report:main"
+"requeue_slurm_errors.py" = "scripts.requeue_slurm_errors:main"
+"requeue_slurm_killed.py" = "scripts.requeue_slurm_killed:main"
+"requeue_slurm_running.py" = "scripts.requeue_slurm_running:main"
+"setup_ATL1415_region.py" = "scripts.setup_ATL1415_region:main"
+"setup_slurm_run.py" = "scripts.setup_slurm_run:main"
+
+[tool.setuptools]
+script-files = ["scripts/make_200km_to_mosaic_jobs.sh", "scripts/make_ATL11_index", "scripts/make_ATL11_index_discover", "scripts/make_mosaic_jobs", "scripts/make_mosaic_jobs_monthly", "scripts/run_antarctic_tonc.sh", "scripts/run_arctic_matched.sh", "scripts/run_arctic_mosaic.sh", "scripts/run_arctic_prelim.sh", "scripts/run_arctic_to_nc.sh"]
+
+[tool.setuptools.packages.find]
+exclude = ["test*"]
+
+[tool.pytest.ini_options]
+minversion = "6.0"
+norecursedirs = ".git"
+python_files = [
+    "test*.py"
+]
+testpaths = [
+    "test"
+]
