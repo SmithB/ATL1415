@@ -169,8 +169,14 @@ def ATL15_write2nc_monthly(args):
 
     # establish output file
     avg_name = f'{res_km}km'
-
-    fileout = os.path.join(args.base_dir , '_'.join(['ATL15', '1mo', args.region , args.cycles, avg_name, args.Release, args.version]) + '.nc')
+    if np.abs(args.delta_t-1/12)<0.001:
+        delta_t_str = '1mo'
+    elif np.abs(args.delta_t-1/4) < 0.001:
+        delta_t_str = '3mo'
+    else:
+        raise ValueError(f'time resolution of {args.delta_t} not recognized')
+    
+    fileout = os.path.join(args.base_dir , '_'.join(['ATL15', args.region , args.cycles, delta_t_str,  avg_name, args.Release, args.version]) + '.nc')
     if args.verbose:
         print('output file:',fileout)
 

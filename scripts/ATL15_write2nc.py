@@ -58,8 +58,7 @@ def ATL15_write2nc(args):
 
     # find which lags are in attributes file
     with importlib.resources.open_text('ATL1415.resources', 'ATL15_monthly_output_attrs.csv', encoding='utf-8-sig') as attrfile:
-        with open(attrFile,'r',encoding='utf-8-sig') as attrfile:
-            reader=list(csv.DictReader(attrfile))
+        reader=list(csv.DictReader(attrfile))
     qtrs = []
     for row in reader:
         if row['group'] == 'height_change' and row['field'].startswith('time'):
