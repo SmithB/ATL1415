@@ -1,0 +1,114 @@
+#! /usr/bin/env bash
+
+source activate IS2
+
+base=$1
+region=`basename $base`
+
+# specify "prelim" as the second argument, default is "matched"
+[ -z "$2" ] && step="matched" || step=$2
+
+mosaic_run=${region}_mosaic
+
+if [ -f $base/bounds.txt  ]; then
+    crop="-c "$(head -1 $base/bounds.txt)
+else
+    crop=""
+fi
+
+[ -d $mosaic_run ] || mkdir $mosaic_run
+
+for thedir in queue running done logs; do
+    [ -d $mosaic_run/$thedir ] || mkdir $mosaic_run/$thedir
+done
+
+
+pad=5000
+feather=10000
+
+compute_sigma='True'
+compute_SMB='False'
+#compute_SMB='True'
+
+
+field=dz
+
+glob_str="'$step/*.h5'"
+
+task=0
+
+TR="--t_range 2019 2050"
+task=$(($task+1))
+echo "make_mosaic.py $crop $TR -R  -w  -d $base  -g $glob_str  -p $pad -f $feather -O $base/dz.h5 --in_group dz/ -F count misfit_rms misfit_scaled_rms mask cell_area $field" > $mosaic_run/task_${task}
+if [ $compute_sigma == 'True' ]; then
+  echo "make_mosaic.py $crop $TR -w  -d $base  -g 'prelim/*.h5'  -p $pad -f $feather -O $base/dz.h5 --in_group dz/ -F sigma_dz" >> $mosaic_run/task_${task}
+fi
+if [ $compute_SMB == 'True' ]; then
+  echo "make_mosaic.py $crop -w $TR -d $base  -g 'prelim/*.h5'  -p $pad -f $feather -O $base/dz.h5 --in_group dz/ -F SMB_a FAC" >> $mosaic_run/task_${task}
+fi
+
+
+
+for lag in _lag1 _lag3 _lag6 _lag12; do
+    TR='--t_range '$(echo $lag | sed s/_lag// | awk '{print 2019+0.25*$1/2, 2050}')
+
+    task=$(($task+1))
+        #echo "lag=$lag"
+        field=dzdt$lag
+	TR='--t_range '$(echo $lag | sed s/_lag// | awk '{print 2019+0.25*$1/2, 2050}')
+        echo "make_mosaic.py $crop $TR -R -w  -d $base  -g  $glob_str  -p $pad -f $feather -O $base/dzdt$lag.h5 --in_group dzdt$lag/ -F $field cell_area" >> $mosaic_run/task_${task}
+        if [ $compute_sigma == 'True' ]; then
+	    echo "make_mosaic.py $crop $TR -w  -d $base  -g  'prelim/*.h5'  -p $pad -f $feather -O $base/dzdt$lag.h5 --in_group dzdt$lag/ -F sigma_$field" >> $mosaic_run/task_${task} 
+        fi
+done
+
+
+for group in avg_dz_40000m avg_dz_20000m avg_dz_10000m; do
+    field=$group
+
+    #echo "$group $field"
+    this_pad=$pad
+    this_feather=$feather
+    this_S=""
+    this_w="-w"
+    if [ $group == 'avg_dz_40000m' ] ; then
+        this_pad=0
+        this_feather=0
+        this_S="-S 40000 40000"
+	this_w=""
+    elif [ $group == 'avg_dz_20000m' ] ; then
+	this_pad=0
+	this_feather=0
+	this_S=""
+	this_w=""
+    fi
+    out=`echo $group | sed s/000m/km/ | sed s/avg_//`
+    TR="--t_range 2019 2050"
+    task=$(($task+1))
+    echo "make_mosaic.py $crop $this_w $TR -R -d $base  -g  $glob_str  -p $this_pad -f $this_feather $this_S -O $base/$out.h5 --in_group $group/ -F $field cell_area" > $mosaic_run/task_${task}
+    if [ $compute_sigma == 'True' ]; then
+	    echo "make_mosaic.py $crop $this_w $TR -d $base  -g  'prelim/*.h5'  -p $this_pad -f $this_feather $this_S -O $base/$out.h5 --in_group $group/ -F sigma_$group" >> $mosaic_run/task_${task}
+    fi
+
+    
+    group=`echo $group | sed s/dz/dzdt/`
+    out=`echo $out | sed s/dz/dzdt/`
+    for lag in _lag1 _lag3 _lag6 _lag12; do
+        field=$group$lag
+	field_list="$field cell_area"
+	task=$(($task+1))
+
+	TR='--t_range '$(echo $lag | sed s/_lag// | awk '{print 2019+0.25*$1/2, 2050}')
+
+        #echo "lag=$lag, group=$group, task=$task"
+        echo "make_mosaic.py $crop $TR  -R $this_w  -d $base  -g  $glob_str  -p $this_pad -f $this_feather $this_S -O $base/$out$lag.h5 --in_group $field/ -F $field_list" > $mosaic_run/task_${task}
+	if [ $compute_sigma == 'True' ]; then
+	    sigma_field=sigma_${group}${lag}
+	    echo "make_mosaic.py $crop $TR $this_w -d $base  -g  'prelim/*.h5'  -p $this_pad -f $this_feather $this_S -O $base/$out$lag.h5 --in_group $field/ -F $sigma_field" >> $mosaic_run/task_${task}
+	fi
+    done
+done
+
+cat scripts/slurm_scripts/slurm_mos_run | sed s/LAST_TASK/$task/ | sed s/XX/$region/ >> $mosaic_run/slurm_mos_run
+pushd $mosaic_run
+#sbatch slurm_mos_run
