@@ -330,6 +330,11 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
     '''
     SRS_proj4, EPSG=get_SRS_info(hemisphere)
 
+    # default value for erode_source_mask, will change if we are subtracting ATL14
+    erode_source_mask=True
+    if ATL14_reference_file is not None:
+        erode_source_mask=False
+
     E_RMS0={'d2z0_dx2':200000./3000/3000, 'd3z_dx2dt':3000./3000/3000, 'd2z_dt2':5000}
     E_RMS0.update(E_RMS)
 
@@ -526,12 +531,15 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
                       max_iterations=max_iterations,
                       srs_proj4=SRS_proj4, VERBOSE=True,
                       dzdt_lags=dzdt_lags,
-                      mask_file=mask_file, mask_data=mask_data, mask_scale={0:10, 1:1},
+                      mask_file=mask_file,
+                      mask_data=mask_data,
+                      mask_scale={0:10, 1:1},
                       converge_tol_frac_edit=0.001,
                       error_res_scale=error_res_scale,
                       ancillary_data=ancillary_data,
                       mask_update_function=mask_update_function,
                       z0_average_scale = z0_average_scale,
+                      erode_source_mask=erode_source_mask,
                       avg_scales=avg_scales)
     S['file_list'] = file_list
     return S
@@ -734,7 +742,7 @@ def main(argv):
     args.time_span = [np.float64(temp) for temp in args.time_span.split(',')]
     args.avg_scales = [np.int64(temp) for temp in args.avg_scales.split(',')]
     args.error_res_scale = [np.int64(temp) for temp in args.error_res_scale.split(',')]
-    
+
     spacing={}
     for dim, this_sp in zip(['z0','dz','dt'], args.grid_spacing.split(',')):
         if '/' in this_sp:
@@ -753,7 +761,7 @@ def main(argv):
             np.arange(args.time_span[0], args.time_span[1]+0.01*args.grid_spacing[2], args.grid_spacing[2])-args.reference_time))
         print(f"reference_epoch = {args.reference_epoch}")
 
-    
+
     E_RMS={'d2z0_dx2':args.E_d2z0dx2, 'd3z_dx2dt':args.E_d3zdx2dt, 'd2z_dt2':args.E_d2zdt2}
 
     if args.data_gap_scale > 0:
