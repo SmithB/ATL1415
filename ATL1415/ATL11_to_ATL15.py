@@ -9,7 +9,7 @@ import os
 import sys
 import re
 
-threads_re=re.compile("THREADS=(\S+)")
+threads_re=re.compile(r"THREADS=(\S+)")
 n_threads="1"
 for arg in sys.argv:
     try:
@@ -333,6 +333,8 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
     # default value for erode_source_mask, will change if we are subtracting ATL14
     erode_source_mask=True
     if ATL14_reference_file is not None:
+        if verbose:
+            print("ATL11_to_ATL15.py: not eroding the source mask b/c rereading ATL14_reference_file")
         erode_source_mask=False
 
     E_RMS0={'d2z0_dx2':200000./3000/3000, 'd3z_dx2dt':3000./3000/3000, 'd2z_dt2':5000}
@@ -666,7 +668,8 @@ def save_errors_to_file( S, filename, dzdt_lags=None, reference_epoch=None, grid
 
     return
 
-def main(argv):
+def main():
+    argv=sys.argv
     # account for a bug in argparse that misinterprets negative agruents
     for i, arg in enumerate(argv):
         if (arg[0] == '-') and arg[1].isdigit(): argv[i] = ' ' + arg
@@ -919,7 +922,7 @@ def main(argv):
     return status
 
 if __name__=='__main__':
-    status=main(sys.argv)
+    status=main()
     if status is None:
         status=1
     sys.exit(status)
