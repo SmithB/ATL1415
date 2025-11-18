@@ -36,45 +36,37 @@ def get_last_task(run_name):
         last_file_num=0;
     return last_file_num
 
-def add_files_to_queue(run_name=None, task_list_file=None, task_glob=None, shell=None, env=None, R_range=None, max_jobs=None, lines_per_task=1, line_count=None):
+def add_files_to_queue(run_name=None, task_list_file=None,  shell=None, env=None, R_range=None, max_jobs=None, lines_per_task=1, line_count=None):
     last_file_num=get_last_task(run_name)
     xy0_re=re.compile('--xy0\s+(\S+)\s+(\S+)')
     xyfile_re=re.compile('/E(\S*)_N(\S*).h5')
-    if task_list_file is not None:
-        add_count=0
-        with open(task_list_file,'r') as fh:
-            for line_number, line in enumerate(fh):
-                # fast forward to the first requested line
-                if line_number <= line_count[0]:
-                    continue
-                break
-            stop=False
-            while not stop:
-                this_count=0
-                tasks_lines = []
-                while this_count <= lines_per_task:
-                    line=fh.readline()
-                    if line=='':
-                        stop=True
-                        break
-                    if R_range is not None:
-                        try:
-                            xy=np.array([*map(float, xy0_re.search(line).groups())])
-                        except Exception:
-                            xy=1000*np.array([*map(float, xyfile_re.search(line).groups())])
-                        R2=np.sum(xy**2)
-                        if (R2 < R_range[0]**2)  | (R2 >= R_range[1]**2) :
-                            continue
-                    task_lines.append(line)
-                    this_count += 1
-                    add_count += 1
+
+    add_count=0
+    with open(task_list_file,'r') as fh:
+        this_count=0
+        task_lines = []
+        for line_number, line in enumerate(fh):
+            # fast forward to first requested line
+            if line_number <= line_count[0]:
+                continue
+            if R_range is not None:
+                    try:
+                        xy=np.array([*map(float, xy0_re.search(line).groups())])
+                    except Exception:
+                        xy=1000*np.array([*map(float, xyfile_re.search(line).groups())])
+                    R2=np.sum(xy**2)
+                    if (R2 < R_range[0]**2)  | (R2 >= R_range[1]**2) :
+                        continue
+
+            task_lines.append(line)
+            this_count += 1
+            if this_count >= lines_per_task:
+                # we have added enough jobs to the current file, write out
                 last_file_num=last_file_num+1;
                 this_file=os.path.join(run_name,'queue','task_%d' % last_file_num)
-                if add_count >= max_jobs:
-                    break
+                add_count += 1
                 with open(this_file,'w') as out_fh:
                     #print("adding %s to queue" % this_file)
-                    add_count +=1
                     if shell is not None:
                         out_fh.write(f'#! /usr/bin/env {shell}\n')
                     if env is not None and "source activate" not in line:
@@ -82,38 +74,22 @@ def add_files_to_queue(run_name=None, task_list_file=None, task_glob=None, shell
                     for line in task_lines:
                         out_fh.write('%s\n'% line.rstrip());
                 os.chmod(this_file, os.stat(this_file).st_mode | stat.S_IEXEC)
+                # reset count and empty task list
+                this_count = 0
+                task_lines = []
+                if add_count >= max_jobs:
+                    break
 
-    if task_glob is not None:
-        task_files=glob.glob(task_glob)
-        for file in task_files:
-            if R_range is not None:
-                skip=False
-                with open(file,'r') as fh:
-                    for line in fh:
-                        m=xy0_re.search(line).groups()
-                        if m is None:
-                            continue
-                        xy=np.array([*map(float, m.groups())])
-                        R2=np.sum(xy**2)
-                        if (R2 < R_range[0]**2)  | (R2 >= R_range[1]) : 
-                            skip=True
-                if skip:
-                    continue
-            last_file_num=last_file_num+1;
-            this_file=os.path.join(run_name,'queue','task_%d' % last_file_num)
-            add_count += 1
-            os.rename(file, this_file)
     print(f"added {add_count} files to the queue")
     with open(os.path.join(run_name,'last_task'),'w+') as last_task_fh:
         last_task_fh.write('%d\n'% last_file_num)
     line_count[0]=line_number
     return add_count
 
-def __main__():
+def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--run_name','-r', type=str, default='ATL_run', help="name to assign to jobs and temporary directories")
     parser.add_argument('--queue_file', '-q', type=str, help="filename containing jobs, one per line")
-    parser.add_argument('--task_glob', '-g', type=str, help='glob to match jobs')
     parser.add_argument('--environment','-e', type=str, default='ATL1415', help="environment that each job will activate")
     parser.add_argument('--shell','-s', type=str, default=None, help="shell to specify for each job (may not be needed)")
     parser.add_argument('--lines_per_task', type=int, default=1, help="combine this number of lines from the input into each task")
@@ -147,7 +123,7 @@ def __main__():
         line_count=[-1]
         while N_added > 0:
             first_task=get_last_task(args.run_name)
-            N_added = add_files_to_queue(run_name=args.run_name, task_list_file=args.queue_file, task_glob=args.task_glob, shell=args.shell, env=args.environment, R_range=R_range, max_jobs=4000, lines_per_task=args.lines_per_task, line_count=line_count)
+            N_added = add_files_to_queue(run_name=args.run_name, task_list_file=args.queue_file, shell=args.shell, env=args.environment, R_range=R_range, max_jobs=4000, lines_per_task=args.lines_per_task, line_count=line_count)
             if N_added <1:
                 continue
             last_task=get_last_task(args.run_name)
@@ -162,4 +138,4 @@ def __main__():
             part_count += 1
 
 if __name__ == '__main__':
-    __main__()
+    main()
