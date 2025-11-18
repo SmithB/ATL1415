@@ -74,6 +74,8 @@ def write_atl14meta(dst,fileout,ncTemplate,args):
     root_info.update({'fileName': os.path.basename(fileout)})
     dst['METADATA/DatasetIdentification'].setncattr('fileName', os.path.basename(fileout))
     dst['METADATA/DatasetIdentification'].setncattr('VersionID', os.path.basename(fileout).split('_')[4])
+# Add RevisionID
+    dst['METADATA/DatasetIdentification'].setncattr('RevisionID', os.path.basename(fileout).split('_')[5][:2])
     root_info.update({'identifier_product_format_version': series_version()})
     dst['METADATA/SeriesIdentification'].setncattr('VersionID', series_version())
     dst['METADATA/ProcessStep/PGE'].setncattr('softwareDate', softwareDate())

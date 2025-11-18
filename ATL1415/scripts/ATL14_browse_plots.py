@@ -17,7 +17,6 @@ import importlib
 
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
-import matplotlib.colors as mcolors
 #import matplotlib.colormaps as cmaps
 #import matplotlib.cm as cmaps
 from matplotlib import colormaps
@@ -68,37 +67,46 @@ def ATL14_browse_plots(args):
         fhlog.write('{}: No valid h data, no browse plot written.\n'.format(filein))
         exit(-1)
 
-    fig,ax = plt.subplots(1,1)
-    ax = plt.subplot(1,1,1,projection=projection)
+    fig = plt.figure(figsize=(10, 7))
+    ax = fig.add_subplot(1, 1, 1, projection=projection)
     ax.add_feature(cfeature.LAND,facecolor='0.8')
     ax.coastlines(resolution='50m',linewidth=0.5)
-    ax.gridlines(crs=ccrs.PlateCarree())
     h05 = stats.mstats.scoreatpercentile(h[~np.isnan(h)].ravel(),5)
     h95 = stats.mstats.scoreatpercentile(h[~np.isnan(h)].ravel(),95)
     handle = ax.imshow(h, extent=extent, cmap='cividis', vmin=h05, vmax=h95, origin='lower', interpolation='nearest')
-    fig.colorbar(handle,ax=ax,label='DEM, m',shrink=1/2, extend='both')
+    plt.colorbar(handle,ax=ax,label='DEM, m',shrink=1/2, extend='both')
+    gl = ax.gridlines(draw_labels=True, dms=True, x_inline=False, y_inline=False, alpha=0.5, linestyle='--', crs=ccrs.PlateCarree())
+    gl.top_labels = False
+    gl.right_labels = False
     ax.set_title(f'DEM: {os.path.basename(filein)}')
     if args.Hemisphere==1:
         plt.figtext(0.1,0.01,f'Figure 1. DEM surface height (h), referenced to WGS84, in meters, from cycle {args.cycles[0:2]} to cycle {args.cycles[2:4]}. Map is plotted in a polar-stereographic projection with a central longitude of 45W and a standard latitude of 70N.',wrap=True)
     elif args.Hemisphere==-1:
         plt.figtext(0.1,0.01,f'Figure 1. DEM surface height (h), referenced to WGS84, in meters, from cycle {args.cycles[0:2]} to cycle {args.cycles[2:4]}. Map is plotted in a polar-stereographic projection with a central longitude of 0W and a standard latitude of 71S.',wrap=True)
-    fig.savefig(f'{pngfile}_default1.png')
+    plt.subplots_adjust(bottom=0.15)
+    plt.tight_layout(rect=[0, 0.05, 1, 1])
+    fig.savefig(f'{pngfile}_default1.png', bbox_inches='tight')
 
-    fig,ax = plt.subplots(1,1)
-    ax = plt.subplot(1,1,1,projection=projection)
+
+    fig = plt.figure(figsize=(10, 7))
+    ax = fig.add_subplot(1, 1, 1, projection=projection)
     ax.add_feature(cfeature.LAND,facecolor='0.8')
     ax.coastlines(resolution='50m',linewidth=0.5)
-    ax.gridlines(crs=ccrs.PlateCarree())
     h01 = stats.mstats.scoreatpercentile(h_sigma[~np.isnan(h_sigma)].ravel(),1)
     h99 = stats.mstats.scoreatpercentile(h_sigma[~np.isnan(h_sigma)].ravel(),99)
     handle = ax.imshow(h_sigma, extent=extent, cmap='viridis', norm=LogNorm(vmin=h01, vmax=h99), origin='lower', interpolation='nearest')
-    fig.colorbar(handle,ax=ax,label='DEM uncertainty, m',shrink=1/2, extend='both')
+    plt.colorbar(handle,ax=ax,label='DEM uncertainty, m',shrink=1/2, extend='both')
+    gl = ax.gridlines(draw_labels=True, dms=True, x_inline=False, y_inline=False, alpha=0.5, linestyle='--', crs=ccrs.PlateCarree())
+    gl.top_labels = False
+    gl.right_labels = False
     ax.set_title(f'DEM Uncertainty: {os.path.basename(filein)}')
     if args.Hemisphere==1:
         plt.figtext(0.1,0.01,f'Figure 2. Uncertainty in the DEM surface height (h_sigma), in meters, from cycle {args.cycles[0:2]} to cycle {args.cycles[2:4]}. Map is plotted in a polar-stereographic projection with a central longitude of 45W and a standard latitude of 70N.',wrap=True)
     elif args.Hemisphere==-1:
         plt.figtext(0.1,0.01,f'Figure 2. Uncertainty in the DEM surface height (h_sigma), in meters, from cycle {args.cycles[0:2]} to cycle {args.cycles[2:4]}. Map is plotted in a polar-stereographic projection with a central longitude of 0W and a standard latitude of 71S.',wrap=True)
-    fig.savefig(f'{pngfile}_default2.png')
+    plt.subplots_adjust(bottom=0.15)
+    plt.tight_layout(rect=[0, 0.05, 1, 1])
+    fig.savefig(f'{pngfile}_default2.png', bbox_inches='tight')
 
     # write images to browse .h5 file
     brwfile = args.base_dir.rstrip('/') + '/ATL14_' + args.region + '_' + args.cycles + '_100m_' + args.Release + '_' + args.version + '_BRW.h5'
