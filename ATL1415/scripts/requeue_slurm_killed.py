@@ -41,67 +41,69 @@ def make_killed_list(list_file, done_dir, run_name):
         done_list += done_file
     return done_list
 
+def main():
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--done_dir', type=str, default='done')
+    parser.add_argument('--log_dir', type=str, default='logs')
+    parser.add_argument('--run_name', type=str)
+    parser.add_argument('--list_file', type=str)
+    parser.add_argument('--new_run_name', type=str)
+    parser.add_argument('--dry_run', action='store_true')
+    args=parser.parse_args()
 
-import argparse
-parser = argparse.ArgumentParser()
-parser.add_argument('--done_dir', type=str, default='done')
-parser.add_argument('--log_dir', type=str, default='logs')
-parser.add_argument('--run_name', type=str)
-parser.add_argument('--list_file', type=str)
-parser.add_argument('--new_run_name', type=str)
-parser.add_argument('--dry_run', action='store_true')
-args=parser.parse_args()
+    done_dirs=glob.glob('done*')
+    N_done_dirs=len(done_dirs)
 
-done_dirs=glob.glob('done*')
-N_done_dirs=len(done_dirs)
+    while os.path.isdir(f'done_round_{N_done_dirs}'):
+        N_done_dirs += 1
+    done_old_dir=f'done_round_{N_done_dirs}'
 
-while os.path.isdir(f'done_round_{N_done_dirs}'):
-    N_done_dirs += 1
-done_old_dir=f'done_round_{N_done_dirs}'
+    if args.new_run_name is None:
+        args.new_run_name=f'taskr{N_done_dirs+1}'
 
-if args.new_run_name is None:
-    args.new_run_name=f'taskr{N_done_dirs+1}'
-
-killed_list=make_killed_list(args.list_file, args.done_dir, args.run_name)
+    killed_list=make_killed_list(args.list_file, args.done_dir, args.run_name)
 
 
-count=len(glob.glob('queue/*'))
+    count=len(glob.glob('queue/*'))
 
-for file in killed_list:
-    status='not run'
+    for file in killed_list:
+        status='not run'
 
-    log_file='logs/'+os.path.basename(file)+'.log'
+        log_file='logs/'+os.path.basename(file)+'.log'
 
-    with open(log_file,'r') as fh:
-        for line in fh:
-            if 'done with' in line:
-                if status=='not run':
-                    status='run but no errors'
-                else:
-                    print(f'file: {file} appears to have completed')
-                    break
-    count += 1
-    out_file=f'queue/{args.new_run_name}_{count}'
-    if args.dry_run:
-        print(f'\t---reprocessing {file} as {out_file}')
-        continue
-    with open(out_file,'w') as fh_out:
-        fh_out.write('#! /usr/bin/env bash\n')
-        fh_out.write('# reprocess ' +file+'\n')
-
-        with open(file) as fh_in:
-            for line in fh_in:
-                if 'ATL11_to_ATL15' in line:
+        with open(log_file,'r') as fh:
+            for line in fh:
+                if 'done with' in line:
                     if status=='not run':
+                        status='run but no errors'
+                    else:
+                        print(f'file: {file} appears to have completed')
+                        break
+        count += 1
+        out_file=f'queue/{args.new_run_name}_{count}'
+        if args.dry_run:
+            print(f'\t---reprocessing {file} as {out_file}')
+            continue
+        with open(out_file,'w') as fh_out:
+            fh_out.write('#! /usr/bin/env bash\n')
+            fh_out.write('# reprocess ' +file+'\n')
+
+            with open(file) as fh_in:
+                for line in fh_in:
+                    if 'ATL11_to_ATL15' in line:
+                        if status=='not run':
+                            fh_out.write(line)
+                        elif status=='run but no errors' and 'calc_error' in line:
+                            fh_out.write(line)
+                    else:
                         fh_out.write(line)
-                    elif status=='run but no errors' and 'calc_error' in line:
-                        fh_out.write(line)
-                else:
-                    fh_out.write(line)
 
 
-print(f'moving {args.done_dir}/ to ', done_old_dir)
-if not args.dry_run:
-    os.rename(args.done_dir,done_old_dir)
-    os.mkdir('done')
+    print(f'moving {args.done_dir}/ to ', done_old_dir)
+    if not args.dry_run:
+        os.rename(args.done_dir,done_old_dir)
+        os.mkdir('done')
 
+if __name__=='__main__':
+    main()
