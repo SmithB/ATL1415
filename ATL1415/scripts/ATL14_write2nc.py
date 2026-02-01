@@ -44,7 +44,7 @@ def ATL14_write2nc(args):
         nc.setncattr('Conventions','CF-1.6')
         crs_var_root = make_nc_projection_variable(args.region, nc)
         tilegrp = make_tile_stats_group(nc, args)
-        
+
         # get handle for input file with ROOT and height_change variables.
         FH = h5py.File(args.base_dir.rstrip('/')+'/z0.h5','r')
         if 'z0' not in FH:
@@ -134,7 +134,7 @@ def ATL14_write2nc(args):
 
     return fileout
 
-if __name__=='__main__':
+def main():
 
     import argparse
     parser=argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter, fromfile_prefix_chars='@')
@@ -169,3 +169,6 @@ if __name__=='__main__':
 
 
     fileout = ATL14_write2nc(args)
+
+if __name__=='__main__':
+    main()
