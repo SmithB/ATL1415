@@ -12,14 +12,15 @@ import re
 
 import re
 
-in_file='ATL15_output_attrs_rel004_0324.csv'
-out_file='ATL15_output_attrs_rel004.csv'
+in_file='ATL15_output_attrs_rel005_0328.csv'
+out_file='ATL15_output_attrs_rel005.csv'
 
-old_lag='lag20'
-new_lag='lag24'
+old_lag='lag24'
+new_lag='lag28'
 
-old_name='Pentennial'
-new_name='Hexennial'
+
+old_name='Hexennial'
+new_name='Heptennial'
 with open(in_file,'r') as fh_in:
     with open(out_file,'w') as fh_out:
         for line in fh_in:
