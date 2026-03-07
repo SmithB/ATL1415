@@ -31,6 +31,6 @@ def make_slurm_file(dst_file, subs=None, source_file='packable_job.txt', css=Fal
                   val=m.group(3)
                   if key in subs:
                       val=subs[key]
-                  line=line.replace(pattern, val)
+                  line=line.replace(pattern, str(val))
 
                   fh_out.write(line)
