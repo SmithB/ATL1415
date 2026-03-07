@@ -56,8 +56,11 @@ def ATL15_write2nc(args):
 
         return file_obj
 
+    if args.attr_file is None:
+        args.attr_file=f'ATL15_output_attrs_rel{args.Release}.csv'
+    
     # find which lags are in attributes file
-    with importlib.resources.open_text('ATL1415.resources', 'ATL15_monthly_output_attrs.csv', encoding='utf-8-sig') as attrfile:
+    with importlib.resources.open_text('ATL1415.resources', args.attr_file, encoding='utf-8-sig') as attrfile:
         reader=list(csv.DictReader(attrfile))
     qtrs = []
     for row in reader:
@@ -248,7 +251,7 @@ def ATL15_write2nc(args):
     return fileout
 
 
-if __name__=='__main__':
+def main():
     import argparse
     parser=argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,  fromfile_prefix_chars='@')
     parser.add_argument('-b','--base_dir', type=str, default=os.getcwd(), help='directory in which to look for mosaicked .h5 files')
@@ -266,6 +269,7 @@ if __name__=='__main__':
     parser.add_argument('-v','--version', type=str, help="2-digit version number for output filename")
     parser.add_argument('--ATL11_index', type=str, help='GeoIndex file pointing to ATL11 data')
     parser.add_argument('--ATL11_xover_dir', type=str, help="directory containing ATL11 crossover cycle directories")
+    parser.add_argument('--attr_file', type=str, help="csv file containing attribute definitions")
     parser.add_argument('-list11','--ATL11_lineage_dir', type=str, help='directory in which to look for ATL11 .h5 filenames')
     parser.add_argument('--tiles_dir', type=str, help='directory in which to look for tile .h5 files')
     args, unknown = parser.parse_known_args()
@@ -280,3 +284,6 @@ if __name__=='__main__':
     print('args',args)
 
     fileout = ATL15_write2nc(args)
+
+if __name__=='__main__':
+    main()
