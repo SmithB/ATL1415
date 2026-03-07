@@ -116,6 +116,7 @@ def attributes_for_ATL11_file(file, delta_time_range, args):
         fa['end_cycle'] = fa['start_cycle']
         atl11path = os.path.join(args.ATL11_xover_dir, f'cycle_{fa["start_cycle"]}')
         this_format='xo'
+
     with h5py.File(os.path.join(atl11path,file),'r') as fileID:
         # extract ATL11 attributes from files
         fa['uuid'] = fileID['METADATA']['DatasetIdentification'].attrs['uuid'].decode('utf-8')
@@ -138,7 +139,7 @@ def attributes_for_ATL11_file(file, delta_time_range, args):
         if edeltatime > delta_time_range['end']:
             delta_time_range['end'] = edeltatime
     fa['end_rgt'] = fa['start_rgt']
-    
+
     return fa
 
 # To recursively step through groups
@@ -157,11 +158,14 @@ def set_lineage(dst,root_info,args):
                         'end': np.finfo(np.float64()).tiny}
     ATL11_files=set()
     for tile in glob.iglob(os.path.join(tilepath,'*.h5')):
-        with h5py.File(tile,'r') as h5f:
-            inputs=str(h5f['/meta/'].attrs['input_files'])
-            if inputs[0]=='b':
-                inputs=inputs[1:]
-            ATL11_files.update(inputs.replace("'",'').split(','))
+        try:
+            with h5py.File(tile,'r') as h5f:
+                inputs=str(h5f['/meta/'].attrs['input_files'])
+                if inputs[0]=='b':
+                    inputs=inputs[1:]
+                ATL11_files.update(inputs.replace("'",'').split(','))
+        except Exception:
+            print("ATL14_attrs_meta.py: failed to open tile file : "+tile)
     for file in ATL11_files:
         fa = attributes_for_ATL11_file(file, delta_time_range, args)
         # add attributes to list, if not already present
