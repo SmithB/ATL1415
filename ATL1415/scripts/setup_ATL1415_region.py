@@ -23,7 +23,8 @@ def main(argv=None):
 
     parser = argparse.ArgumentParser(description="generate directories and defaults files for ATL11_to_ATL15")
     parser.add_argument('defaults_files', nargs='+', type=str)
-
+    parser.add_argument('--ATL14_reference_file', type=str)
+    
     args = parser.parse_args()
 
     defaults_re=re.compile('(.*)\s*=\s*(.*)')
@@ -38,6 +39,9 @@ def main(argv=None):
                 if m is not None:
                     defaults[m.group(1)]=m.group(2)
 
+    if args.ATL14_reference_file is not None:
+        defaults['--ATL14_reference_file']=args.ATL14_reference_file
+
     # check if enough parameters have been specified to allow a run
     required_keys_present=True
     for key in ['--ATL14_root', '--region', '--Release','--Hemisphere', '--mask_file']:
@@ -47,8 +51,6 @@ def main(argv=None):
     if not required_keys_present:
         sys.exit(1)
 
-
-
     if '--mask_dir' in defaults:
         for key in ['--mask_file','--d2z0_file','--tide_mask_file', '--tide_adjustment_file', '--geoid_file', '--E_d2z0dx2_file', '--E_d3zdx2dt_scale_file']:
             if key in defaults and not (os.path.isabs(defaults[key]) and  os.path.isfile(defaults[key])):
@@ -57,10 +59,14 @@ def main(argv=None):
 
 
     if defaults['--Hemisphere']==1 or defaults['--Hemisphere']=="1":
-        hemisphere_name='north'
+        hemisphere_base = 'north'
     else:
-        hemisphere_name='south'
+        hemisphere_base = 'south'
 
+    hemisphere_name = hemisphere_base
+    if '--hemi_suffix' in defaults:
+        hemisphere_name += defaults['--hemi_suffix']
+        
     # figure out what directories we need to make
     release_dir = os.path.join(defaults['--ATL14_root'], "rel"+defaults['--Release'])
     hemi_dir=os.path.join(release_dir, hemisphere_name)
@@ -87,7 +93,7 @@ def main(argv=None):
 
     # if ATL11 release is specified and ATL11 geoindex is not specified, guess the location
     if '--ATL11_index' not in defaults and '--ATL11_release' in defaults:
-        defaults['--ATL11_index'] = os.path.join(defaults['--ATL14_root'], 'ATL11_'+defaults['--ATL11_release'], hemisphere_name, 'index','GeoIndex.h5')
+        defaults['--ATL11_index'] = os.path.join(defaults['--ATL14_root'], 'ATL11_'+defaults['--ATL11_release'], hemisphere_base, 'index','GeoIndex.h5')
         defaults.pop('--ATL11_release')
 
     if not os.path.isfile(defaults['--ATL11_index']):
@@ -97,6 +103,8 @@ def main(argv=None):
     defaults_file=os.path.join(region_dir, f'input_args_{defaults["--region"]}.txt')
     with open(defaults_file, 'w') as fh:
         for key, val in defaults.items():
+            if key in ["--hemi_suffix"]:
+                continue
             fh.write(f'{key}={val}\n')
         fh.write(f"-b={region_dir}\n")
 
