@@ -8,6 +8,7 @@ Created on Fri Nov 15 17:15:08 2019
 import os
 import sys
 import re
+import glob
 
 threads_re=re.compile(r"THREADS=(\S+)")
 n_threads="1"
@@ -505,10 +506,14 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
         data.index((data.z - data.geoid_h) > geoid_tol)
 
     if ATL14_reference_file is not None and (calc_error_file is None and data_file is None):
-        data.assign(z_ref = pc.grid.data().from_nc(ATL14_reference_file, bounds=data.bounds(pad=1.e3), field='h')\
-                    .interp(data.x, data.y, field='h'))
-        data.assign(sigma_zref = pc.grid.data().from_nc(ATL14_reference_file, bounds=data.bounds(pad=1.e3), field='h_sigma')\
-                    .interp(data.x, data.y, field='h_sigma'))
+        # we need to build the reference dem from a list because in Antarctica, tiles may
+        # overlap multiple quadrants.  Elsewhere, from_list should just read the file.
+        # N.B.: for netCDFs, the root group is '' rather than '/'
+        ref_dem = pc.grid.mosaic().from_list(
+            glob.glob(ATL14_reference_file),
+            group='', bounds = data.bounds(pad=2.e3), fields=['h','h_sigma'])
+        data.assign(z_ref = ref_dem.interp(data.x, data.y, field='h'))
+        data.assign(sigma_zref = ref_dem.interp(data.x, data.y, field='h_sigma'))
         E_RMS['z0'] = np.nanmedian(data.sigma_zref)
         data.z -= data.z_ref
         data.index(np.isfinite(data.z) & (np.abs(data.z) < DEM_tol))
