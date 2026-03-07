@@ -40,7 +40,7 @@ for field in $field_list; do
     this_replace=''
 done
 
-for lag in _lag1 _lag4 _lag8 _lag12 _lag16 _lag20 _lag24; do
+for lag in _lag1 _lag4 _lag8 _lag12 _lag16 _lag20 _lag24 _lag28; do
     task=$(($task+1))
     TR='--t_range '$(echo $lag | sed s/_lag// | awk '{print 2019+0.25*$1/2, 2050}')
     echo "lag=$lag"
@@ -56,7 +56,7 @@ done
 
 for group in avg_dz_40000m avg_dz_20000m avg_dz_10000m; do
     field=$group
-    echo "$group $field"    
+    echo "$group $field"
     this_replace='-R'
     out=`echo $group | sed s/000m/km/ | sed s/avg_//`
     task=$(($task+1))
@@ -66,10 +66,10 @@ for group in avg_dz_40000m avg_dz_20000m avg_dz_10000m; do
         echo "make_mosaic.py $crop $this_replace -d ${base}/200km_tiles/$group  -g '*.h5' -O $base/$out.h5 --in_group $group/ -F  $ff" >> $mosaic_run/task_${task} 
         this_replace=''
     done
-     
+
     group=`echo $group | sed s/dz/dzdt/`
     out=`echo $out | sed s/dz/dzdt/`
-    for lag in _lag1 _lag4 _lag8 _lag12 _lag16 _lag20 _lag24; do
+    for lag in _lag1 _lag4 _lag8 _lag12 _lag16 _lag20 _lag24 _lag28; do
         field=$group$lag
 	TR='--t_range '$(echo $lag | sed s/_lag// | awk '{print 2019+0.25*$1/2, 2050}')
         task=$(($task+1))
@@ -92,7 +92,7 @@ task=$(($task+1))
 
 this_replace='-R'
 if [ -d $base/200km_tiles/z0 ] ; then
-    echo "200km" 
+    echo "200km"
     field_list=$field_list" sigma_z0"
     for field in $field_list; do
         echo $field
