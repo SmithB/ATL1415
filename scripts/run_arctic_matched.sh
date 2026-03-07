@@ -12,26 +12,49 @@ shift
 loc_file=$1
 shift
 
+period_file=$1
+shift
+
+
+
 if [ ! -f $release_file ]; then
     echo "release file not found"; exit
 fi
 
+$(grep -q monthly $period_file) && hemi_suffix="_monthly" || hemi_suffix=""
+echo $hemi_suffix
+
 release=`grep Release $release_file | sed s/\=/\ / | awk '{print $NF}'`
 root=`grep ATL14_root $loc_file | sed s/\=/\ / | awk '{print $NF}'`
-
+cycles=`grep cycles $release_file | sed s/\=/\ / | awk '{print $NF}'`
+version=`grep version $release_file | sed s/\=/\ / | awk '{print $NF}'`
 
 if [ $# -eq 0 ]; then
     regions="RA IS CN CS SV"
+else
+    regions=$1
 fi
 
-for reg in $regions; do 
-    [ -d $reg"_matched" ] && rm -r $reg"_matched"
+for reg in $regions; do
 
-    make_ATL1415_queue.py matched $root/rel$release/north/$reg/input_args_$reg.txt
+    base=${root}/rel${release}/north${hemi_suffix}/${reg}/
 
-    setup_slurm_run.py --run_name $reg"_matched" -q 1415_queue_$reg"_matched.txt" --time 04:00:00 -j 7 -e ATL14
+    echo $base
 
-    pushd $reg"_matched"
+    if $(grep -q monthly $period_file); then
+    	ATL14_ref_str=--ATL14_reference_file=$root/rel$release/north/$reg/ATL14_${reg}_${cycles}_100m_${release}_${version}.nc
+    fi
+
+    # delete the run directory if it exists
+    [ -d ${reg}_matched${hemi_suffix} ] && rm -r ${reg}_matched${hemi_suffix}
+
+    make_ATL1415_queue.py matched ${base}/input_args_${reg}.txt
+
+    run_name=${reg}${hemi_suffix}_matched
+
+    setup_slurm_run.py --run_name $run_name -q 1415_queue_${reg}_matched.txt --time 04:00:00 -j 7 -e ATL14
+
+    pushd $run_name
     sbatch slurm_run.sh
     popd
 
