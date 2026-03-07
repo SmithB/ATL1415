@@ -49,12 +49,14 @@ def update_attr_dict(attr_template, args, res_m, res_km):
     # define the words used to describe the lagged dh/dt resolutions
     lag_adjectives = {1/12: 'monthly',
                 1/4: 'quarterly',
+                1/2: 'semiannual',
                 1: 'annual',
                 2: 'biennial',
                 3: 'triennial',
                 4: 'quadrennial',
                 5: 'pentennial',
-                6: 'hexennial'}
+                6: 'hexennial',
+                7: 'heptennial'}
     lag_names={}
     lag_adjective_key_list = list(lag_adjectives.keys())
     for lag in args.dzdt_lags:
@@ -125,7 +127,8 @@ def make_dataset(field, data, attrs, file_obj, group_obj, nctype, dimScale=False
     dsetvar = group_obj.createVariable(field,
                                        nctype[attrs['datatype']],
                                        dimensions,
-                                       fill_value=fill_value, zlib=True,
+                                       fill_value=fill_value,
+                                       zlib=True,
                                        least_significant_digit=ast.literal_eval(attrs['least_significant_digit']))
 
     dsetvar[:] = data
@@ -175,7 +178,7 @@ def ATL15_write2nc_monthly(args):
         delta_t_str = '3mo'
     else:
         raise ValueError(f'time resolution of {args.delta_t} not recognized')
-    
+
     fileout = os.path.join(args.base_dir , '_'.join(['ATL15', args.region , args.cycles, delta_t_str,  avg_name, args.Release, args.version]) + '.nc')
     if args.verbose:
         print('output file:',fileout)
@@ -250,7 +253,7 @@ def ATL15_write2nc_monthly(args):
     return fileout
 
 
-if __name__=='__main__':
+def main():
     import argparse
     parser=argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,  fromfile_prefix_chars='@')
     parser.add_argument('-b','--base_dir', type=str, default=os.getcwd(), help='directory in which to look for mosaicked .h5 files')
@@ -310,3 +313,6 @@ if __name__=='__main__':
             fileout = ATL15_write2nc_monthly(args)
     else:
         fileout = ATL15_write2nc_monthly(args)
+
+if __name__=='__main__':
+    main()
