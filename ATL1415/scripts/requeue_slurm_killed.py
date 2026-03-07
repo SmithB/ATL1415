@@ -28,16 +28,21 @@ def make_killed_list(list_file, done_dir, run_name):
                         break
     if run_name is not None:
         slurm_log_files=glob.glob(run_name+'*_*')
+        print(f"found {len(slurm_log_files)} log files")
         for file in slurm_log_files:
             with open(file,'r') as fh:
                 for line in fh:
                     line=line.lower()
-                    if 'killed' in line or 'cancelled' in line:
-                        job_num=file.split('.')[-1]
+                    if 'kill' in line or 'cancelled' in line:
+                        job_num=file.split('_')[-1]
                         job_list += [job_num]
+                        print(job_num)
+        print(f"found {len(job_list)} killed or cancelled files")
     done_list=[]
-    for job_num in job_list:
+    for job_num in set(job_list):
         done_file=glob.glob(f'{done_dir}/*_{job_num}')
+        if len(done_file)==0:
+            print(f"missing done file for {job_num} in {done_dir}")
         done_list += done_file
     return done_list
 
