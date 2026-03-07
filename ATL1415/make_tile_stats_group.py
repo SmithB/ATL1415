@@ -48,7 +48,9 @@ def make_tile_stats_group(nc, args):
     files = os.listdir(args.tiles_dir)
     files = [f for f in files if f.endswith('.h5')]
     for file in files:
+        file_path = os.path.join(args.tiles_dir,file)
         try:
+            assert(os.path.isfile(file_path))
             tile_stats['x']['data'].append(int(re.match(r'^.*E(.*)\_.*$',file).group(1)))
         except Exception:
             print(f"ATL15_write2nc problem in write_tile_stats with [ {file} ], skipping")
@@ -56,7 +58,7 @@ def make_tile_stats_group(nc, args):
         tile_stats['y']['data'].append(int(re.match(r'^.*N(.*)\..*$',file).group(1)))
 
         # with h5py.File(os.path.join(args.base_dir,sub,file),'r') as h5: #used for sub in ['centers','edges','corners']
-        with h5py.File(os.path.join(args.tiles_dir,file),'r') as h5:
+        with h5py.File(file_path,'r') as h5:
             tile_stats['N_data']['data'].append( np.sum(h5['data']['three_sigma_edit'][:]) )
             tile_stats['RMS_data']['data'].append( h5['RMS']['data'][()] )  # use () for getting a scalar.
             tile_stats['RMS_bias']['data'].append( np.sqrt(np.mean((h5['bias']['val'][:]/h5['bias']['expected'][:])**2)) )
