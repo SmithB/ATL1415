@@ -12,29 +12,49 @@ shift
 loc_file=$1
 shift
 
+period_file=$1
+shift
+
+
+
 if [ ! -f $release_file ]; then
     echo "release file not found"; exit
 fi
 
+$(grep -q monthly $period_file) && hemi_suffix="_monthly" || hemi_suffix=""
+echo $hemi_suffix
+
 release=`grep Release $release_file | sed s/\=/\ / | awk '{print $NF}'`
 root=`grep ATL14_root $loc_file | sed s/\=/\ / | awk '{print $NF}'`
-
+cycles=`grep cycles $release_file | sed s/\=/\ / | awk '{print $NF}'`
+version=`grep version $release_file | sed s/\=/\ / | awk '{print $NF}'`
 
 if [ $# -eq 0 ]; then
     regions="RA IS CN CS SV"
+else
+    regions=$1
 fi
 
-for reg in $regions; do 
-    [ -d $root/rel$release/north/$reg/ ] && rm -r /discover/nobackup/projects/icesat2/ATL14_processing/rel$release/north/$reg/
+for reg in $regions; do
+    base=${root}/rel${release}/north${hemi_suffix}/${reg}/
+
+    echo $base
+
+    if $(grep -q monthly $period_file); then
+    	ATL14_ref_str=--ATL14_reference_file=$root/rel$release/north/$reg/ATL14_${reg}_${cycles}_100m_${release}_${version}.nc
+    	suffix="_monthly"
+    fi
+
+    [ -d $base ] && rm -r $base
 
     [ -d $reg"_prelim" ] && rm -r $reg"_prelim"
-    setup_ATL1415_region.py $loc_file $release_file default_args/north.txt default_args/$reg.txt
+    setup_ATL1415_region.py $loc_file $release_file $period_file default_args/north.txt default_args/$reg.txt $ATL14_ref_str
 
-    make_ATL1415_queue.py prelim $root/rel$release/north/$reg/input_args_$reg.txt
+    make_ATL1415_queue.py prelim $base/input_args_$reg.txt
+    run_name=${reg}${hemi_suffix}_prelim
+    setup_slurm_run.py --run_name $run_name -q 1415_queue_$reg"_prelim.txt" --time 04:00:00 -j 7 -e ATL14
 
-    setup_slurm_run.py --run_name $reg"_prelim" -q 1415_queue_$reg"_prelim.txt" --time 04:00:00 -j 7 -e ATL14
-
-    pushd $reg"_prelim"
+    pushd $run_name
     sbatch slurm_run.sh
     popd
 

@@ -11,26 +11,48 @@ shift
 
 loc_file=$1
 shift
+
+period_file=$1
+shift
+
 echo "release_file=$release_file, loc_file=$loc_file"
 if [ ! -f $release_file ]; then
     echo "release file not found"; exit
 fi
+
+if $(grep -q monthly $period_file) ; then
+    time_resolution="monthly"
+    hemi_suffix="_monthly"
+else
+    time_resolution="quarterly"
+    hemi_suffix=""
+fi
+echo $hemi_suffix
 
 release=`grep Release $release_file | sed s/\=/\ / | awk '{print $NF}'`
 root=`grep ATL14_root $loc_file | sed s/\=/\ / | awk '{print $NF}'`
 
 if [ $# -eq 0 ]; then
     regions="RA IS CN CS SV"
+else
+    regions=$1
 fi
+
 echo $release
 echo $root
+for reg in $regions; do
 
-for reg in $regions; do 
-    [ -d mosaic_run_${reg} ] && rm -r mosaic_run_${reg} 
-    [ -d ${reg}_mosaic ] && rm -r ${reg}_mosaic
+    run_dir=${reg}${hemi_suffix}_mosaic
+    [ -d $run_dir ] && rm -r $run_dir
 
-    scripts/make_mosaic_jobs ${root}/rel${release}/north/${reg}
-    pushd $reg"_mosaic"
+    base=${root}/rel${release}/north${hemi_suffix}/${reg}/
+    echo $base
+    if [ $time_resolution == "monthly" ] ; then
+        make_mosaic_jobs_monthly $base
+    else
+        make_mosaic_jobs $base
+    fi
+    pushd $run_dir
     sbatch slurm_mos_run
     popd
 done
