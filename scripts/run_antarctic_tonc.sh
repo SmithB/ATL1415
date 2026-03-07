@@ -9,6 +9,6 @@ for reg in A1 A2 A3 A4; do
 done
 
 setup_slurm_run.py --run_name AA_2nc -q AA_2nc_queue.txt --time 03:00:00 -j 8 -e IS2
-mv AA_2nc_queue.txt arctic_2nc
+mv AA_2nc_queue.txt AA_2nc
 pushd AA_2nc
 sbatch slurm_run.sh
