@@ -58,9 +58,11 @@ def update_attr_dict(attr_template, args, res_m, res_km):
                 6: 'hexennial',
                 7: 'heptennial'}
     lag_names={}
+    lag_monthly_names={}
     lag_adjective_key_list = list(lag_adjectives.keys())
     for lag in args.dzdt_lags:
         this = np.argmin(np.abs(args.delta_t*lag - np.array(lag_adjective_key_list)))
+        lag_monthly_names[lag] = f'{lag:03d}mo'
         lag_names[lag] = lag_adjectives[lag_adjective_key_list[this]]
     if args.verbose:
         print(lag_names)
@@ -75,7 +77,8 @@ def update_attr_dict(attr_template, args, res_m, res_km):
         else:
             for lag in lags:
                 new_row = {attr_name: attr.replace('{lag}', str(lag))\
-                                           .replace('{lag_name}', lag_names[lag])
+                                           .replace('{lag_name}', lag_names[lag])\
+                                           .replace('{lag_mo}', lag_monthly_names[lag])
                            for attr_name, attr in row.items()}
                 new_attrs.append(new_row)
     for rcount, row in enumerate(new_attrs):
@@ -200,10 +203,15 @@ def ATL15_write2nc_monthly(args):
             if lag is None:
                 group = 'delta_h'
             else:
-                group = f'dhdt_lag{lag}'
+                group = f'dhdt_{lag:03d}mo'
             if args.verbose:
                 print('-'*20 + '\n'+ group+'\n'+'-'*20)
-            group_attrs, group_description = get_group_attrs(group,  all_attrs)
+            try:
+                group_attrs, group_description = get_group_attrs(group,  all_attrs)
+            except Exception as e:
+                print("group:" + group)
+                print(all_attrs)
+                raise(e)
             nc_group = nc.createGroup(group)
             nc_group.setncattr('description', group_description)
             crs_var = make_nc_projection_variable(args.region, nc.groups[group])
