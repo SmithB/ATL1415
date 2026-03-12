@@ -15,7 +15,7 @@ import uuid
 import timescale
 from importlib import resources
 import warnings
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from ATL1415.version import softwareVersion,softwareDate,softwareTitle,identifier,series_version
 
 def write_atl14meta(dst,fileout,ncTemplate,args):
@@ -116,7 +116,6 @@ def attributes_for_ATL11_file(file, delta_time_range, args):
         fa['end_cycle'] = fa['start_cycle']
         atl11path = os.path.join(args.ATL11_xover_dir, f'cycle_{fa["start_cycle"]}')
         this_format='xo'
-
     with h5py.File(os.path.join(atl11path,file),'r') as fileID:
         # extract ATL11 attributes from files
         fa['uuid'] = fileID['METADATA']['DatasetIdentification'].attrs['uuid'].decode('utf-8')
@@ -139,7 +138,7 @@ def attributes_for_ATL11_file(file, delta_time_range, args):
         if edeltatime > delta_time_range['end']:
             delta_time_range['end'] = edeltatime
     fa['end_rgt'] = fa['start_rgt']
-
+    
     return fa
 
 # To recursively step through groups
@@ -166,15 +165,43 @@ def set_lineage(dst,root_info,args):
                 ATL11_files.update(inputs.replace("'",'').split(','))
         except Exception:
             print("ATL14_attrs_meta.py: failed to open tile file : "+tile)
+#    for tile in glob.iglob(os.path.join(tilepath,'*.h5')):
+#        with h5py.File(tile,'r') as h5f:
+#            inputs=str(h5f['/meta/'].attrs['input_files'])
+#            if inputs[0]=='b':
+#                inputs=inputs[1:]
+#            ATL11_files.update(inputs.replace("'",'').split(','))
     for file in ATL11_files:
         fa = attributes_for_ATL11_file(file, delta_time_range, args)
         # add attributes to list, if not already present
         if fa not in lineage:
             lineage.append(fa)
+    # reset start delta time to seconds for Jan 01, 2019
+#    print('old delta_time start/end: ', delta_time_range)
+    delta_time_range['start'] = np.float64(datetime(2019, 1, 1, 0, 0, 0).timestamp() - datetime(2018, 1, 1, 0, 0, 0).timestamp())
+    unicode_vals=[]
+    for char in args.region:
+       unicode_vals.append(ord(char))
+#    delta_time_range['start'] = delta_time_range['start'] + timedelta(seconds=unicode_vals[0]*3+unicode_vals[1]*2)
+    delta_time_range['start'] = delta_time_range['start'] + unicode_vals[0]*3+unicode_vals[1]*2
+#    print('new delta_time start/end: ', delta_time_range)
+#    start_datetime=datetime(2019, 1, 1) + timedelta(seconds=unicode_vals[0]*3+unicode_vals[1]*2)
+#    start_datetime=datetime(2018, 1, 1) + timedelta(seconds=delta_time_range['start'])
+#    start_datetime=start_datetime - datetime(2018,1,1)
+#    print(str(start_datetime.date())+'T'+
+#                    start_datetime.strftime("%H:%M:%S.%f")+'Z')
     # convert starting and ending delta times to UTC
-    sUTCtime, eUTCtime = [
-        timescale.timescale.from_deltatime(delta_time, epoch=timescale.time._atlas_sdp_epoch, standard='GPS').to_string()
-                for delta_time in [delta_time_range['start'], delta_time_range['end']] ]
+    start_datetime = datetime(2018, 1, 1) + timedelta(seconds=delta_time_range['start'])
+    end_datetime = datetime(2018, 1, 1) + timedelta(seconds=delta_time_range['end'])
+    sUTCtime = (str(start_datetime.date())+'T'+
+                    start_datetime.strftime("%H:%M:%S.%f")+'Z')
+    eUTCtime = (str(end_datetime.date())+'T'+
+                    end_datetime.strftime("%H:%M:%S.%f")+'Z')
+
+#    # convert starting and ending delta times to UTC
+#    sUTCtime, eUTCtime = [
+#        timescale.timescale.from_deltatime(delta_time, epoch=timescale.time._atlas_sdp_epoch, standard='GPS').to_string()+".000000Z"
+#                for delta_time in [delta_time_range['start'], delta_time_range['end']] ]
     # reduce to unique lineage attributes (no repeat files)
     #    sorted(set(lineage))
     slineage={ key:[] for key in lineage[0] }
