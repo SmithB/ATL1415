@@ -54,9 +54,8 @@ def ATL14_write2nc(args):
         else:
             print('Reading file:',args.base_dir.rstrip('/')+'/z0.h5')
 
-        with importlib.resources.open_text('ATL1415.resources', 'ATL15_output_attrs.csv', encoding='utf-8-sig') as attrfile:
-            with open(attrFile,'r', encoding='utf-8-sig') as attrfile:
-                reader=list(csv.DictReader(attrfile))
+        with importlib.resources.open_text('ATL1415.resources', 'ATL14_output_attrs.csv', encoding='utf-8-sig') as attrfile:
+            reader=list(csv.DictReader(attrfile))
 
         attr_names=[x for x in reader[0].keys() if x != 'field' and x != 'group']
 
