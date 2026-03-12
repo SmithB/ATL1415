@@ -247,8 +247,7 @@ def ATL15_write2nc(args):
 
     return fileout
 
-
-if __name__=='__main__':
+def main():
     import argparse
     parser=argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,  fromfile_prefix_chars='@')
     parser.add_argument('-b','--base_dir', type=str, default=os.getcwd(), help='directory in which to look for mosaicked .h5 files')
@@ -280,3 +279,6 @@ if __name__=='__main__':
     print('args',args)
 
     fileout = ATL15_write2nc(args)
+
+if __name__=='__main__':
+    main()
