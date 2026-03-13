@@ -125,7 +125,7 @@ def ATL15_browse_plots(args):
         if os.path.isfile(brwfile):
             os.remove(brwfile)
         
-        with importlib.resources.as_file('ATL1415.resources', 'BRW_template.h5') as template_file:
+        with importlib.resources.path('ATL1415.resources', 'BRW_template.h5') as template_file:
             shutil.copyfile(template_file,brwfile)
         
         with h5py.File(brwfile,'r+') as hf:
@@ -155,7 +155,8 @@ def ATL15_browse_plots(args):
 #    plt.show()
 #
 
-if __name__=='__main__':
+#if __name__=='__main__':
+def main():
     import argparse
     parser=argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,  fromfile_prefix_chars='@')
     parser.add_argument('-b','--base_dir', type=str, default=os.getcwd(), help='directory in which to look for dz .h5 files')
@@ -349,3 +350,7 @@ if __name__=='__main__':
 
 
     ATL15_browse_plots(args) #.ATL15_file, hemisphere=args.Hemisphere, mosaic=args.mosaic, out_path=args.out_path, pdf=args.pdf)
+
+if __name__=="__main__":
+    main()
+
