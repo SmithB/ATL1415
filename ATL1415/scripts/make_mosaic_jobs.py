@@ -31,7 +31,7 @@ def write_task(task_id, content, mosaic_run, environment, append=False):
     task_file = os.path.join(mosaic_run, "queue" , f"task_{task_id}")
     with open(task_file, mode) as f:
         if mode == 'w':
-            f.write("source activate {environment};\n")
+            f.write(f"source activate {environment};\n")
         f.write(content + "\n")
 
 def make_mosaic_jobs(base, region, lags,
@@ -40,8 +40,8 @@ def make_mosaic_jobs(base, region, lags,
                      skip_z0=False,
                      tasks=4,
                      environment='IS2'):
-"""
-
+    """
+    make a set of jobs for mosaicking a region
 
     Parameters
     ----------
@@ -73,7 +73,7 @@ def make_mosaic_jobs(base, region, lags,
 
     # crop handling
     bounds_file = os.path.join(base, "bounds.txt")
-    if bounds_file.exists():
+    if os.path.exists(bounds_file):
         with open(bounds_file) as f:
             first_line = f.readline().strip()
         crop = f"-c {first_line}"
@@ -89,9 +89,9 @@ def make_mosaic_jobs(base, region, lags,
     glob_str = f"'{step}/*.h5'"
 
     # make directories
-    os.mkdir(mosaic_run, exist_ok=True)
+    os.makedirs(mosaic_run, exist_ok=True)
     for sub in ["queue", "running", "done", "logs"]:
-        os.path.mkdir(os.path.join(mosaic_run, sub), exist_ok=True)
+        os.makedirs(os.path.join(mosaic_run, sub), exist_ok=True)
 
     task = 0
     if not skip_z0:
@@ -149,7 +149,7 @@ def make_mosaic_jobs(base, region, lags,
                 f"-g 'prelim/*.h5' -p {this_pad} -f {this_feather} {this_S} "
                 f"-O {base}/{out}.h5 --in_group {group}/ -F sigma_{group}"
             )
-            write_task(task, cmd2,  mosaic_run, append=True)
+            write_task(task, cmd2,  mosaic_run, environment, append=True)
 
         group_dt = group.replace("dz", "dzdt")
         out_dt = out.replace("dz", "dzdt")
@@ -169,7 +169,7 @@ def make_mosaic_jobs(base, region, lags,
                 f"-d {base} -g {glob_str} -p {this_pad} -f {this_feather} {this_S} "
                 f"-O {base}/{out_dt}{lag}.h5 --in_group {field}/ -F {field_list}"
             )
-            write_task(task, cmd,  mosaic_run)
+            write_task(task, cmd,  mosaic_run, environment)
 
             if compute_sigma:
                 sigma_field = f"sigma_{group_dt}{lag}"
@@ -235,15 +235,14 @@ def make_mosaic_jobs(base, region, lags,
             )
             write_task(task, cmd2, mosaic_run, environment, append=True)
 
-    return mosaic run, task
+    return mosaic_run, task
 
 
 def main():
 
     parser=argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,  fromfile_prefix_chars='@')
-    parser.add_argument('-b','--base_dir', type=str, default=os.getcwd(), help='directory in which to look for mosaicked .h5 files')
-    parser.add_argument('-rr','--region', type=str, nargs='+',
-                        default='CN CS SV RA',
+    parser.add_argument('-b','--base_dir', type=str, default=os.getcwd(), help='region in which to mosaic')
+    parser.add_argument('-rr','--region', type=str,
                         help='2-letter region indicator \n'
                                  '\t CN: Arctic Canada North \n'
                                  '\t CS: Arctic Canada South \n'
@@ -276,20 +275,20 @@ def main():
         skip_z0 = False
 
     lags = [*map(int, args.dzdt_lags.split(','))]
-    for region in args.region:
-        mosaic_run, tasks = make_mosaic_jobs(args.base_dir, region,
-                                             lags,
-                                             t_res = args.grid_spacing[2],
-                                             skip_z0=skip_z0,
-                                             environment=args.environment)
-        ATL1415.make_slurm_file(os.path.join(mosaic_run, 'slurm_run.sh'),
-                    subs={'JOB_NAME': f'mosaic_{region}',
-                          'TIME': "04:00:00",
-                          'NUM_TASKS': tasks,
-                          'JOB_NUMBERS':f'{1}-{tasks}'})
+    mosaic_run, tasks = make_mosaic_jobs(args.base_dir, args.region,
+                                         lags,
+                                         t_res = args.grid_spacing[2],
+                                         skip_z0=skip_z0,
+                                         environment=args.environment)
+    ATL1415.make_slurm_file(os.path.join(mosaic_run, 'slurm_run.sh'),
+                subs={'JOB_NAME': f'mosaic_{args.region}',
+                      'TIME': "04:00:00",
+                      'NUM_TASKS': tasks,
+                      'JOB_NUMBERS':f'{1}-{tasks}'})
 
-        if args.run:
-            os.chdir(mosaic_run)
-            subprocess.run(["sbatch", "slurm_run.sh"])
+    if args.run:
+        os.chdir(mosaic_run)
+        subprocess.run(["sbatch", "slurm_run.sh"])
+
 if __name__ == "__main__":
     main()

@@ -73,6 +73,7 @@ dev = ["flake8", "pytest>=4.6", "pytest-cov"]
 "check_tile_data_vs_DEM.py" = "ATL1415.scripts.check_tile_data_vs_DEM:main"
 "make_200km_tiles.py" = "ATL1415.scripts.make_200km_tiles:main"
 "make_ATL1415_queue.py" = "ATL1415.scripts.make_ATL1415_queue:main"
+"make_mosaic_jobs.py" = "ATL1415.scripts.make_mosaic_jobs:main"
 "make_GL_ATL1415_queue.py" = "ATL1415.scripts.make_GL_ATL1415_queue:main"
 "make_field_size_report.py" = "ATL1415.scripts.make_field_size_report:main"
 "requeue_slurm_errors.py" = "ATL1415.scripts.requeue_slurm_errors:main"
