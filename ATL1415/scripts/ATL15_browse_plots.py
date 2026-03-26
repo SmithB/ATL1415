@@ -39,7 +39,17 @@ def ATL15_browse_plots(args):
                                         true_scale_latitude=-71.0)
 #        DEM_file = '/Volumes/ice3/suzanne/REMA_100m_dem.tif'
 
-    lagtext = {'lag1':'quarterly','lag4':'annual', 'lag8':'biennial', 'lag12':'triennial', 'lag16':'quadriennial'}
+    # figure out what the base unit of the time interval is:
+    if np.abs(args.delta_t-1/12)<0.001:
+        delta_t_str = '1mo'
+        src_group='dhdt_001mo'
+        period_name='monthly'
+    elif np.abs(args.delta_t-1/4) < 0.001:
+        delta_t_str = '3mo'
+        src_group='dhdt_003mo'
+        period_name='quarterly'
+    else:
+        raise ValueError(f'time resolution of {args.delta_t} not recognized')
 
     # make a log file for errors
     if not args.nolog:
@@ -47,27 +57,23 @@ def ATL15_browse_plots(args):
         fhlog = open(log_file,'a')
 
     # list of spatial averaging ATL15 files
-    avgs = ['_01km','_10km','_20km','_40km']
+    avgs = ['1km', '2.5km', '10km','20km','40km']
     for ii, ave in enumerate(avgs):
-        filein = args.base_dir.rstrip('/') + '/ATL15_' + args.region + '_' + args.cycles + ave + '_' + args.Release + '_' + args.version + '.nc'
+        filein = os.path.join(args.base_dir , '_'.join(['ATL15', args.region , args.cycles, delta_t_str,  ave, args.Release, args.version]) + '.nc')
+        if not os.path.isfile(filein):
+            print(f"{filein} does not exist, skipping")
+            continue
         print('Making browse figures from ',filein)
-        pngfile = args.base_dir.rstrip('/') + '/ATL15_' + args.region + '_' + args.cycles + ave + '_' + args.Release + '_' + args.version + '_BRW'
+        brw_base = filein.replace('.nc','_BRW')
 
         ds = Dataset(filein)
-    #    # find group of largest lag
-    #    lag=1
-    #    for grp in ds.groups:
-    #        if grp.startswith('dhdt_lag'):
-    #            if int(grp[8:])>lag:
-    #                lag=int(grp[8:])
-    #    grp = 'dhdt_lag'+str(lag)
 
-        x = ds.groups['dhdt_lag1']['x']
-        y = ds.groups['dhdt_lag1']['y']
+        x = ds.groups[src_group]['x']
+        y = ds.groups[src_group]['y']
         extent=[np.min(x),np.max(x),np.min(y),np.max(y)]
 
-        dhdt = ds.groups['dhdt_lag1']['dhdt']
-        dhdt[:][dhdt[:]==ds.groups['dhdt_lag1']['dhdt']._FillValue] = np.nan
+        dhdt = ds.groups[src_group]['dhdt']
+        dhdt[:][dhdt[:]==ds.groups[src_group]['dhdt']._FillValue] = np.nan
         dhdtmn = np.nanmean(dhdt,axis=0)
         dhdtstd = np.nanstd(dhdt,axis=0)
 
@@ -92,12 +98,12 @@ def ATL15_browse_plots(args):
         gl.right_labels = False
         ax.set_title(f'Mean quarterly dh/dt: {os.path.basename(filein)}',wrap=True)
         if args.Hemisphere==1:
-            plt.figtext(0.1,0.01,f'Figure 1. Average quarterly rate of height change (dhdt_lag1/dhdt) at {ave[1:]}-resolution, in meters, from cycle {args.cycles[0:2]} to cycle {args.cycles[2:4]}. Map is plotted in a polar-stereographic projection with a central longitude of 45W and a standard latitude of 70N.',wrap=True)
+            plt.figtext(0.1,0.01,f'Figure 1. Average {period_name} rate of height change ({src_group}/dhdt) at {ave[1:]}-resolution, in meters/yr, from cycle {args.cycles[0:2]} to cycle {args.cycles[2:4]}. Map is plotted in a polar-stereographic projection with a central longitude of 45W and a standard latitude of 70N.',wrap=True)
         elif args.Hemisphere==-1:
-            plt.figtext(0.1,0.01,f'Figure 1. Average quarterly rate of height change (dhdt_lag1/dhdt) at {ave[1:]}-resolution, in meters, from cycle {args.cycles[0:2]} to cycle {args.cycles[2:4]}. Map is plotted in a polar-stereographic projection with a central longitude of 0W and a standard latitude of 71S.',wrap=True)
+            plt.figtext(0.1,0.01,f'Figure 1. Average {period_name} rate of height change ({src_group}/dhdt) at {ave[1:]}-resolution, in meters/yr, from cycle {args.cycles[0:2]} to cycle {args.cycles[2:4]}. Map is plotted in a polar-stereographic projection with a central longitude of 0W and a standard latitude of 71S.',wrap=True)
         plt.subplots_adjust(bottom=0.2)
         plt.tight_layout(rect=[0, 0.05, 1, 1])
-        fig.savefig(f'{pngfile}_default1.png', bbox_inches='tight')
+        fig.savefig(f'{brw_base}_default1.png', bbox_inches='tight')
 
         fig = plt.figure(figsize=(10, 7))
         ax = fig.add_subplot(1, 1, 1, projection=projection)
@@ -110,31 +116,30 @@ def ATL15_browse_plots(args):
         gl.right_labels = False
         ax.set_title(f'Standard deviation of quarterly dh/dt: {os.path.basename(filein)}',wrap=True)
         if args.Hemisphere==1:
-            plt.figtext(0.1,0.01,f'Figure 2. Standard deviation of quarterly rate of height change (dhdt_lag1/dhdt) at {ave[1:]}-resolution, in meters, from cycle {args.cycles[0:2]} to cycle {args.cycles[2:4]}. Map is plotted in a polar-stereographic projection with a central longitude of 45W and a standard latitude of 70N.',wrap=True)
+            plt.figtext(0.1,0.01,f'Figure 2. Standard deviation of quarterly rate of height change (dhdt_003mo/dhdt) at {ave[1:]}-resolution, in meters, from cycle {args.cycles[0:2]} to cycle {args.cycles[2:4]}. Map is plotted in a polar-stereographic projection with a central longitude of 45W and a standard latitude of 70N.',wrap=True)
         elif args.Hemisphere==-1:
-            plt.figtext(0.1,0.01,f'Figure 2. Standard deviation of quarterly rate of height change (dhdt_lag1/dhdt) at {ave[1:]}-resolution, in meters, from cycle {args.cycles[0:2]} to cycle {args.cycles[2:4]}. Map is plotted in a polar-stereographic projection with a central longitude of 0W and a standard latitude of 71S.',wrap=True)
+            plt.figtext(0.1,0.01,f'Figure 2. Standard deviation of quarterly rate of height change (dhdt_003mo/dhdt) at {ave[1:]}-resolution, in meters, from cycle {args.cycles[0:2]} to cycle {args.cycles[2:4]}. Map is plotted in a polar-stereographic projection with a central longitude of 0W and a standard latitude of 71S.',wrap=True)
         plt.subplots_adjust(bottom=0.2)
         plt.tight_layout(rect=[0, 0.05, 1, 1])
-        fig.savefig(f'{pngfile}_default2.png', bbox_inches='tight')
+        fig.savefig(f'{brw_base}_default2.png', bbox_inches='tight')
 
     #    print(glob.glob(f'{args.base_dir.rstrip("/")}/ATL15_{args.region}_{args.cycles}{ave}_{args.Release}_{args.version}_BRW_default*.png'))
 
         # write images to browse .h5 file
-        brwfile = args.base_dir.rstrip('/') + '/ATL15_' + args.region + '_' + args.cycles + ave + '_' + args.Release + '_' + args.version + '_BRW.h5'
+        brwfile = brw_base + '.h5'
         print(f'Making file {brwfile}')
         if os.path.isfile(brwfile):
             os.remove(brwfile)
-        
-        with importlib.resources.as_file('ATL1415.resources', 'BRW_template.h5') as template_file:
+
+        with importlib.resources.path('ATL1415.resources', 'BRW_template.h5') as template_file:
             shutil.copyfile(template_file,brwfile)
-        
+
         with h5py.File(brwfile,'r+') as hf:
             hf.require_group('/default')
-            for ii, name in enumerate(sorted(glob.glob(f'{args.base_dir.rstrip("/")}/ATL15_{args.region}_{args.cycles}{ave}_{args.Release}_{args.version}_BRW_default*.png'))):
-                img = imageio.v2.imread(name, pilmode='RGB')
-                #print(ii,name)
 
-    #            ave = os.path.basename(name).split('_')[3]
+            for ii, name in enumerate(sorted(glob.glob(f'{brw_base}_default*.png'))):
+                img = imageio.v2.imread(name, pilmode='RGB')
+
                 dset = hf.create_dataset(f'default/default{ii+1}', \
                                          img.shape, data=img.data, \
                                          chunks=img.shape, \
@@ -144,18 +149,9 @@ def ATL15_browse_plots(args):
                 dset.attrs['IMAGE_SUBCLASS'] = np.bytes_('IMAGE_TRUECOLOR')
                 dset.attrs['INTERLACE_MODE'] = np.bytes_('INTERLACE_PIXEL')
 
-    #    plt.show(block=False)
-    #    plt.pause(0.001)
-    #    input('Press enter to end.')
-    #    plt.close('all')
-    #    exit(-1)
-
         fhlog.close()
 
-#    plt.show()
-#
-
-if __name__=='__main__':
+def main():
     import argparse
     parser=argparse.ArgumentParser(formatter_class=argparse.RawTextHelpFormatter,  fromfile_prefix_chars='@')
     parser.add_argument('-b','--base_dir', type=str, default=os.getcwd(), help='directory in which to look for dz .h5 files')
@@ -174,9 +170,30 @@ if __name__=='__main__':
     parser.add_argument('--Hemisphere','-H', type=int, default=1, help='1 for Northern, -1 for Southern')
     parser.add_argument('--mosaic', '-m', type=str)
     parser.add_argument('--out_path', '-o', type=str, help='default is ATL15_file path')
+    parser.add_argument('--grid_spacing','-g', type=str, help='DEM (meters),dh maps xy (meters),dh_maps time (years): comma-separated, no spaces', default='100.,1000.,0.25')
+    parser.add_argument('--delta_t', type=str, help='time-step spacing, yr')
     parser.add_argument('--pdf', action='store_true', default=False, help='write images to .pdf file')
     parser.add_argument('--nolog', action='store_true', default=False, help='no writing errors to .log file')
     args, unknown = parser.parse_known_args()
+
+    # process args.grid_spacing from a comma-separated list possibly including fractions
+    # to a list of floats
+    args.grid_spacing = args.grid_spacing.split(',')
+    for ind, spacing in enumerate(args.grid_spacing):
+        if '/' in spacing:
+            temp=[*map(float, spacing.split('/'))]
+            args.grid_spacing[ind] = temp[0]/temp[1]
+        else:
+            args.grid_spacing[ind] = float(args.grid_spacing[ind])
+
+    if args.delta_t is None:
+        args.delta_t = args.grid_spacing[2]
+
+    if args.delta_t is not None:
+        if isinstance(args.delta_t,str) and '/' in args.delta_t:
+            args.delta_t = [*map(float, args.delta_t.split('/'))]
+            args.delta_t = args.delta_t[0] / args.delta_t[1]
+
     print(args)
 
     #-- digital elevation model
@@ -192,15 +209,6 @@ if __name__=='__main__':
     elevation_dir['REMA'] = 'https://data.pgc.umn.edu/elev/dem/setsm/REMA/mosaic/v1.1/100m/'
     elevation_tile_index['REMA'] = 'https://data.pgc.umn.edu/elev/dem/setsm/REMA/indexes/REMA_Tile_Index_Rel1.1.zip'
 
-
-    # from github.com/tsutterley/read-ICESat-2/blob/main/scripts/MPI_DEM_ICESat2_ATL11.py
-    #-- PURPOSE: set the DEM model based on region
-#    def set_DEM_model(region):
-#        if region == 'AA':
-#            DEM_MODEL = 'REMA'
-#        else:
-#            DEM_MODEL = 'ArcticDEM'
-#        return DEM_MODEL
 
     #-- PURPOSE: read zip file containing index shapefiles for finding DEM tiles
     def read_DEM_index(shape, epsg, DEM_MODEL):
@@ -349,3 +357,6 @@ if __name__=='__main__':
 
 
     ATL15_browse_plots(args) #.ATL15_file, hemisphere=args.Hemisphere, mosaic=args.mosaic, out_path=args.out_path, pdf=args.pdf)
+
+if __name__=='__main__':
+    main()
