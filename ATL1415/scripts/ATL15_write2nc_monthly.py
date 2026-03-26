@@ -57,13 +57,16 @@ def update_attr_dict(attr_template, args, res_m, res_km):
                 5: 'pentennial',
                 6: 'hexennial',
                 7: 'heptennial'}
-    lag_names={}
-    lag_monthly_names={}
+    lag_names = {}
+    lag_months = {}
+    lag_monthly_names = {}
     lag_adjective_key_list = list(lag_adjectives.keys())
     for lag in args.dzdt_lags:
+        months = int(round(lag * args.delta_t*12))
         this = np.argmin(np.abs(args.delta_t*lag - np.array(lag_adjective_key_list)))
-        lag_monthly_names[lag] = f'{lag:03d}mo'
+        lag_monthly_names[lag] = f'{months:03d}mo'
         lag_names[lag] = lag_adjectives[lag_adjective_key_list[this]]
+        lag_months[lag] = months
     if args.verbose:
         print(lag_names)
     lags = args.dzdt_lags
@@ -78,7 +81,8 @@ def update_attr_dict(attr_template, args, res_m, res_km):
             for lag in lags:
                 new_row = {attr_name: attr.replace('{lag}', str(lag))\
                                            .replace('{lag_name}', lag_names[lag])\
-                                           .replace('{lag_mo}', lag_monthly_names[lag])
+                                           .replace('{lag_mo}', lag_monthly_names[lag])\
+                                           .replace('{lag_mo_num}', str(lag_months[lag]))
                            for attr_name, attr in row.items()}
                 new_attrs.append(new_row)
     for rcount, row in enumerate(new_attrs):
@@ -183,6 +187,7 @@ def ATL15_write2nc_monthly(args):
         raise ValueError(f'time resolution of {args.delta_t} not recognized')
 
     fileout = os.path.join(args.base_dir , '_'.join(['ATL15', args.region , args.cycles, delta_t_str,  avg_name, args.Release, args.version]) + '.nc')
+
     if args.verbose:
         print('output file:',fileout)
 
@@ -203,7 +208,8 @@ def ATL15_write2nc_monthly(args):
             if lag is None:
                 group = 'delta_h'
             else:
-                group = f'dhdt_{lag:03d}mo'
+                months = int(round(lag * args.delta_t*12))
+                group = f'dhdt_{months:03d}mo'
             if args.verbose:
                 print('-'*20 + '\n'+ group+'\n'+'-'*20)
             try:
