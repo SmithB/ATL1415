@@ -195,7 +195,7 @@ def decimate_data(D, N_target, W_domain,  W_sub, x0, y0):
         sel_ind=np.arange(0, len(u_ref_pts), this_rho/rho_target).astype(int)
         sel_ref_pts = u_ref_pts[sel_ind[sel_ind < len(u_ref_pts)]]
         # keep the points matching the selected ref pt numbers
-        isub = np.in1d(global_ref_pt, sel_ref_pts)
+        isub = np.isin(global_ref_pt, sel_ref_pts)
         #print(f'bin:{bin0}, N: {len(ii)}, N_target:{len(ii)*rho_target/this_rho}, N_out:{np.sum(isub)}, R_target={this_rho/rho_target}, R={len(ii)/np.sum(isub)}')
         ind_buffer.append(ii[isub])
     print(f"Decimate_data: N_AT={len(np.concatenate(ind_buffer))}, N_XO={np.sum(D.along_track==0)}")
