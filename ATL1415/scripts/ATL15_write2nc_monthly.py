@@ -56,7 +56,8 @@ def update_attr_dict(attr_template, args, res_m, res_km):
                 4: 'quadrennial',
                 5: 'pentennial',
                 6: 'hexennial',
-                7: 'heptennial'}
+                7: 'heptennial',
+                8:  'octennial'}
     lag_names = {}
     lag_months = {}
     lag_monthly_names = {}
