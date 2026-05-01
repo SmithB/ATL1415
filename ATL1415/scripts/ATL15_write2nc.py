@@ -17,237 +17,254 @@ import matplotlib.pyplot as plt
 from scipy import stats
 from ATL1415 import ATL14_attrs_meta, make_nc_projection_variable, make_tile_stats_group
 
+def update_attr_dict(attr_template, args, res_m, res_km):
+    '''
+    update the field attributes for the current resolution and lags
 
+    This function updates a template attribute dictionary by selecting
+        appropriate to downsampled or non-downsampled output files, and
+        replacing occurences of {res} and {res_m} with the resolution in km
+        or meters, respectively. It also duplicates lines containing 'lag'
+        to match the required number of lagged measurements specified in
+        input arguments, and translates the duration of each lag into an
+        adjective
 
-def ATL15_write2nc(args):
+    Parameters
+    ----------
+    attr_template : iterable
+        iterable of dicts containing field attribute templates
+    args : namespace
+        input arguments.
+    res_m : str
+        resolution in meters.
+    res_km : str
+        resolution in km.
 
-    def make_dataset(field,fieldout,data,field_attrs,file_obj,group_obj,nctype,dimScale=False):
-        # where field is the name from ATL15_output_attrs.csv file
-        # where fieldout is the name of the output variable in the .nc file
-        dimensions = field_attrs[field]['dimensions'].split(',')
-        dimensions = tuple(x.strip() for x in dimensions)
-        if field_attrs[field]['datatype'].startswith('int'):
-            fill_value = np.iinfo(np.dtype(field_attrs[field]['datatype'])).max
-        elif field_attrs[field]['datatype'].startswith('float'):
-            fill_value = np.finfo(np.dtype(field_attrs[field]['datatype'])).max
-        data = np.nan_to_num(data,nan=fill_value)
+    Returns
+    -------
+    new_attrs : iterable
+        iterable of dicts containig updated field attribtues.
 
-        if dimScale:
-            group_obj.createDimension(field_attrs[field]['dimensions'],data.shape[0])
+    '''
+    # define the words used to describe the lagged dh/dt resolutions
+    lag_adjectives = {1/12: 'monthly',
+                1/4: 'quarterly',
+                1/2: 'semiannual',
+                1: 'annual',
+                2: 'biennial',
+                3: 'triennial',
+                4: 'quadrennial',
+                5: 'pentennial',
+                6: 'hexennial',
+                7: 'heptennial',
+                8:  'octennial'}
+    lag_names = {}
+    lag_months = {}
+    lag_monthly_names = {}
+    lag_adjective_key_list = list(lag_adjectives.keys())
+    for lag in args.dzdt_lags:
+        months = int(round(lag * args.delta_t*12))
+        this = np.argmin(np.abs(args.delta_t*lag - np.array(lag_adjective_key_list)))
+        lag_monthly_names[lag] = f'{months:03d}mo'
+        lag_names[lag] = lag_adjectives[lag_adjective_key_list[this]]
+        lag_months[lag] = months
+    if args.verbose:
+        print(lag_names)
+    lags = args.dzdt_lags
+    new_attrs=[]
+    average_key='None' if args.avg_scale is None else '{res}'
+    for row in attr_template:
+        if row['average'] != average_key:
+            continue
+        if row['lag'] is None:
+            new_attrs.append({key:val.replace('{lag_name}', lag_names[1]) for key, val in row})
+        else:
+            for lag in lags:
+                new_row = {attr_name: attr.replace('{lag}', str(lag))\
+                                           .replace('{lag_name}', lag_names[lag])\
+                                           .replace('{lag_mo}', lag_monthly_names[lag])\
+                                           .replace('{lag_mo_num}', str(lag_months[lag]))
+                           for attr_name, attr in row.items()}
+                new_attrs.append(new_row)
+    for rcount, row in enumerate(new_attrs):
+        for attr_name, attr in row.items():
+            if '{res}' in attr:
+                attr=attr.replace('{res}', res_km)
+            if '{res_m}' in attr:
+                attr=attr.replace('{res_m}', res_m)
+            row[attr_name] = attr
+    return new_attrs
 
-        dsetvar = group_obj.createVariable(fieldout,
-                                           nctype[field_attrs[field]['datatype']],
-                                           dimensions,
-                                           fill_value=fill_value, zlib=True,
-                                           least_significant_digit=ast.literal_eval(field_attrs[field]['least_significant_digit']))
-                                           # significant_digits=ast.literal_eval(field_attrs[field]['least_significant_digit'])) DOESN'T WORK
+def make_dataset(field, data, attrs, file_obj, group_obj, nctype, dimScale=False):
+    '''
+    make a dataset in an netcdf output file
 
-        dsetvar[:] = data
-        for attr in attr_names:
-            if attr != 'group description':
-                dsetvar.setncattr(attr,field_attrs[field][attr])
-        # add attributes for projection
-        if not field.startswith('time'):
-            dsetvar.setncattr('grid_mapping','Polar_Stereographic')
-        if field == 'x':
-            dsetvar.standard_name = 'projection_x_coordinate'
-        if field == 'y':
-            dsetvar.standard_name = 'projection_y_coordinate'
+    Parameters
+    ----------
+    field : str
+        field to be created.
+    data : numpy.array
+        data.
+    attrs : dict
+        attributes for the field.
+    file_obj : netcdf4 file object
+        file object to be written to .
+    group_obj : netcdf4 group object
+        group object to be written to.
+    nctype : dict
+        definitions for netcdf data types.
+    dimScale : book, optional
+        If true, define the field as a dimension. The default is False.
 
-        return file_obj
+    Returns
+    -------
+    file_obj : netcdf4 file object
+        file object that was written.
 
-    if args.attr_file is None:
-        args.attr_file=f'ATL15_output_attrs_rel{args.Release}.csv'
-    
-    # find which lags are in attributes file
-    with importlib.resources.open_text('ATL1415.resources', args.attr_file, encoding='utf-8-sig') as attrfile:
-        reader=list(csv.DictReader(attrfile))
-    qtrs = []
-    for row in reader:
-        if row['group'] == 'height_change' and row['field'].startswith('time'):
-            qtrs.append(re.search('(time)(.*)',row['field']).group(2))
-    # print(qtrs)
+    '''
+    dimensions = attrs['dimensions'].split(',')
+    dimensions = tuple(x.strip() for x in dimensions)
+    if attrs['datatype'].startswith('int'):
+        fill_value = np.iinfo(np.dtype(attrs['datatype'])).max
+    elif attrs['datatype'].startswith('float'):
+        fill_value = np.finfo(np.dtype(attrs['datatype'])).max
+    data = np.nan_to_num(data,nan=fill_value)
+    if dimScale:
+        group_obj.createDimension(attrs['dimensions'],data.shape[0])
 
-    # fileslag = glob.glob(os.path.join(args.base_dir,'*lag*.h5'))
-    # qtrs=[]
-    # for filesl in fileslag:
-    #     qtrs.append(re.search('lag(\d+).',filesl).group(1))
-    # ll = sorted([int(x) for x in list(set(qtrs))])
-    # print('lags available for this region',ll)
-    # print()
-    #
-    # lagkeys = [f'_lag{x}' for x in ll]
-    # print(lagkeys.insert(0,''))
-    # exit(-1)
+    dsetvar = group_obj.createVariable(field,
+                                       nctype[attrs['datatype']],
+                                       dimensions,
+                                       fill_value=fill_value,
+                                       zlib=True,
+                                       least_significant_digit=ast.literal_eval(attrs['least_significant_digit']))
 
-    dz_dict = {}
-    for qtr in qtrs:
-        dz_dict[f'time{qtr}'] = 't'   # {ATL15 outgoing var name: hdf5 incoming var name}
-    dz_dict2 = {'x':'x',                # {ATL15 outgoing var name: hdf5 incoming var name}
-                'y':'y',
-                'ice_area':'cell_area',
-                'data_count':'count',
-                'misfit_rms':'misfit_rms',
-                'misfit_scaled_rms':'misfit_scaled_rms',
-                'delta_h':'dz',
-                'delta_h_sigma':'sigma_dz',
-                'delta_h_10km':'avg_dz_10000m',
-                'delta_h_sigma_10km':'sigma_avg_dz_10000m',
-                'delta_h_20km':'avg_dz_20000m',
-                'delta_h_sigma_20km':'sigma_avg_dz_20000m',
-                'delta_h_40km':'avg_dz_40000m',
-                'delta_h_sigma_40km':'sigma_avg_dz_40000m',
-                }
-    dz_dict.update(dz_dict2)
-    # print(dz_dict)
+    dsetvar[:] = data
+    for attr in ['units','dimensions','datatype','coordinates','description','long_name','source']:
+        dsetvar.setncattr(attr,attrs[attr])
+    # add attributes for projection
+    if not field.startswith('time'):
+        dsetvar.setncattr('grid_mapping','Polar_Stereographic')
+    if field == 'x':
+        dsetvar.standard_name = 'projection_x_coordinate'
+    if field == 'y':
+        dsetvar.standard_name = 'projection_y_coordinate'
+
+    return file_obj
+
+def get_group_attrs(group,  all_attrs):
+    group_attrs={}
+    for row in all_attrs:
+        if row['out_group']==group:
+            if row['field'] is None or row['field'] == '':
+                group_description = row['description']
+                continue
+            group_attrs[row['field']] = {attr_name: attr for attr_name, attr in row.items()}
+    return group_attrs, group_description
+
+def ATL15_write2nc_monthly(args):
+
+    with importlib.resources.open_text('ATL1415.resources', 'ATL15_output_attrs.csv', encoding='utf-8-sig') as attrfile:
+        all_attrs = list(csv.DictReader(attrfile))
+
+    res = args.grid_spacing[1]
+    if args.avg_scale is not None:
+        res = args.avg_scale
+    res_m = f'{int(res)}'
+    if np.mod(res, 1000) < 1:
+        res_km = f'{int(round(res/1000))}'
+    else:
+        res_km = f'{res/1000:0.1f}'
+    if args.verbose:
+        print(f"ATL15_write2nc_monthly: making nc for resolution {res_km} km, for lags {args.dzdt_lags}")
+
+    # establish output file
+    avg_name = f'{res_km}km'
+    if np.abs(args.delta_t-1/12)<0.001:
+        delta_t_str = '1mo'
+    elif np.abs(args.delta_t-1/4) < 0.001:
+        delta_t_str = '3mo'
+    else:
+        raise ValueError(f'time resolution of {args.delta_t} not recognized')
+
+    fileout = os.path.join(args.base_dir , '_'.join(['ATL15', args.region , args.cycles, delta_t_str,  avg_name, args.Release, args.version]) + '.nc')
+
+    if args.verbose:
+        print('output file:',fileout)
+
+    all_attrs = update_attr_dict(all_attrs, args, res_m, res_km)
 
     nctype = {'float64':'f8',
               'float32':'f4',
               'int8':'i1'}
-    lags = {'file': [f'FH{qtr}' for qtr in qtrs]}
-    lags['vari'] = [qtr for qtr in qtrs]
-    lags['varigrp'] = ['delta_h' if qtr=='' else 'dhdt'+qtr for qtr in qtrs]
-    # print(lags)
 
-    # lags = {
-    #         'file' : ['FH','FH_lag1','FH_lag4','FH_lag8','FH_lag12'],
-    #         'vari' : ['','_lag1','_lag4','_lag8','_lag12'],
-    #         'varigrp' : ['delta_h','dhdt_lag1','dhdt_lag4','dhdt_lag8','dhdt_lag12']
-    #        }
-    avgs = ['','_10km','_20km','_40km']
-    # # open data attributes file
-    # attrFile = pkg_resources.resource_filename('ATL1415','resources/ATL15_output_attrs.csv')
-    # with open(attrFile,'r',encoding='utf-8-sig') as attrfile:
-    #     reader=list(csv.DictReader(attrfile))
+    fh_in={}
 
-    attr_names=[x for x in reader[0].keys() if x != 'field' and x != 'group']
+    with Dataset(fileout,'w',clobber=True) as nc:
+        nc.setncattr('GDAL_AREA_OR_POINT','Area')
+        nc.setncattr('Conventions','CF-1.6')
+        _ = make_tile_stats_group(nc, args)
 
-    for ave in avgs:
-            # establish output file, one per average
-            if ave=='':
-                fileout = args.base_dir.rstrip('/') + '/ATL15_' + args.region + '_' + args.cycles + '_01km_' + args.Release + '_' + args.version + '.nc'
+        for lag in [None] + args.dzdt_lags:
+            if lag is None:
+                group = 'delta_h'
             else:
-                fileout = args.base_dir.rstrip('/') + '/ATL15_' + args.region + '_' + args.cycles + ave + '_' + args.Release + '_' + args.version + '.nc'
-            print('output file:',fileout)
+                months = int(round(lag * args.delta_t*12))
+                group = f'dhdt_{months:03d}mo'
+            if args.verbose:
+                print('-'*20 + '\n'+ group+'\n'+'-'*20)
+            try:
+                group_attrs, group_description = get_group_attrs(group,  all_attrs)
+            except Exception as e:
+                print("group:" + group)
+                print(all_attrs)
+                raise(e)
+            nc_group = nc.createGroup(group)
+            nc_group.setncattr('description', group_description)
+            crs_var = make_nc_projection_variable(args.region, nc.groups[group])
 
-            with Dataset(fileout,'w',clobber=True) as nc:
-                nc.setncattr('GDAL_AREA_OR_POINT','Area')
-                nc.setncattr('Conventions','CF-1.6')                
-                tilegrp = make_tile_stats_group(nc, args)
+            for field, attrs in group_attrs.items():
+                dimscale = False
+                # out field
+                in_file = attrs['source_file']
+                # cache the file handle
+                if in_file not in fh_in:
+                    fh_in[in_file] = h5py.File(os.path.join(args.base_dir, in_file),'r')
+                data = np.array(fh_in[in_file][attrs['source_group']][attrs['source_var']])
 
-                ice_area_mask=None
-                # loop over dz*.h5 files for one ave
-                for jj in range(len(lags['file'])):
-                    if jj==0:
-                        filein = args.base_dir.rstrip('/')+'/dz'+ave+lags['vari'][jj]+'.h5'
-                    else:
-                        filein = args.base_dir.rstrip('/')+'/dzdt'+ave+lags['vari'][jj]+'.h5'
+                if field == 'x':
+                    xll = np.min(data)
+                    dx = data[1]-data[0]
+                    dimscale=True
+                elif field == 'y':
+                    yll = np.min(data)
+                    dy = data[1]-data[0]
+                    dimscale = True
+                elif field == 'time':
+                    data = (data-2018.)*365.25
+                    dimscale = True
+                if data.ndim==3:
+                    # hdf5 files store data as y, x, t
+                    data = np.moveaxis(data,2,0)  # t, y, x
+                if field == 'ice_area':
+                    data[data==0.0] = np.nan
+                    mask_lag = np.isfinite(data)
+                if 'delta_h' in field or 'dhdt' in field:
+                    data[~mask_lag]=np.nan
+                # make the dataset
+                make_dataset(field, data, attrs, fh_in[in_file], nc_group, nctype, dimScale=dimscale)
 
-                    if not os.path.isfile(filein):
-                        print('No file:',args.base_dir.rstrip('/')+'/'+os.path.basename(filein))
-                        continue
-                    else:
-                        print('Reading file:',args.base_dir.rstrip('/')+'/'+os.path.basename(filein))
-                    lags['file'][jj] = h5py.File(filein,'r')  # file object
-                    dzg=list(lags['file'][jj].keys())[0]      # dzg is group in input file
+            # we should have an x and a y defined by now
+            crs_var.GeoTransform = (xll,dx,0,yll,0,dy)
 
-                    nc.createGroup(lags['varigrp'][jj])
-
-                    # make projection variable for each group
-                    crs_var = make_nc_projection_variable(args.region,nc.groups[lags['varigrp'][jj]])
-
-                    # dimension scales for each group
-                    for field in ['x','y']:
-                        data = np.array(lags['file'][jj][dzg][dz_dict[field]])
-                        if field == 'x':
-                            x = data
-                            xll = np.min(x)
-                            dx = x[1]-x[0]
-                        if field == 'y':
-                            y = data
-                            yll = np.max(y)
-                            dy = y[0]-y[1]
-                        field_attrs = {row['field']: {attr_names[ii]:row[attr_names[ii]] for ii in range(len(attr_names))} for row in reader if field in row['field'] if row['group']=='height_change'+ave}
-                        make_dataset(field,field,data,field_attrs,nc,nc.groups[lags['varigrp'][jj]],nctype,dimScale=True)
-                    crs_var.GeoTransform = (xll,dx,0,yll,0,dy)
-
-                    if jj==0:  # no lag
-                        field = 'time'
-                        data = np.array(lags['file'][jj][dzg]['t'])
-                        # convert to decimal days from 1/1/2018
-                        data = (data-2018.)*365.25
-                        ntime = data.shape[0]
-                        field_attrs = {row['field']: {attr_names[ii]:row[attr_names[ii]] for ii in range(len(attr_names))} for row in reader if field in row['field'] if row['group']=='height_change'+ave}
-                        make_dataset(field,field,data,field_attrs,nc,nc.groups[lags['varigrp'][jj]],nctype,dimScale=True)
-
-                        for fld in ['ice_area','delta_h','delta_h_sigma','data_count','misfit_rms','misfit_scaled_rms']:  # fields that can be ave'd but not lagged
-
-                            if (len(ave) > 0) and (fld.startswith('misfit') or fld=='data_count'): # not in ave'd groups  or fld=='ice_mask'
-                                break
-                            field = fld+ave
-                            field_attrs = {row['field']: {attr_names[ii]:row[attr_names[ii]] for ii in range(len(attr_names))} for row in reader if field == row['field'] if row['group']=='height_change'+ave}
-
-                            # get data from .h5
-                            if fld.startswith('delta_h'):  # fields with complicated name changes
-                                #print("from:" + lags['file'][jj])
-                                print("\t reading:" + str([dzg, dz_dict[field]]))
-                                data = np.array(lags['file'][jj][dzg][dz_dict[field]])
-                                data[np.isnan(ice_area_mask)] = np.nan
-                                if fld=='delta_h':  # add group description
-                                    nc.groups[lags['varigrp'][jj]].setncattr('description',field_attrs[field]['group description'])
-                            else:
-                                data = np.array(lags['file'][jj][dzg][dz_dict[fld]])
-                                if fld == 'ice_area':
-                                    data[data==0.0] = np.nan
-                                    ice_area_mask = data # where ice_area is invalid, so are delta_h and dhdt variables.
-                            if len(data.shape)==3:
-                                data = np.moveaxis(data,2,0)  # results in t, y, x
-
-                            make_dataset(field,fld,data,field_attrs,nc,nc.groups[lags['varigrp'][jj]],nctype,dimScale=False)
-
-                    else:  # one of the lags
-                        field = 'time'+lags['vari'][jj]
-                        data = np.array(lags['file'][jj][dzg]['t'])
-                        # convert to decimal days from 1/1/2018
-                        data = (data-2018.)*365.25
-                        ntime = data.shape[0]
-                        field_attrs = {row['field']: {attr_names[ii]:row[attr_names[ii]] for ii in range(len(attr_names))} for row in reader if field in row['field'] if row['group']=='height_change'+ave}
-                        make_dataset(field,'time',data,field_attrs,nc,nc.groups[lags['varigrp'][jj]],nctype,dimScale=True)
-
-                        # get ice_area first, because that's the mask for dhdt and _sigma.
-                        field = 'ice_area'+lags['vari'][jj]+ave
-                        data = np.array(lags['file'][jj][dzg]['cell_area'])
-                        data[data==0.0] = np.nan
-                        data = np.moveaxis(data,2,0)  # t, y, x
-                        mask_lag = data;
-                        field_attrs = {row['field']: {attr_names[ii]:row[attr_names[ii]] for ii in range(len(attr_names))} for row in reader if field in row['field'] if row['group']=='height_change'+ave}
-                        make_dataset(field,'ice_area',data,field_attrs,nc,nc.groups[lags['varigrp'][jj]],nctype,dimScale=False)
-
-                        field = 'dhdt'+lags['vari'][jj]+ave
-                        data = np.array(lags['file'][jj][dzg][dzg])
-                        data = np.moveaxis(data,2,0)  # t, y, x
-                        data[np.isnan(mask_lag)] = np.nan
-                        field_attrs = {row['field']: {attr_names[ii]:row[attr_names[ii]] for ii in range(len(attr_names))} for row in reader if field in row['field'] if row['group']=='height_change'+ave}
-                        make_dataset(field,'dhdt',data,field_attrs,nc,nc.groups[lags['varigrp'][jj]],nctype,dimScale=False)
-                        # add group description
-                        nc.groups[lags['varigrp'][jj]].setncattr('description',field_attrs[field]['group description'])
-
-                        field = 'dhdt'+lags['vari'][jj]+'_sigma'+ave
-                        data = np.array(lags['file'][jj][dzg]['sigma_'+dzg])
-                        data = np.moveaxis(data,2,0)  # t, y, x
-                        data[np.isnan(mask_lag)] = np.nan
-                        field_attrs = {row['field']: {attr_names[ii]:row[attr_names[ii]] for ii in range(len(attr_names))} for row in reader if field in row['field'] if row['group']=='height_change'+ave}
-                        make_dataset(field,'dhdt_sigma',data,field_attrs,nc,nc.groups[lags['varigrp'][jj]],nctype,dimScale=False)
-
-                for jj in range(len(lags['file'])):
-                    try:
-                        lags['file'][jj].close()
-                    except:
-                        pass
-                #BS: converted from pkg_resources
-                with importlib.resources.path('ATL1415.resources', 'atl15_metadata_template.nc') as ncTemplate:
-                    ATL14_attrs_meta.write_atl14meta(nc, fileout, ncTemplate, args)
-
+        #ncTemplate=pkg_resources.resource_filename('ATL1415','resources/atl15_metadata_template.nc')
+        with importlib.resources.path('ATL1415.resources', 'atl15_metadata_template.nc') as ncTemplate: 
+            ATL14_attrs_meta.write_atl14meta(nc, fileout, ncTemplate, args)
+    for fh in fh_in.values():
+        try:
+            fh.close()
+        except:
+            pass
     return fileout
 
 
@@ -269,10 +286,33 @@ def main():
     parser.add_argument('-v','--version', type=str, help="2-digit version number for output filename")
     parser.add_argument('--ATL11_index', type=str, help='GeoIndex file pointing to ATL11 data')
     parser.add_argument('--ATL11_xover_dir', type=str, help="directory containing ATL11 crossover cycle directories")
-    parser.add_argument('--attr_file', type=str, help="csv file containing attribute definitions")
     parser.add_argument('-list11','--ATL11_lineage_dir', type=str, help='directory in which to look for ATL11 .h5 filenames')
     parser.add_argument('--tiles_dir', type=str, help='directory in which to look for tile .h5 files')
+    parser.add_argument('--avg_scale', type=str, default=None, help='average scale')
+    parser.add_argument('--avg_scales', type=str, default=None, help='list of average scales, comma separated')
+    parser.add_argument('--dzdt_lags', type=str, default='1,4', help='lags for which to calculate dz/dt, comma-separated list, no spaces')
+    parser.add_argument('--grid_spacing','-g', type=str, help='DEM (meters),dh maps xy (meters),dh_maps time (years): comma-separated, no spaces', default='100.,1000.,0.25')
+    parser.add_argument('--delta_t', type=str, help='time-step spacing, yr')
+    parser.add_argument('--verbose', action='store_true')
+
     args, unknown = parser.parse_known_args()
+    args.grid_spacing = args.grid_spacing.split(',')
+    for ind, spacing in enumerate(args.grid_spacing):
+        if '/' in spacing:
+            temp=[*map(float, spacing.split('/'))]
+            args.grid_spacing[ind] = temp[0]/temp[1]
+        else:
+            args.grid_spacing[ind] = float(args.grid_spacing[ind])
+
+    if args.delta_t is None:
+        args.delta_t = args.grid_spacing[2]
+
+    if args.delta_t is not None:
+        if isinstance(args.delta_t,str) and '/' in args.delta_t:
+            args.delta_t = [*map(float, args.delta_t.split('/'))]
+            args.delta_t = args.delta_t[0] / args.delta_t[1]
+
+    args.dzdt_lags =  [*map(int, args.dzdt_lags.split(','))]
 
     if args.ATL11_lineage_dir is None:
         # if ATL11 lineage_dir is not specified, assume that the grandparent of the ATL11_index works
@@ -282,8 +322,12 @@ def main():
         args.tiles_dir=os.path.join(args.base_dir, 'prelim')
 
     print('args',args)
-
-    fileout = ATL15_write2nc(args)
+    if args.avg_scales is not None:
+        for avg_scale in [None]+[*map(int, args.avg_scales.split(','))]:
+            args.avg_scale=avg_scale
+            fileout = ATL15_write2nc_monthly(args)
+    else:
+        fileout = ATL15_write2nc_monthly(args)
 
 if __name__=='__main__':
     main()
