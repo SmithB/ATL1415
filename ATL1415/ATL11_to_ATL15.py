@@ -41,9 +41,9 @@ import pyTMD
 
 def get_SRS_info(hemisphere):
     if hemisphere==1:
-        return '+proj=stere +lat_0=90 +lat_ts=70 +lon_0=-45 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs', 3413
+        return '+proj=stere +lat_0=90 +lat_ts=70 +lon_0=-45 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs'
     else:
-        return '+proj=stere +lat_0=-90 +lat_ts=-71 +lon_0=0 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs', 3031
+        return '+proj=stere +lat_0=-90 +lat_ts=-71 +lon_0=0 +k=1 +x_0=0 +y_0=0 +datum=WGS84 +units=m +no_defs'
 
 def manual_edits(D):
     '''
@@ -74,7 +74,8 @@ def apply_tides(D, xy0, W,
                 tide_adjustment_format='h5',
                 extrapolate=True,
                 cutoff=200,
-                EPSG=None,
+                crs=None,
+                chunks="auto",
                 verbose=False):
 
     '''
@@ -96,7 +97,9 @@ def apply_tides(D, xy0, W,
         tide_adjustment_file: File for adjusting tide and dac values for ice shelf flexure
         tide_adjustment_format: file format of the scaling factor grid
         extrapolate: extrapolate outside tide model bounds with nearest-neighbors
+        crs: coordinate reference system for data
         cutoff: extrapolation cutoff in kilometers
+        chunks: chunk size for dask arrays (if used)
 
     output:
         D: data structure corrected for ocean tides and dac
@@ -122,11 +125,20 @@ def apply_tides(D, xy0, W,
     # extrapolate tide estimate beyond model bounds
     # extrapolation cutoff is in kilometers
     if np.any(is_els.ravel()):
-        D.tide_ocean = pyTMD.compute_tide_corrections(
-                D.x, D.y, D.delta_time,
-                DIRECTORY=tide_directory, MODEL=tide_model,
-                EPOCH=(2018,1,1,0,0,0), TYPE='drift', TIME='utc',
-                EPSG=EPSG, EXTRAPOLATE=extrapolate, CUTOFF=cutoff)
+        D.tide_ocean = pyTMD.compute.tide_elevations(
+            D.x, D.y, D.delta_time,
+            directory=tide_directory,
+            model=tide_model,
+            infer_minor=True,
+            chunks=chunks,
+            crs=crs,
+            type="drift",
+            epoch=(2018, 1, 1, 0, 0, 0),
+            standard="GPS",
+            method="linear",
+            extrapolate=extrapolate,
+            cutoff=cutoff,
+        )
     # use a flexure mask to adjust estimated tidal values
     if np.any(is_els.ravel()) and tide_adjustment:
         print(f"\t\t{tide_adjustment_file}") if verbose else None
@@ -328,7 +340,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
     outputs:
         S: dict containing fit output
     '''
-    SRS_proj4, EPSG=get_SRS_info(hemisphere)
+    SRS_proj4 = get_SRS_info(hemisphere)
 
     # default value for erode_source_mask, will change if we are subtracting ATL14
     erode_source_mask=True
@@ -488,7 +500,8 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
                     tide_adjustment=tide_adjustment,
                     tide_adjustment_file=tide_adjustment_file,
                     tide_adjustment_format=tide_adjustment_format,
-                    EPSG=EPSG, verbose=verbose)
+                    crs=SRS_proj4,
+                    verbose=verbose)
     elif 'floating' not in data.fields:
         # fix for firn runs where the floating variable did not get assigned
         if tide_mask_file is not None and tide_mask_data is None:
