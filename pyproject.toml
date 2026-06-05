@@ -33,6 +33,7 @@ dependencies = [
     "shapely",
     "cartopy",
     "imageio",
+    "pyTMD",
     "pointCollection @git+https://github.com/SmithB/pointCollection.git",
     "LSsurf @ git+ssh://git@github.com/smithb/LSsurf.git",
     "SMBcorr @ git+ssh://git@github.com/smithb/SMBcorr.git"
