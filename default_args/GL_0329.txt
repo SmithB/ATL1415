@@ -1,0 +1,7 @@
+--tide_mask_file=Arctic/BedMachineGreenland-2021-04-20_shelf_125m.tif
+--tide_model=Gr1km-v2
+--mask_file=Arctic/GrimpIceMask_2018.1_2025.75_100m.tif
+--E_d3zdx2dt_scale_file=Arctic/GL_d3z_dx2dt_scaling_map.tif
+--E_d2z0dx2_file=Arctic/GL_Ed2z0dx2.tif
+--region=GL
+

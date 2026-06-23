@@ -1,0 +1,4 @@
+--firn_directory=/home/besmith4/shared/FDM
+--firn_model=MERRA2_hybrid
+--firn_version=v1.2.1
+
