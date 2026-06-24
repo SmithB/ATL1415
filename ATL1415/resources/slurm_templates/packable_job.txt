@@ -27,17 +27,26 @@ source activate [[ENVIRONMENT=ATL14]]
 
 echo "starting "$task_file
 
-log_file=logs/${task_file}.log
-echo "hostname="$this_hostname > $log_file
-echo "start time="`date` >> $log_file
+active_log_file=active_logs/${task_file}.log
+echo "hostname="$this_hostname > $active_log_file
+echo "start time="`date` >> $active_log_file
 
 mv queue/$task_file running
 
-bash running/$task_file >>$log_file 2>&1
+bash running/$task_file >>$active_log_file 2>&1
+job_status=$?
 
 mv running/$task_file done/
 
-echo "end time="`date` >> $log_file
+echo "end time="`date` >> $active_log_file
+echo "exit code="$job_status >> $active_log_file
 
-echo "done with "$task_file" at "`date`
+log_file=logs/${task_file}.log
+mv $active_log_file $log_file
+
+if [ $job_status -ne 0 ]; then
+    cp $log_file error_logs/${task_file}.log
+fi
+
+echo "done with "$task_file" at "`date`" (exit code "$job_status")"
 

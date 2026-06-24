@@ -18,7 +18,7 @@ def make_mosaic_jobs(base, region, lags, t_res=0.25, skip_z0=False, run=False):
 
     # Create mosaic_run directory and subdirectories
     os.makedirs(mosaic_run, exist_ok=True)
-    for thedir in ['queue', 'running', 'done', 'logs']:
+    for thedir in ['queue', 'running', 'done', 'logs', 'active_logs', 'error_logs']:
         os.makedirs(os.path.join(mosaic_run, thedir), exist_ok=True)
 
     compute_sigma = 'True'

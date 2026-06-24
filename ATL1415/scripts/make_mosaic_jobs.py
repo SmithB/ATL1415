@@ -90,7 +90,7 @@ def make_mosaic_jobs(base, region, lags,
 
     # make directories
     os.makedirs(mosaic_run, exist_ok=True)
-    for sub in ["queue", "running", "done", "logs"]:
+    for sub in ["queue", "running", "done", "logs", "active_logs", "error_logs"]:
         os.makedirs(os.path.join(mosaic_run, sub), exist_ok=True)
 
     task = 0

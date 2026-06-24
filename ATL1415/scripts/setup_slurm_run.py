@@ -19,7 +19,7 @@ def setup_directories(run_dir):
     if not os.path.isdir(run_dir):
         os.mkdir(run_dir)
 
-    sub_list=['queue','running','done', 'logs']
+    sub_list=['queue','running','done', 'logs', 'active_logs', 'error_logs']
     for sub in sub_list:
         thedir=os.path.join(run_dir, sub)
         if not(os.path.isdir(thedir)):

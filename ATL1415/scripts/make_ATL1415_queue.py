@@ -146,7 +146,7 @@ def main():
         with open(defaults_file, 'w') as fh:
             for key, val in defaults.items():
                 fh.write(f'{key}={val}\n')
-        fh.write(f"-b={region_dir}\n")
+            fh.write(f"-b={region_dir}\n")
 
     step_dir=os.path.join(region_dir, args.step)
     if not os.path.isdir(step_dir):
@@ -225,7 +225,7 @@ def main():
 
 
     if XR is not None:
-        good &= (xg>=XR[0]) & (xg <= XR[1]) & (yg > YR[0]) & (yg < YR[1])
+        good &= (xg>=XR[0]) & (xg <= XR[1]) & (yg >= YR[0]) & (yg <= YR[1])
     xg=xg[good]
     yg=yg[good]
 

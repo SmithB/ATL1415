@@ -35,7 +35,7 @@ fi
 
 for reg in $regions; do
     if $(grep -q monthly $period_file); then
-        echo "ATL15_write2nc_monthly.py @${root}/rel${release}/north${hemi_suffix}/${reg}/input_args_${reg}.txt" >> arctic_2nc_queue.txt
+        echo "ATL15_write2nc.py @${root}/rel${release}/north${hemi_suffix}/${reg}/input_args_${reg}.txt" >> arctic_2nc_queue.txt
     else
         echo "ATL14_write2nc.py @${root}/rel${release}/north${hemi_suffix}/${reg}/input_args_${reg}.txt" >> arctic_2nc_queue.txt
         echo "ATL15_write2nc.py @${root}/rel${release}/north${hemi_suffix}/${reg}/input_args_${reg}.txt" >> arctic_2nc_queue.txt
