@@ -29,6 +29,7 @@ import numpy as np
 from LSsurf.smooth_fit import smooth_fit
 from SMBcorr import assign_firn_variable
 import pointCollection as pc
+from .lags import infer_dzdt_lags
 
 import re
 import sys
@@ -443,7 +444,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
         return None
 
     if edge_pad is not None:
-        ctr_dist = np.max(np.abs(data.x-xy0[0]), np.abs(data.y-xy0[1]))
+        ctr_dist = np.maximum(np.abs(data.x-xy0[0]), np.abs(data.y-xy0[1]))
         in_ctr = ctr_dist < Wxy/2 - edge_pad
         if np.sum(in_ctr) < 50:
             print("After editing by edge pad, <50 data present, returning")
@@ -709,7 +710,7 @@ def main():
     parser.add_argument('--data_gap_scale', type=float,  default=2500)
     parser.add_argument('--sigma_geo', type=float,  default=6.5)
     parser.add_argument('--sigma_radial', type=float,  default=0.03)
-    parser.add_argument('--dzdt_lags', type=str, default='1,4', help='lags for which to calculate dz/dt, comma-separated list, no spaces')
+    parser.add_argument('--dzdt_lags', type=str, default=None, help='lags for which to calculate dz/dt, comma-separated list, no spaces; inferred from --time_span and --grid_spacing if omitted')
     parser.add_argument('--avg_scales', type=str, default='10000,40000', help='scales at which to report average errors, comma-separated list, no spaces')
     parser.add_argument('--N_subset', type=int, default=None, help="number of pieces into which to divide the domain for (cheap) editing iterations.")
     parser.add_argument('--max_iterations', type=int, default=6, help="maximum number of iterations used to edit the data.")
@@ -746,7 +747,6 @@ def main():
     args, unknown=parser.parse_known_args()
 
     # handle arguments with commas
-    args.dzdt_lags = [np.int64(temp) for temp in args.dzdt_lags.split(',')]
     args.time_span = [np.float64(temp) for temp in args.time_span.split(',')]
     args.avg_scales = [np.int64(temp) for temp in args.avg_scales.split(',')]
     args.error_res_scale = [np.int64(temp) for temp in args.error_res_scale.split(',')]
@@ -761,6 +761,12 @@ def main():
             this_sp = float(this_sp)
         spacing[dim] = this_sp
     args.grid_spacing = [spacing['z0'], spacing['dz'], spacing['dt']]
+
+    if args.dzdt_lags is not None:
+        args.dzdt_lags = [np.int64(temp) for temp in args.dzdt_lags.split(',')]
+    else:
+        args.dzdt_lags = [np.int64(lag) for lag in
+                           infer_dzdt_lags(args.grid_spacing[2], args.time_span)]
 
     if args.reference_epoch is None:
         if args.reference_time is None:

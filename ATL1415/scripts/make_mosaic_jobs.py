@@ -95,22 +95,44 @@ def make_mosaic_jobs(base, region, lags,
 
     task = 0
     if not skip_z0:
-        field='z0'
         group='z0'
         field_list = ["z0", "misfit_rms", "misfit_scaled_rms", "mask",
-                      "cell_area", "count","sigma_z0'"]
+                      "cell_area", "count"]
         task += 1
         this_replace = '-R'
         append=False
-        for field in field_list:
-            cmd = (
-                f"make_mosaic.py {crop} {this_replace} "
-                f"-d {base} -g {glob_str} -p {pad} -f {feather} "
-                f"-O {base}/z0.h5 --in_group {group}/ -F {field}"
-            )
-            this_replace=""
-            write_task(task, cmd, mosaic_run, environment, append=append)
-            append = True
+        tiles_200km_z0 = os.path.join(base, "200km_tiles", "z0")
+        if os.path.isdir(tiles_200km_z0):
+            # z0 has already been mosaicked into 200km tiles (which are
+            # already padded/feathered), so mosaic those directly with no
+            # further pad/feather.
+            for field in field_list + ["sigma_z0"]:
+                cmd = (
+                    f"make_mosaic.py {crop} {this_replace} "
+                    f"-d {tiles_200km_z0} -g '*.h5' "
+                    f"-O {base}/z0.h5 --in_group {group}/ -F {field}"
+                )
+                this_replace=""
+                write_task(task, cmd, mosaic_run, environment, append=append)
+                append = True
+        else:
+            for field in field_list:
+                cmd = (
+                    f"make_mosaic.py {crop} {this_replace} "
+                    f"-d {base} -g {glob_str} -p {pad} -f {feather} "
+                    f"-O {base}/z0.h5 --in_group {group}/ -F {field}"
+                )
+                this_replace=""
+                write_task(task, cmd, mosaic_run, environment, append=append)
+                append = True
+            if compute_sigma:
+                cmd = (
+                    f"make_mosaic.py {crop} {this_replace} "
+                    f"-d {base} -g 'prelim/*.h5' -p {pad} -f {feather} "
+                    f"-O {base}/z0.h5 --in_group {group}/ -F sigma_z0"
+                )
+                write_task(task, cmd, mosaic_run, environment, append=append)
+                append = True
 
     # ---- first loop over groups ----
     for group in ["avg_dz_40000m", "avg_dz_20000m", "avg_dz_10000m"]:
@@ -251,7 +273,8 @@ def main():
                                  '\t SV: Svalbard \n'
                                  '\t RA: Russian Arctic')
     parser.add_argument('--grid_spacing','-g', type=str, help='grid spacing:DEM (meters),dh maps xy (meters),dh_maps time (years): comma-separated, no spaces', default='100.,1000.,1/4')
-    parser.add_argument('--dzdt_lags', type=str, help='comma-separated list of dzdt lags to process')
+    parser.add_argument('--time_span','-t', type=str, help='time span, first year,last year AD (comma separated, no spaces); used to infer --dzdt_lags if not given explicitly')
+    parser.add_argument('--dzdt_lags', type=str, default=None, help='comma-separated list of dzdt lags to process; inferred from --time_span and --grid_spacing if omitted')
     parser.add_argument('--run', action='store_true', help="run the script")
     parser.add_argument('--num_tasks', type=int, default=4, help='number of slurm tasks to assign')
     parser.add_argument('--environment','-e', type=str, default='IS2', help='environment to activate for each job')
@@ -274,7 +297,12 @@ def main():
     else:
         skip_z0 = False
 
-    lags = [*map(int, args.dzdt_lags.split(','))]
+    if args.dzdt_lags is not None:
+        lags = [*map(int, args.dzdt_lags.split(','))]
+    else:
+        time_span = [*map(float, args.time_span.split(','))]
+        lags = ATL1415.infer_dzdt_lags(args.grid_spacing[2], time_span)
+
     mosaic_run, tasks = make_mosaic_jobs(args.base_dir, args.region,
                                          lags,
                                          t_res = args.grid_spacing[2],
