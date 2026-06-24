@@ -515,7 +515,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
             group='', bounds = data.bounds(pad=2.e3), fields=['h','h_sigma'])
         data.assign(z_ref = ref_dem.interp(data.x, data.y, field='h'))
         data.assign(sigma_zref = ref_dem.interp(data.x, data.y, field='h_sigma'))
-        E_RMS['z0'] = np.nanmedian(data.sigma_zref)
+        E_RMS0['z0'] = np.nanmedian(data.sigma_zref)
         data.z -= data.z_ref
         data.index(np.isfinite(data.z) & (np.abs(data.z) < DEM_tol))
 
