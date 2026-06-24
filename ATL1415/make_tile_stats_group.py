@@ -37,6 +37,8 @@ def make_tile_stats_group(nc, args):
 
     tile_attr_names=[x for x in tile_reader[0].keys() if x != 'field' and x != 'group']
 
+    tile_field_attrs_by_name = {row['field']: {tile_attr_names[ii]:row[tile_attr_names[ii]] for ii in range(len(tile_attr_names))} for row in tile_reader}
+
     tile_field_names = [row['field'] for row in tile_reader]
 
     tile_stats={}        # dict for appending data from the tile files
@@ -100,7 +102,7 @@ def make_tile_stats_group(nc, args):
 
     # create tile_stats/ variables in .nc file
     for field in tile_field_names:
-        tile_field_attrs = {row['field']: {tile_attr_names[ii]:row[tile_attr_names[ii]] for ii in range(len(tile_attr_names))} for row in tile_reader if field in row['field']}
+        tile_field_attrs = {field: tile_field_attrs_by_name[field]}
         if field == 'x':
             dsetvar = tilegrp.createVariable('x', tile_field_attrs[field]['datatype'], ('x',), fill_value=np.finfo(tile_field_attrs[field]['datatype']).max, zlib=True)
             dsetvar[:] = np.arange(np.min(tile_stats['x']['data']),np.max(tile_stats['x']['data'])+40,40.) * 1000 # convert from km to meter
