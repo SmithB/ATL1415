@@ -77,7 +77,7 @@ def update_attr_dict(attr_template, args, res_m, res_km):
         if row['average'] != average_key:
             continue
         if row['lag'] is None:
-            new_attrs.append({key:val.replace('{lag_name}', lag_names[1]) for key, val in row})
+            new_attrs.append({key:val.replace('{lag_name}', lag_names[1]) for key, val in row.items()})
         else:
             for lag in lags:
                 new_row = {attr_name: attr.replace('{lag}', str(lag))\
