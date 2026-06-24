@@ -19,8 +19,15 @@ if [ ! -f $release_file ]; then
     echo "release file not found"; exit
 fi
 
-release=`grep Release $release_file | sed s/\=/\ / | awk '{print $NF}'`
-root=`grep ATL14_root $loc_file | sed s/\=/\ / | awk '{print $NF}'`
+release=`grep '^--Release=' $release_file | sed s/\=/\ / | awk '{print $NF}'`
+root=`grep '^--ATL14_root=' $loc_file | sed s/\=/\ / | awk '{print $NF}'`
+
+if [ -z "$release" ]; then
+    echo "could not find --Release= in $release_file"; exit
+fi
+if [ -z "$root" ]; then
+    echo "could not find --ATL14_root= in $loc_file"; exit
+fi
 
 $(grep -q monthly $period_file) && hemi_suffix="_monthly" || hemi_suffix=""
 

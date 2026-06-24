@@ -29,9 +29,19 @@ else
 fi
 echo $hemi_suffix
 
-release=`grep Release $release_file | sed s/\=/\ / | awk '{print $NF}'`
-root=`grep ATL14_root $loc_file | sed s/\=/\ / | awk '{print $NF}'`
+release=`grep '^--Release=' $release_file | sed s/\=/\ / | awk '{print $NF}'`
+root=`grep '^--ATL14_root=' $loc_file | sed s/\=/\ / | awk '{print $NF}'`
 time_span=`grep '^-t=' $release_file | sed s/\=/\ / | awk '{print $NF}'`
+
+if [ -z "$release" ]; then
+    echo "could not find --Release= in $release_file"; exit
+fi
+if [ -z "$root" ]; then
+    echo "could not find --ATL14_root= in $loc_file"; exit
+fi
+if [ -z "$time_span" ]; then
+    echo "could not find -t= in $release_file"; exit
+fi
 
 if [ $# -eq 0 ]; then
     regions="RA IS CN CS SV"
