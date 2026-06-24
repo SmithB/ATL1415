@@ -432,6 +432,20 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
         print("No data present for region, returning.")
         return None
 
+    # run_status flags describing what kind of data this is, so that later
+    # steps can tell whether they're looking at raw data or data that has
+    # already been through a previous fit.
+    # 'calc_error_or_data_file': rereading a specific output file's data
+    #   group directly (calc_error_file or data_file), as opposed to a fresh
+    #   read from the ATL11 index or a reread of neighbor-tile fit outputs
+    #   (reread_dirs).
+    # 'reprocessed': the broader set that also includes reread_dirs -- data
+    #   that has already been through a previous fit and shouldn't be
+    #   re-edited/re-corrected as if it were raw.
+    run_status={}
+    run_status['calc_error_or_data_file'] = calc_error_file is not None or data_file is not None
+    run_status['reprocessed'] = run_status['calc_error_or_data_file'] or reread_dirs is not None
+
     # if any manual edits are needed, make them here:
     manual_edits(data)
 
@@ -475,13 +489,14 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
         # make the correction
         data.z -= data.h_firn
 
-    # to reject ATL06/11 blunders (don't do this if we are using an ATL14 reference and we're calculating errors)
-    if ATL14_reference_file is None or (calc_error_file is None and data_file is None):
+    # to reject ATL06/11 blunders (don't do this if we are using an ATL14 reference and we're calculating errors,
+    # or if the data have already been through a previous fit, e.g. when rereading neighbor-tile outputs)
+    if ATL14_reference_file is None or not run_status['reprocessed']:
         set_three_sigma_edit_with_DEM(data, xy0, Wxy, DEM_file, DEM_tol)
 
     # apply the tides if a directory has been provided
     # NEW 2/19/2021: apply the tides only if we have not read the data from first-round fits.
-    if (tide_mask_file is not None or tide_mask_data is not None) and reread_dirs is None and calc_error_file is None and data_file is None:
+    if (tide_mask_file is not None or tide_mask_data is not None) and not run_status['reprocessed']:
         apply_tides(data, xy0, Wxy,
                     tide_mask_file=tide_mask_file,
                     tide_mask_data=tide_mask_data,
@@ -503,10 +518,10 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
                 data.assign(floating=np.zeros_like(data.x, dtype=bool))
 
     # edit data points that are below the geoid
-    if geoid_tol is not None and (calc_error_file is None and data_file is None):
+    if geoid_tol is not None and not run_status['calc_error_or_data_file']:
         data.index((data.z - data.geoid_h) > geoid_tol)
 
-    if ATL14_reference_file is not None and (calc_error_file is None and data_file is None):
+    if ATL14_reference_file is not None and not run_status['calc_error_or_data_file']:
         # we need to build the reference dem from a list because in Antarctica, tiles may
         # overlap multiple quadrants.  Elsewhere, from_list should just read the file.
         # N.B.: for netCDFs, the root group is '' rather than '/'
