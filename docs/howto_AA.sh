@@ -10,7 +10,7 @@ make_ATL1415_queue.py prelim /discover/nobackup/projects/icesat2/ATL14_processin
 setup_slurm_run.py --run_name AA_prelim_north -q 1415_queue_AA_prelim.txt --time 04:00:00  -e ATL14
 
 # make the field size reports:
-scripts/make_field_size_report.py /discover/nobackup/projects/icesat2/ATL14_processing/rel005/south/AA/prelim AA prelim
+scripts/make_field_size_report.py /discover/nobackup/projects/icesat2/ATL14_processing/rel005/south/AA/prelim
 
 # make the AA_matched queue for north:
 scripts/make_ATL1415_queue.py matched /discover/nobackup/projects/icesat2/ATL14_processing/rel005/south/AA/input_args_AA.txt --min_xy 360000
@@ -25,15 +25,15 @@ make_ATL1415_queue.py matched /discover/nobackup/projects/icesat2/ATL14_processi
 setup_slurm_run.py --run_name AA"_matched_south" -q 1415_queue_AA"_matched.txt" --time 04:00:00  -e ATL14
 
 # mosaic the northern tiles:
-make_200km_tiles.py  ~/shared/ATL14_processing/rel005/south/AA AA --last_lag 28
+make_200km_tiles.py  ~/shared/ATL14_processing/rel005/south/AA AA -t 2018.75,2026.0
 # then run the slurm_run in tile_run_AA
-scripts/make_200km_tiles.py  ~/shared/ATL14_processing/rel005/south/AA_44km AA --name AA_south --W 44000 --spacing 40000 --last_lag 28
+scripts/make_200km_tiles.py  ~/shared/ATL14_processing/rel005/south/AA_44km AA --name AA_south --W 44000 --spacing 40000 -t 2018.75,2026.0
 
 # now run git_repos/notebooks/make_and_check_links.ipynb
 
 # then mosaic the tiles:
-for sector in A1 A2 A3 A4; do bash scripts/make_200km_to_mosaic_jobs.sh /discover/nobackup/projects/icesat2/ATL14_processing/rel005/south/$sector; done
+for sector in A1 A2 A3 A4; do make_200km_to_mosaic_jobs.py -b /discover/nobackup/projects/icesat2/ATL14_processing/rel005/south/$sector -rr $sector -t 2018.75,2026.0; done
 
 # make the netCDFs
-scripts/run_antarctic_tonc.sh
+scripts/run_antarctic_tonc.sh default_args/rel_005_0329.txt default_args/discover.txt
 
