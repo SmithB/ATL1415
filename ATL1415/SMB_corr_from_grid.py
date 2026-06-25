@@ -32,7 +32,7 @@ def smooth_corrected(z, w_smooth, set_NaN=True, mask=None, return_mask=False):
 
 def fill_gaps(z, w_smooth, mask=None, set_NaN=True, return_mask=False):
     if return_mask:
-        zs, mask1 = smooth_corrected(z, w_smooth, mask=mask, set_Nan=set_NaN)
+        zs, mask1 = smooth_corrected(z, w_smooth, mask=mask, set_NaN=set_NaN)
         missing= mask1==0
         z[missing]=zs[missing]
         return z, mask1
@@ -84,7 +84,6 @@ def SMB_corr_from_grid(data, model_file=None, time=None, var_mapping=None,
     if var_mapping is None:
         var_mapping={'SMB_a':'SMB_a','FAC':'FAC'}#,'h_a':'h_a'}
 
-    w_smooth=1
     pad_f=np.array([-2.6e4, 2.6e4])
     pad_c=pad_f*3
 
