@@ -60,7 +60,6 @@ def main():
 
     if args.step not in ['centers', 'edges','corners','prelim', 'matched']:
         raise(ValueError('step argument not known: must be one of : prelim, centers, edges, corners'))
-        sys.exit()
 
     if args.skip_errors:
         calc_errors=False
@@ -196,6 +195,9 @@ def main():
                 tif_1km=defaults['--mask_file'].replace('_full.h5', '_1km.tif')
             else:
                 tif_1km=defaults['--mask_file'].replace('100m','1km').replace('125m','1km')
+                if tif_1km == defaults['--mask_file']:
+                    raise ValueError(f"could not determine 1km mask path from {defaults['--mask_file']}: "
+                                     "expected '100m' or '125m' in filename")
             print()
             print(tif_1km)
             print()
@@ -210,7 +212,9 @@ def main():
             x0, y0 = np.meshgrid(x0, y0)
             xg=x0.ravel()
             yg=y0.ravel()
-            good=(np.abs(mask_G.interp(xg, yg)-1)<0.1) & (np.mod(xg, Wxy)==0) & (np.mod(yg, Wxy)==0)
+            good=(np.abs(mask_G.interp(xg, yg)-1)<0.1) & \
+                 (np.abs(xg - np.round(xg/Wxy)*Wxy) < 0.5) & \
+                 (np.abs(yg - np.round(yg/Wxy)*Wxy) < 0.5)
         elif mask_ext in ['.shp','.db']:
             # the mask is a shape.
             # We require that an 40-km grid based on the mask exists
@@ -242,7 +246,7 @@ def main():
     print(f'min_xy={args.min_xy}')
     print(f'max_xy={args.max_xy}')
 
-    queued=[];
+    queued=set()
     if args.queue_file is not None:
         queue_file=args.queue_file
     else:
@@ -267,7 +271,7 @@ def main():
                 if tuple(xy1) in queued:
                     continue
                 else:
-                    queued.append(tuple(xy1))
+                    queued.add(tuple(xy1))
                 if not args.step=='matched':
                     out_file='%s/E%d_N%d.h5' % (step_dir, xy1[0]/1000, xy1[1]/1000)
                     if os.path.isfile(out_file) and not args.replace:
