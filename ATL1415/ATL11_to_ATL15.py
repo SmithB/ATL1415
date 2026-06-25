@@ -815,7 +815,7 @@ def resolve_run_config(args):
     elif args.matched:
         dest_dir += '/matched'
         args.max_iterations=1
-        prior_dirs = [args.base_directory+'/'+ii for ii in ['prelim','centers','edges','corners']]
+        prior_dirs = [args.base_directory+'/prelim']
 
     prior_edge_args=None
     if args.prior_edge_include is not None:
