@@ -689,8 +689,9 @@ def save_errors_to_file( S, filename, dzdt_lags=None, reference_epoch=None, grid
 
     return
 
-def main():
-    argv=sys.argv
+def parse_args(argv=None):
+    if argv is None:
+        argv=sys.argv
     # account for a bug in argparse that misinterprets negative agruents
     for i, arg in enumerate(argv):
         if (arg[0] == '-') and arg[1].isdigit(): argv[i] = ' ' + arg
@@ -759,8 +760,10 @@ def main():
     parser.add_argument('--region', type=str, help='region for which calculation is being performed')
     parser.add_argument('--verbose','-v', action="store_true")
     parser.add_argument('--write_data_only', action='store_true', help='save data without processing')
-    args, unknown=parser.parse_known_args()
+    args, unknown=parser.parse_known_args(argv[1:])
+    return args
 
+def resolve_run_config(args):
     # handle arguments with commas
     args.time_span = [np.float64(temp) for temp in args.time_span.split(',')]
     args.avg_scales = [np.int64(temp) for temp in args.avg_scales.split(',')]
@@ -798,6 +801,7 @@ def main():
     print("E_RMS="+str(E_RMS))
 
     reread_dirs=None
+    prior_dirs=None
     dest_dir=args.base_directory
     if args.W_edit is None:
         W_edit=args.Width/2
@@ -844,7 +848,7 @@ def main():
             E_RMS['d2z0_dx2'] = args.E_d2z0dx2
         if not os.path.isfile(args.out_name):
             print(f"{args.out_name} not found, returning")
-            return 1
+            return None
 
     if args.out_name is None:
         args.out_name=dest_dir + '/E%d_N%d.h5' % (args.xy0[0]/1e3, args.xy0[1]/1e3)
@@ -853,7 +857,7 @@ def main():
         args.calc_error_file=args.out_name
         if not os.path.isfile(args.out_name):
             print(f"{args.out_name} not found, returning")
-            return 1
+            return None
 
     if args.tide_adjustment_file is not None:
         args.tide_adjustment=True
@@ -870,24 +874,20 @@ def main():
 
     args.bias_params=args.bias_params.split(',')
 
-    if not os.path.isdir(args.base_directory):
-        os.mkdir(args.base_directory)
-    try:
-        os.mkdir(dest_dir)
-    except FileExistsError:
-        pass
+    return {'spacing':spacing, 'E_RMS':E_RMS, 'reread_dirs':reread_dirs,
+            'dest_dir':dest_dir, 'prior_dirs':prior_dirs, 'W_edit':W_edit,
+            'prior_edge_args':prior_edge_args, 'z0_average_scale':z0_average_scale}
 
-    print("ATL11_to_ATL15: working on "+args.out_name)
-
-    S=ATL11_to_ATL15(args.xy0, ATL11_index=args.ATL11_index,\
+def build_fit_kwargs(args, cfg):
+    return dict(ATL11_index=args.ATL11_index,\
            ATL11_xover_dir=args.ATL11_xover_dir,\
-           Wxy=args.Width, E_RMS=E_RMS, t_span=args.time_span, spacing=spacing, \
+           Wxy=args.Width, E_RMS=cfg['E_RMS'], t_span=args.time_span, spacing=cfg['spacing'], \
            E_d3zdx2dt_scale_file=args.E_d3zdx2dt_scale_file,\
            bias_params=args.bias_params,\
-           prior_edge_args=prior_edge_args, \
+           prior_edge_args=cfg['prior_edge_args'], \
            sigma_geo=args.sigma_geo, \
            sigma_radial=args.sigma_radial, \
-           hemisphere=args.Hemisphere, reread_dirs=reread_dirs, \
+           hemisphere=args.Hemisphere, reread_dirs=cfg['reread_dirs'], \
            data_file=args.data_file, \
            ATL14_reference_file=args.ATL14_reference_file,\
            restart_edit=args.restart_edit, \
@@ -913,7 +913,7 @@ def main():
            sigma_extra_bin_spacing=args.sigma_extra_bin_spacing,\
            sigma_extra_max=args.sigma_extra_max,\
            reference_epoch=args.reference_epoch, \
-           W_edit=W_edit,\
+           W_edit=cfg['W_edit'],\
            calc_error_file=args.calc_error_file, \
            error_res_scale=args.error_res_scale, \
            avg_scales=args.avg_scales, \
@@ -922,8 +922,25 @@ def main():
            DEM_tol=args.DEM_tol, \
            geoid_tol=args.geoid_tol,\
            sigma_tol=args.sigma_tol, \
-           z0_average_scale = z0_average_scale,\
+           z0_average_scale=cfg['z0_average_scale'],\
            write_data_only=args.write_data_only)
+
+def main():
+    args=parse_args()
+    cfg=resolve_run_config(args)
+    if cfg is None:
+        return 1
+
+    if not os.path.isdir(args.base_directory):
+        os.mkdir(args.base_directory)
+    try:
+        os.mkdir(cfg['dest_dir'])
+    except FileExistsError:
+        pass
+
+    print("ATL11_to_ATL15: working on "+args.out_name)
+
+    S=ATL11_to_ATL15(args.xy0, **build_fit_kwargs(args, cfg))
 
     status=0
     if S is None:
