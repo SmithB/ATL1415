@@ -21,9 +21,12 @@ for arg in sys.argv:
 # if THREADS was not specified as an input argument, check if it's set by slurm
 if n_threads=="1" and "SLURM_NTASKS" in os.environ:
     n_threads=os.environ['SLURM_NTASKS']
+    print(f"n_threads={n_threads}")
 
 os.environ["MKL_NUM_THREADS"]=n_threads
 os.environ["OPENBLAS_NUM_THREADS"]=n_threads
+os.environ['NUMEXPR_NUM_THREADS']=n_threads
+os.environ['OMP_NUM_THREADS']=n_threads
 
 import numpy as np
 from LSsurf.smooth_fit import smooth_fit
@@ -290,7 +293,8 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
             calc_error_file=None,\
             bias_params=['rgt','cycle'],\
             verbose=False,\
-            write_data_only=False):
+            write_data_only=False,\
+            THREADS=1):
     '''
     Function to generate DEMs and height-change maps based on ATL11 surface height data.
 
@@ -563,7 +567,8 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
                       mask_update_function=mask_update_function,
                       z0_average_scale = z0_average_scale,
                       erode_source_mask=erode_source_mask,
-                      avg_scales=avg_scales)
+                      avg_scales=avg_scales,
+                      THREADS=THREADS)
     S['file_list'] = file_list
     return S
 
@@ -760,6 +765,7 @@ def parse_args(argv=None):
     parser.add_argument('--region', type=str, help='region for which calculation is being performed')
     parser.add_argument('--verbose','-v', action="store_true")
     parser.add_argument('--write_data_only', action='store_true', help='save data without processing')
+    parser.add_argument('--THREADS', type=int, default=1, help='number of threads to use in suitesparse calculations')
     args, unknown=parser.parse_known_args(argv[1:])
     return args
 
@@ -923,7 +929,8 @@ def build_fit_kwargs(args, cfg):
            geoid_tol=args.geoid_tol,\
            sigma_tol=args.sigma_tol, \
            z0_average_scale=cfg['z0_average_scale'],\
-           write_data_only=args.write_data_only)
+           write_data_only=args.write_data_only,
+           THREADS=args.THREADS)
 
 def main():
     args=parse_args()
