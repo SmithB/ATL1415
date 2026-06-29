@@ -37,7 +37,6 @@ from .lags import infer_dzdt_lags
 import re
 import sys
 import h5py
-from ATL1415.reread_data_from_fits import reread_data_from_fits
 from ATL1415.make_mask_from_vector import make_mask_from_vector
 from ATL1415.SMB_corr_from_grid import SMB_corr_from_grid
 from ATL1415.read_ATL11 import read_ATL11
@@ -256,7 +255,6 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
             hemisphere=1,\
             reference_epoch=None,\
             region=None,\
-            reread_dirs=None, \
             sigma_extra_bin_spacing=None,\
             sigma_extra_max=None,\
             prior_edge_args=None,\
@@ -308,8 +306,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
         dzdt_lags: (list) lags over which elevation change rates and errors will be calculated
         hemisphere: (int) the hemisphere in which the grids will be generated. 1 for northern hemisphere, -1 for southern
         reference_epoch: (int) The time slice (counting from zero, in steps of spacing['dt']) corresponding to the DEM
-        reread_dirs: (string) directory containing output files from which data will be read (if None, data will be read from the index file)
-        data_file: (string) output file from which to reread data (alternative to reread_dirs)
+        data_file: (string) output file from which to reread data
         max_iterations: (int) maximum number of iterations in three-sigma edit of the solution
         N_subset: (int) If specified, the domain is subdivided into this number of divisions in x and y, and a three-sigma edit is calculated for each
         sigma_extra_bin_spacing: (float) grid spacing that will be used to calculate extra geophysical errors
@@ -419,8 +416,6 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
         data=pc.data().from_h5(calc_error_file, group='data')
         max_iterations=0
         compute_E=True
-    elif reread_dirs is not None:
-        data, tile_reread_list = reread_data_from_fits(xy0, Wxy, reread_dirs, template='E%d_N%d.h5')
     else:
         data, file_list = read_ATL11(xy0, Wxy, ATL11_index, SRS_proj4,
                                      sigma_geo=sigma_geo, sigma_radial=sigma_radial,
@@ -439,16 +434,14 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
     # run_status flags describing what kind of data this is, so that later
     # steps can tell whether they're looking at raw data or data that has
     # already been through a previous fit.
-    # 'calc_error_or_data_file': rereading a specific output file's data
-    #   group directly (calc_error_file or data_file), as opposed to a fresh
-    #   read from the ATL11 index or a reread of neighbor-tile fit outputs
-    #   (reread_dirs).
-    # 'reprocessed': the broader set that also includes reread_dirs -- data
-    #   that has already been through a previous fit and shouldn't be
-    #   re-edited/re-corrected as if it were raw.
+    # 'calc_error_or_data_file': True when data was read from a specific
+    #   output file (calc_error_file or data_file — e.g. the matched step
+    #   rereading its tile's prelim output), as opposed to a fresh read
+    #   from the ATL11 index.  Used to skip preprocessing steps (DEM edit,
+    #   tides, geoid, ATL14 reference) that were already applied in the
+    #   earlier fit.
     run_status={}
     run_status['calc_error_or_data_file'] = calc_error_file is not None or data_file is not None
-    run_status['reprocessed'] = run_status['calc_error_or_data_file'] or reread_dirs is not None
 
     # if any manual edits are needed, make them here:
     manual_edits(data)
@@ -495,12 +488,12 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
 
     # to reject ATL06/11 blunders (don't do this if we are using an ATL14 reference and we're calculating errors,
     # or if the data have already been through a previous fit, e.g. when rereading neighbor-tile outputs)
-    if ATL14_reference_file is None or not run_status['reprocessed']:
+    if ATL14_reference_file is None or not run_status['calc_error_or_data_file']:
         set_three_sigma_edit_with_DEM(data, xy0, Wxy, DEM_file, DEM_tol)
 
     # apply the tides if a directory has been provided
     # NEW 2/19/2021: apply the tides only if we have not read the data from first-round fits.
-    if (tide_mask_file is not None or tide_mask_data is not None) and not run_status['reprocessed']:
+    if (tide_mask_file is not None or tide_mask_data is not None) and not run_status['calc_error_or_data_file']:
         apply_tides(data, xy0, Wxy,
                     tide_mask_file=tide_mask_file,
                     tide_mask_data=tide_mask_data,
@@ -808,7 +801,6 @@ def resolve_run_config(args):
         E_RMS[ 'd2z_dxdt'] = args.E_d3zdx2dt*args.data_gap_scale
     print("E_RMS="+str(E_RMS))
 
-    reread_dirs=None
     prior_dirs=None
     dest_dir=args.base_directory
     if args.W_edit is None:
@@ -824,6 +816,11 @@ def resolve_run_config(args):
         dest_dir += '/matched'
         args.max_iterations=1
         prior_dirs = [args.base_directory+'/prelim']
+        if args.data_file is None:
+            if args.xy0 is None:
+                raise ValueError("--matched requires --xy0 or an explicit --data_file")
+            args.data_file = args.base_directory + '/prelim/E%d_N%d.h5' % \
+                             (args.xy0[0]/1e3, args.xy0[1]/1e3)
 
     prior_edge_args=None
     if args.prior_edge_include is not None:
@@ -832,7 +829,7 @@ def resolve_run_config(args):
                          'sigma_scale':args.prior_sigma_scale,
                          'tile_spacing':args.tile_spacing}
 
-    if args.xy0 is None and args.calc_error_file is not None or args.data_file is not None:
+    if args.xy0 is None and (args.calc_error_file is not None or args.data_file is not None):
         # get xy0 from the filename
         if args.calc_error_file is not None:
             re_match=re.compile('E(.*)_N(.*).h5').search(os.path.basename(args.calc_error_file))
@@ -882,7 +879,7 @@ def resolve_run_config(args):
 
     args.bias_params=args.bias_params.split(',')
 
-    return {'spacing':spacing, 'E_RMS':E_RMS, 'reread_dirs':reread_dirs,
+    return {'spacing':spacing, 'E_RMS':E_RMS,
             'dest_dir':dest_dir, 'prior_dirs':prior_dirs, 'W_edit':W_edit,
             'prior_edge_args':prior_edge_args, 'z0_average_scale':z0_average_scale}
 
@@ -895,7 +892,7 @@ def build_fit_kwargs(args, cfg):
            prior_edge_args=cfg['prior_edge_args'], \
            sigma_geo=args.sigma_geo, \
            sigma_radial=args.sigma_radial, \
-           hemisphere=args.Hemisphere, reread_dirs=cfg['reread_dirs'], \
+           hemisphere=args.Hemisphere, \
            data_file=args.data_file, \
            ATL14_reference_file=args.ATL14_reference_file,\
            restart_edit=args.restart_edit, \
