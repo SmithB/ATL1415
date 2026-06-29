@@ -240,7 +240,7 @@ def set_geobounds(dst,fileout,root_info):
       latmax = max(np.array(y))
       lonmin=ma.min(ma.masked_where(abs(np.array(y)) > 88.0, np.array(x)))
       lonmax=ma.max(ma.masked_where(abs(np.array(y)) > 88.0, np.array(x)))
-    except:
+    except (FileNotFoundError, KeyError):
       warnings.filterwarnings("always")
       warnings.warn("Deprecated. Use polygon from json file", DeprecationWarning)
       dst['/orbit_info'].variables['bounding_polygon_dim1'][:] = np.arange(1,4+1)
