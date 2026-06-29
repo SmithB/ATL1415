@@ -11,22 +11,22 @@ import re
 import glob
 
 threads_re=re.compile(r"THREADS=(\S+)")
-n_threads="1"
+N_THREADS="1"
 for arg in sys.argv:
     try:
-        n_threads=str(threads_re.search(arg).group(1))
+        N_THREADS=str(threads_re.search(arg).group(1))
     except Exception:
         pass
 
 # if THREADS was not specified as an input argument, check if it's set by slurm
-if n_threads=="1" and "SLURM_NTASKS" in os.environ:
-    n_threads=os.environ['SLURM_NTASKS']
-    print(f"n_threads={n_threads}")
+if N_THREADS=="1" and "SLURM_NTASKS" in os.environ:
+    N_THREADS=os.environ['SLURM_NTASKS']
+    print(f"N_THREADS={N_THREADS}")
 
-os.environ["MKL_NUM_THREADS"]=n_threads
-os.environ["OPENBLAS_NUM_THREADS"]=n_threads
-os.environ['NUMEXPR_NUM_THREADS']=n_threads
-os.environ['OMP_NUM_THREADS']=n_threads
+os.environ["MKL_NUM_THREADS"]=N_THREADS
+os.environ["OPENBLAS_NUM_THREADS"]=N_THREADS
+os.environ['NUMEXPR_NUM_THREADS']=N_THREADS
+os.environ['OMP_NUM_THREADS']=N_THREADS
 
 import numpy as np
 from LSsurf.smooth_fit import smooth_fit
@@ -767,6 +767,8 @@ def parse_args(argv=None):
     parser.add_argument('--write_data_only', action='store_true', help='save data without processing')
     parser.add_argument('--THREADS', type=int, default=1, help='number of threads to use in suitesparse calculations')
     args, unknown=parser.parse_known_args(argv[1:])
+    if args.THREADS == 1 and int(N_THREADS) > 1:
+        args.THREADS = int(N_THREADS)
     return args
 
 def resolve_run_config(args):
