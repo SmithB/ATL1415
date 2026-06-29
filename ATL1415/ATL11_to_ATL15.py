@@ -33,7 +33,7 @@ from LSsurf.smooth_fit import smooth_fit
 from LSsurf.calc_sigma_extra import calc_sigma_extra, calc_sigma_extra_on_grid
 from SMBcorr import assign_firn_variable
 import pointCollection as pc
-from .lags import infer_dzdt_lags
+from ATL1415.lags import infer_dzdt_lags
 
 import re
 import sys
