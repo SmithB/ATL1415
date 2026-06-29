@@ -30,6 +30,7 @@ os.environ['OMP_NUM_THREADS']=N_THREADS
 
 import numpy as np
 from LSsurf.smooth_fit import smooth_fit
+from LSsurf.calc_sigma_extra import calc_sigma_extra, calc_sigma_extra_on_grid
 from SMBcorr import assign_firn_variable
 import pointCollection as pc
 from .lags import infer_dzdt_lags
@@ -243,6 +244,86 @@ def set_three_sigma_edit_with_DEM(data, xy0, Wxy, DEM_file, DEM_tol, W_med=None)
             good[ii] &= (np.abs(r_DEM[ii] - np.nanmedian(r_DEM[ii])) < DEM_tol)
     data.three_sigma_edit &= good
 
+def set_three_sigma_edit_from_previous_product(data, xy0, Wxy,
+                                               previous_product_dir,
+                                               previous_product_sigma=0.2,
+                                               sigma_extra_bin_spacing=None,
+                                               sigma_extra_max=None, 
+                                               verbose=False):
+    '''
+    Pre-filter data against ATL14/15 .nc product files from a previous run.
+
+    Computes residuals between data.z and the interpolated previous solution
+    (ATL14 z0 + ATL15 delta_h), infers sigma_extra from those residuals using
+    LSsurf's calc_sigma_extra strategy, applies a floor of previous_product_sigma,
+    then updates data.three_sigma_edit.  Multiple sector files are mosaicked by
+    filling NaN left-to-right across glob results (handles Antarctic sector
+    boundaries).
+
+    inputs:
+        data                    (pc.data): input data with x, y, t, z, sigma fields
+        xy0                     (list): tile center [x, y]
+        Wxy                     (float): tile width
+        previous_product_dir    (str): directory containing ATL14_*.nc / ATL15_*.nc
+        previous_product_sigma  (float): minimum value for computed sigma_extra (m)
+        sigma_extra_bin_spacing (float): if set, compute spatially varying sigma_extra
+        sigma_extra_max         (float): cap on sigma_extra (on-grid variant only)
+        verbose                 (bool): print sigma_extra and acceptance fraction
+
+    outputs: None (modifies data.three_sigma_edit in place)
+    '''
+    bounds = [np.array([-0.6, 0.6]) * Wxy + xy for xy in xy0]
+
+    # load ATL14 (z0) — mosaic across any sector files that overlap this tile
+    z0_interp = np.full(data.size, np.nan)
+    for nc_file in glob.glob(os.path.join(previous_product_dir, 'ATL14_*.nc')):
+        g = pc.grid.data().from_nc(nc_file, fields=['h'], bounds=bounds)
+        if g is None or g.shape is None:
+            continue
+        zi = g.interp(data.x, data.y)
+        fill = np.isnan(z0_interp) & np.isfinite(zi)
+        z0_interp[fill] = zi[fill]
+
+    # load ATL15 (delta_h) — use 1km files only; mosaic across sectors as above.
+    dz_interp = np.full(data.size, np.nan)
+    for nc_file in glob.glob(os.path.join(previous_product_dir, 'ATL15_*_1km_*.nc')):
+        g = pc.grid.data().from_nc(nc_file, fields=['delta_h'],
+                                   group='delta_h', bounds=bounds)
+        if g is None or g.shape is None:
+            continue
+        zi = g.interp(data.x, data.y, t=data.t)
+        fill = np.isnan(dz_interp) & np.isfinite(zi)
+        dz_interp[fill] = zi[fill]
+
+    valid = np.isfinite(z0_interp) & np.isfinite(dz_interp)
+    if not np.any(valid):
+        print(f"set_three_sigma_edit_from_previous_product: "
+              f"no previous-product coverage for tile {xy0}, skipping")
+        return
+
+    # residuals (zero outside valid to keep calc_sigma_extra numerics clean)
+    r = np.where(valid, data.z - (z0_interp + dz_interp), 0.0)
+
+    if sigma_extra_bin_spacing is not None:
+        sigma_extra = calc_sigma_extra_on_grid(
+            data.x, data.y, r, data.sigma, valid,
+            spacing=sigma_extra_bin_spacing,
+            sigma_extra_max=sigma_extra_max)
+    else:
+        sigma_extra = calc_sigma_extra(r, data.sigma, valid)
+
+    sigma_extra = np.maximum(sigma_extra, previous_product_sigma)
+
+    if 'three_sigma_edit' not in data.fields:
+        data.assign({'three_sigma_edit': np.ones(data.size, dtype=bool)})
+
+    sigma_aug = np.sqrt(data.sigma**2 + sigma_extra**2)
+    data.three_sigma_edit[valid] &= np.abs(r[valid]) / sigma_aug[valid] < 3.0
+    if verbose:
+       print("\tATL11_to_ATL15.set_three_sigma_edit_with_previous_product\n" +
+             f"\t\t median(sigma_extra) = {np.nanmedian(sigma_extra)}\n" +
+             f"\t\t {np.sum(data.three_sigma_edit)}/{data.size} ({np.sum(data.three_sigma_edit)/data.size:2.2f}) accepted") 
+
 def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
             ATL11_xover_dir=None,\
             E_RMS={}, \
@@ -292,6 +373,8 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
             bias_params=['rgt','cycle'],\
             verbose=False,\
             write_data_only=False,\
+            previous_product=None,\
+            previous_product_sigma=0.2,\
             THREADS=1):
     '''
     Function to generate DEMs and height-change maps based on ATL11 surface height data.
@@ -327,6 +410,11 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
         avg_scales: (list of floats) scales over which the output grids will be averaged and errors will be calculated
         error_res_scale: (float) If errors are calculated, the grid resolution will be coarsened by this factor
         calc_error_file: (string) Output file for which errors will be calculated.
+        previous_product: (string) Directory containing ATL14/ATL15 .nc files from a
+            previous run.  When set, data are pre-filtered against the previous solution
+            before the fit using the sigma_extra strategy.
+        previous_product_sigma: (float) Minimum value (m) for the sigma_extra computed
+            from the misfit against the previous product (default 0.2).
         verbose: (bool) Print progress of processing run
     outputs:
         S: dict containing fit output
@@ -490,6 +578,13 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
     # or if the data have already been through a previous fit, e.g. when rereading neighbor-tile outputs)
     if ATL14_reference_file is None or not run_status['calc_error_or_data_file']:
         set_three_sigma_edit_with_DEM(data, xy0, Wxy, DEM_file, DEM_tol)
+
+    if previous_product is not None and not run_status['calc_error_or_data_file']:
+        set_three_sigma_edit_from_previous_product(
+            data, xy0, Wxy, previous_product,
+            previous_product_sigma=previous_product_sigma,
+            sigma_extra_bin_spacing=sigma_extra_bin_spacing,
+            sigma_extra_max=sigma_extra_max, verbose=verbose)
 
     # apply the tides if a directory has been provided
     # NEW 2/19/2021: apply the tides only if we have not read the data from first-round fits.
@@ -756,6 +851,8 @@ def parse_args(argv=None):
     parser.add_argument('--error_res_scale','-s', type=str, default="5,2", help='if the errors are being calculated (see calc_error_file), scale the grid resolution in x and y to be coarser.  2-element comma-separated list')
     parser.add_argument('--bias_params', type=str, default="rgt,cycle", help='one bias parameter will be assigned for each unique combination of these ATL11 parameters (comma-separated list with no spaces)')
     parser.add_argument('--region', type=str, help='region for which calculation is being performed')
+    parser.add_argument('--previous_product', type=lambda p: os.path.abspath(os.path.expanduser(p)), default=None, help='directory containing ATL14/ATL15 .nc files from a previous run; used to pre-filter data before fitting')
+    parser.add_argument('--previous_product_sigma', type=float, default=0.2, help='minimum sigma_extra (m) when pre-filtering against the previous product (default 0.2)')
     parser.add_argument('--verbose','-v', action="store_true")
     parser.add_argument('--write_data_only', action='store_true', help='save data without processing')
     parser.add_argument('--THREADS', type=int, default=1, help='number of threads to use in suitesparse calculations')
@@ -929,6 +1026,8 @@ def build_fit_kwargs(args, cfg):
            sigma_tol=args.sigma_tol, \
            z0_average_scale=cfg['z0_average_scale'],\
            write_data_only=args.write_data_only,
+           previous_product=args.previous_product,
+           previous_product_sigma=args.previous_product_sigma,
            THREADS=args.THREADS)
 
 def main():
