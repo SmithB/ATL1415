@@ -28,12 +28,13 @@ def setup_directories(run_dir):
 def get_last_task(run_name):
     task_file=os.path.join(run_name, 'last_task')
     if os.path.isfile(task_file):
+        temp='0'
         with open(task_file, 'r') as fh:
             for line in fh:
-                temp=line;
-            last_file_num=int(temp);
+                temp=line
+        last_file_num=int(temp)
     else:
-        last_file_num=0;
+        last_file_num=0
     return last_file_num
 
 def add_files_to_queue(run_name=None, task_list_file=None,  shell=None, env=None, R_range=None, max_jobs=None, lines_per_task=1, line_count=None):
@@ -53,7 +54,10 @@ def add_files_to_queue(run_name=None, task_list_file=None,  shell=None, env=None
                     try:
                         xy=np.array([*map(float, xy0_re.search(line).groups())])
                     except Exception:
-                        xy=1000*np.array([*map(float, xyfile_re.search(line).groups())])
+                        try:
+                            xy=1000*np.array([*map(float, xyfile_re.search(line).groups())])
+                        except Exception:
+                            continue
                     R2=np.sum(xy**2)
                     if (R2 < R_range[0]**2)  | (R2 >= R_range[1]**2) :
                         continue
@@ -96,6 +100,7 @@ def main():
     parser.add_argument('--jobs_per_task','-j', type=int, help="number of jobs per node")
     parser.add_argument('--time','-t', type=str, default='02:00:00', help="time limit per job (hh:mm:ss)")
     parser.add_argument('--css', action='store_true', help="if set, the run will use the constraint=cssro argument, needed for ATL11")
+    parser.add_argument('--max_jobs', type=int, default=4000, help="maximum number of task files to add to the queue in one call")
     args=parser.parse_args()
 
     R_dict=None
@@ -123,7 +128,7 @@ def main():
         line_count=[-1]
         while N_added > 0:
             first_task=get_last_task(args.run_name)
-            N_added = add_files_to_queue(run_name=args.run_name, task_list_file=args.queue_file, shell=args.shell, env=args.environment, R_range=R_range, max_jobs=4000, lines_per_task=args.lines_per_task, line_count=line_count)
+            N_added = add_files_to_queue(run_name=args.run_name, task_list_file=args.queue_file, shell=args.shell, env=args.environment, R_range=R_range, max_jobs=args.max_jobs, lines_per_task=args.lines_per_task, line_count=line_count)
             if N_added <1:
                 continue
             last_task=get_last_task(args.run_name)
