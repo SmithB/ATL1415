@@ -36,8 +36,10 @@ contributing `--key=value` lines, combined positionally:
   spacing/width, time range (`-t`), error covariance terms
   (`--E_d3zdx2dt`, `--E_d2z0dx2`, `--E_d2zdt2`), `--cycles`, `--Release`,
   `--version`, `--ATL11_release`, DEM/geoid tolerances, bias parameters.
-- **Hemisphere** (`north.txt` / `south.txt`): `--Hemisphere`,
-  `--ATL11_index`, `--ATL11_xover_dir`.
+- **Hemisphere**: passed directly as `--Hemisphere=1` (north) or `--Hemisphere=-1`
+  (south) on the `setup_ATL1415_region.py` command line. `--ATL11_index` is
+  derived from `--ATL11_release` (in the release file) and hemisphere;
+  `--ATL11_xover_dir` is derived as the `xover/` sibling of the index directory.
 - **Period** (`quarterly.txt` / monthly variant): `--dzdt_lags`, output grid
   spacing (`-g`).
 - **Region** (`GL_0329.txt`, `AA_0329.txt`, etc.): `--region`, mask/tide
@@ -52,7 +54,7 @@ contributing `--key=value` lines, combined positionally:
 
 ### 1. Region setup — `setup_ATL1415_region.py`
 ```
-setup_ATL1415_region.py discover.txt rel_005_0329.txt north.txt GL_0329.txt
+setup_ATL1415_region.py discover.txt rel_005_0329.txt GL_0329.txt --Hemisphere=1
 ```
 Merges the layered defaults files, resolves relative mask/index paths
 against `--ATL14_root`/`--mask_dir`, creates the
@@ -198,7 +200,7 @@ setup/queue/slurm/mosaic steps directly, split into north/south by
 ## Typical command sequence (Greenland, from `docs/howto_GL.sh`)
 
 ```bash
-setup_ATL1415_region.py default_args/discover.txt default_args/rel_005_0329.txt default_args/north.txt default_args/GL_0329.txt
+setup_ATL1415_region.py default_args/discover.txt default_args/rel_005_0329.txt default_args/GL_0329.txt --Hemisphere=1
 
 make_ATL1415_queue.py prelim <ATL14_root>/rel005/north/GL/input_args_GL.txt
 setup_slurm_run.py --run_name GL_prelim -q 1415_queue_GL_prelim.txt --time 04:00:00 -j 7 -e ATL14

@@ -61,7 +61,7 @@ for reg in $regions; do
     [ -d $base ] && rm -r $base
 
     [ -d $reg"_prelim" ] && rm -r $reg"_prelim"
-    setup_ATL1415_region.py $loc_file $release_file $period_file default_args/north.txt default_args/$reg.txt $ATL14_ref_str
+    setup_ATL1415_region.py $loc_file $release_file $period_file default_args/$reg.txt $ATL14_ref_str --Hemisphere=1
 
     make_ATL1415_queue.py prelim $base/input_args_$reg.txt
     run_name=${reg}${hemi_suffix}_prelim

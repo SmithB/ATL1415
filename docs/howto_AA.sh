@@ -1,7 +1,7 @@
 # see howto_ATL11.sh for indexing
 
 # setup Antarctica:
-setup_ATL1415_region.py default_args/discover.txt default_args/rel_005_0329.txt default_args/south.txt default_args/AA_0329.txt
+setup_ATL1415_region.py default_args/discover.txt default_args/rel_005_0329.txt default_args/AA_0329.txt --Hemisphere=-1
 
 # make the queue for AA_north
 make_ATL1415_queue.py prelim /discover/nobackup/projects/icesat2/ATL14_processing/rel005/south/AA/input_args_AA.txt --min_xy 360000 

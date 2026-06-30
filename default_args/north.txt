@@ -1,3 +1,0 @@
---ATL11_index=ATL11_007_0329_v02/north/index/GeoIndex.h5
---Hemisphere=1
---ATL11_xover_dir=/home/besmith4/nobackup/ATL11/rel007_0329_v02/xover_tiles/
