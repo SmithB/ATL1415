@@ -42,6 +42,13 @@ if [ -z "$version" ]; then
     echo "could not find --version= in $release_file"; exit
 fi
 
+echo ""
+echo "======================================================"
+echo "  RELEASE: $release   CYCLES: $cycles   VERSION: $version"
+echo "  Release file: $(readlink -f $release_file)"
+echo "======================================================"
+echo ""
+
 if [ $# -eq 0 ]; then
     regions="RA IS CN CS SV"
 else

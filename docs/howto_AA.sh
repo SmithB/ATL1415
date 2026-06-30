@@ -1,7 +1,7 @@
 # see howto_ATL11.sh for indexing
 
 # setup Antarctica:
-setup_ATL1415_region.py default_args/discover.txt default_args/rel_005_0329.txt default_args/AA_0329.txt --Hemisphere=-1
+setup_ATL1415_region.py default_args/discover.txt default_args/latest_release.txt default_args/AA_0329.txt --Hemisphere=-1
 
 # make the queue for AA_north
 make_ATL1415_queue.py prelim /discover/nobackup/projects/icesat2/ATL14_processing/rel005/south/AA/input_args_AA.txt --min_xy 360000 
@@ -35,5 +35,5 @@ scripts/make_200km_tiles.py  ~/shared/ATL14_processing/rel005/south/AA_44km AA -
 for sector in A1 A2 A3 A4; do make_200km_to_mosaic_jobs.py -b /discover/nobackup/projects/icesat2/ATL14_processing/rel005/south/$sector -rr $sector -t 2018.75,2026.0; done
 
 # make the netCDFs
-scripts/run_antarctic_tonc.sh default_args/rel_005_0329.txt default_args/discover.txt
+scripts/run_antarctic_tonc.sh default_args/latest_release.txt default_args/discover.txt
 

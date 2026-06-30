@@ -42,6 +42,14 @@ fi
 if [ -z "$time_span" ]; then
     echo "could not find -t= in $release_file"; exit
 fi
+version=`grep '^--version=' $release_file | sed s/\=/\ / | awk '{print $NF}'`
+
+echo ""
+echo "======================================================"
+echo "  RELEASE: $release   VERSION: $version"
+echo "  Release file: $(readlink -f $release_file)"
+echo "======================================================"
+echo ""
 
 if [ $# -eq 0 ]; then
     regions="RA IS CN CS SV"

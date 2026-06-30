@@ -6,7 +6,7 @@
 # default_args/rel_004_0325.txt default_args/GL_0325.txt
 # check each for the cycle numbers
 # setup Greenland:
-setup_ATL1415_region.py default_args/discover.txt default_args/rel_005_0329.txt default_args/GL_0329.txt --Hemisphere=1
+setup_ATL1415_region.py default_args/discover.txt default_args/latest_release.txt default_args/GL_0329.txt --Hemisphere=1
 
 # make the queue
 make_ATL1415_queue.py prelim /discover/nobackup/projects/icesat2/ATL14_processing/rel005/north/GL/input_args_GL.txt

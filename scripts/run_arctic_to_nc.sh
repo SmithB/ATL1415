@@ -28,6 +28,14 @@ fi
 if [ -z "$root" ]; then
     echo "could not find --ATL14_root= in $loc_file"; exit
 fi
+version=`grep '^--version=' $release_file | sed s/\=/\ / | awk '{print $NF}'`
+
+echo ""
+echo "======================================================"
+echo "  RELEASE: $release   VERSION: $version"
+echo "  Release file: $(readlink -f $release_file)"
+echo "======================================================"
+echo ""
 
 $(grep -q monthly $period_file) && hemi_suffix="_monthly" || hemi_suffix=""
 

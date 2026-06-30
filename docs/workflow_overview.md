@@ -32,7 +32,7 @@ contributing `--key=value` lines, combined positionally:
 
 - **Location** (`discover.txt`): cluster paths — `--mask_dir`,
   `--tide_directory`, `--ATL14_root`.
-- **Release** (`rel_005_0329.txt`): science/release parameters — tile
+- **Release** (`latest_release.txt`, a symlink to the current release file, e.g. `rel_005_0329.txt`): science/release parameters — tile
   spacing/width, time range (`-t`), error covariance terms
   (`--E_d3zdx2dt`, `--E_d2z0dx2`, `--E_d2zdt2`), `--cycles`, `--Release`,
   `--version`, `--ATL11_release`, DEM/geoid tolerances, bias parameters.
@@ -54,7 +54,7 @@ contributing `--key=value` lines, combined positionally:
 
 ### 1. Region setup — `setup_ATL1415_region.py`
 ```
-setup_ATL1415_region.py discover.txt rel_005_0329.txt GL_0329.txt --Hemisphere=1
+setup_ATL1415_region.py discover.txt latest_release.txt GL_0329.txt --Hemisphere=1
 ```
 Merges the layered defaults files, resolves relative mask/index paths
 against `--ATL14_root`/`--mask_dir`, creates the
@@ -200,7 +200,7 @@ setup/queue/slurm/mosaic steps directly, split into north/south by
 ## Typical command sequence (Greenland, from `docs/howto_GL.sh`)
 
 ```bash
-setup_ATL1415_region.py default_args/discover.txt default_args/rel_005_0329.txt default_args/GL_0329.txt --Hemisphere=1
+setup_ATL1415_region.py default_args/discover.txt default_args/latest_release.txt default_args/GL_0329.txt --Hemisphere=1
 
 make_ATL1415_queue.py prelim <ATL14_root>/rel005/north/GL/input_args_GL.txt
 setup_slurm_run.py --run_name GL_prelim -q 1415_queue_GL_prelim.txt --time 04:00:00 -j 7 -e ATL14
