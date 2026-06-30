@@ -27,9 +27,6 @@ def main(argv=None):
     parser.add_argument('--ATL14_reference_file', type=str)
     parser.add_argument('--Hemisphere', type=int, choices=[1, -1],
                         help='hemisphere: 1=north, -1=south')
-    parser.add_argument('--previous_product_top', type=str, default=None,
-                        help='top-level directory of previous ATL14/15 products; '
-                             'subdirs are north/<REGION> (Arctic) or south/A1..A4 (Antarctic)')
 
     args = parser.parse_args()
 
@@ -115,12 +112,12 @@ def main(argv=None):
 
     # resolve previous-product directories if a top-level path was given
     pp_dirs = []
-    if args.previous_product_top is not None:
+    if '--previous_product_top' in defaults: 
         if hemisphere_base == 'north':
-            pp_dirs = [os.path.join(args.previous_product_top, 'north', defaults['--region'])]
+            pp_dirs = [os.path.join(defaults['--previous_product_top'], 'north', defaults['--region'])]
         else:
-            south_dir = os.path.join(args.previous_product_top, 'south')
-            pp_dirs = sorted(d for d in glob.glob(os.path.join(south_dir, '*'))
+            south_dir = os.path.join(defaults['--previous_product_top'], 'south')
+            pp_dirs = sorted(d for d in glob.glob(os.path.join(south_dir, 'A?'))
                              if os.path.isdir(d))
 
     # write out the composite defaults file
