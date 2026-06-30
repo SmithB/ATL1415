@@ -71,6 +71,7 @@ dev = ["flake8", "pytest>=4.6", "pytest-cov"]
 "_usgs.py" = "ATL1415.scripts._usgs:main"
 "check_tile_data_vs_DEM.py" = "ATL1415.scripts.check_tile_data_vs_DEM:main"
 "make_200km_tiles.py" = "ATL1415.scripts.make_200km_tiles:main"
+"make_ATL11_index.py" = "ATL1415.scripts.make_ATL11_index:main"
 "make_ATL1415_queue.py" = "ATL1415.scripts.make_ATL1415_queue:main"
 "make_mosaic_jobs.py" = "ATL1415.scripts.make_mosaic_jobs:main"
 "make_GL_ATL1415_queue.py" = "ATL1415.scripts.make_GL_ATL1415_queue:main"
@@ -80,7 +81,7 @@ dev = ["flake8", "pytest>=4.6", "pytest-cov"]
 "make_200km_to_mosaic_jobs.py" = "ATL1415.scripts.make_200km_to_mosaic_jobs:main"
 "slurm_run_status.py" = "ATL1415.scripts.slurm_run_status:main"
 [tool.setuptools]
-script-files = ["scripts/make_ATL11_index", "scripts/make_ATL11_index_discover", "scripts/make_mosaic_jobs_monthly", "scripts/run_antarctic_tonc.sh", "scripts/run_arctic_matched.sh", "scripts/run_arctic_mosaic.sh", "scripts/run_arctic_prelim.sh", "scripts/run_arctic_to_nc.sh"]
+script-files = ["scripts/make_mosaic_jobs_monthly", "scripts/run_antarctic_tonc.sh", "scripts/run_arctic_matched.sh", "scripts/run_arctic_mosaic.sh", "scripts/run_arctic_prelim.sh", "scripts/run_arctic_to_nc.sh"]
 
 [tool.setuptools.packages.find]
 exclude = ["test*"]

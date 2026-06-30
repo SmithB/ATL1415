@@ -1,3 +1,4 @@
 --mask_dir=/home/besmith4/git_repos/ATL1415/masks/
 --tide_directory=/discover/nobackup/besmith4/tide_models
 --ATL14_root=/discover/nobackup/projects/icesat2/ATL14_processing
+--ATL11_root=/discover/nobackup/bjelley/ATL11_processing
