@@ -245,10 +245,10 @@ def set_three_sigma_edit_with_DEM(data, xy0, Wxy, DEM_file, DEM_tol, W_med=None)
     data.three_sigma_edit &= good
 
 def set_three_sigma_edit_from_previous_product(data, xy0, Wxy,
-                                               previous_product_dir,
+                                               previous_product_dirs,
                                                previous_product_sigma=0.2,
                                                sigma_extra_bin_spacing=None,
-                                               sigma_extra_max=None, 
+                                               sigma_extra_max=None,
                                                verbose=False):
     '''
     Pre-filter data against ATL14/15 .nc product files from a previous run.
@@ -256,15 +256,15 @@ def set_three_sigma_edit_from_previous_product(data, xy0, Wxy,
     Computes residuals between data.z and the interpolated previous solution
     (ATL14 z0 + ATL15 delta_h), infers sigma_extra from those residuals using
     LSsurf's calc_sigma_extra strategy, applies a floor of previous_product_sigma,
-    then updates data.three_sigma_edit.  Multiple sector files are mosaicked by
-    filling NaN left-to-right across glob results (handles Antarctic sector
-    boundaries).
+    then updates data.three_sigma_edit.  Files are searched across all entries in
+    previous_product_dirs and mosaicked by filling NaN left-to-right (handles
+    Antarctic A1-A4 sectors stored in separate directories).
 
     inputs:
         data                    (pc.data): input data with x, y, t, z, sigma fields
         xy0                     (list): tile center [x, y]
         Wxy                     (float): tile width
-        previous_product_dir    (str): directory containing ATL14_*.nc / ATL15_*.nc
+        previous_product_dirs   (list of str): directories containing ATL14_*.nc / ATL15_*.nc
         previous_product_sigma  (float): minimum value for computed sigma_extra (m)
         sigma_extra_bin_spacing (float): if set, compute spatially varying sigma_extra
         sigma_extra_max         (float): cap on sigma_extra (on-grid variant only)
@@ -274,26 +274,28 @@ def set_three_sigma_edit_from_previous_product(data, xy0, Wxy,
     '''
     bounds = [np.array([-0.6, 0.6]) * Wxy + xy for xy in xy0]
 
-    # load ATL14 (z0) — mosaic across any sector files that overlap this tile
+    # load ATL14 (z0) — mosaic across all directories and any sector files therein
     z0_interp = np.full(data.size, np.nan)
-    for nc_file in glob.glob(os.path.join(previous_product_dir, 'ATL14_*.nc')):
-        g = pc.grid.data().from_nc(nc_file, fields=['h'], bounds=bounds)
-        if g is None or g.shape is None:
-            continue
-        zi = g.interp(data.x, data.y)
-        fill = np.isnan(z0_interp) & np.isfinite(zi)
-        z0_interp[fill] = zi[fill]
+    for directory in previous_product_dirs:
+        for nc_file in glob.glob(os.path.join(directory, 'ATL14_*.nc')):
+            g = pc.grid.data().from_nc(nc_file, fields=['h'], bounds=bounds)
+            if g is None or g.shape is None:
+                continue
+            zi = g.interp(data.x, data.y)
+            fill = np.isnan(z0_interp) & np.isfinite(zi)
+            z0_interp[fill] = zi[fill]
 
-    # load ATL15 (delta_h) — use 1km files only; mosaic across sectors as above.
+    # load ATL15 (delta_h) — use 1km files only; mosaic across directories as above
     dz_interp = np.full(data.size, np.nan)
-    for nc_file in glob.glob(os.path.join(previous_product_dir, 'ATL15_*_1km_*.nc')):
-        g = pc.grid.data().from_nc(nc_file, fields=['delta_h'],
-                                   group='delta_h', bounds=bounds)
-        if g is None or g.shape is None:
-            continue
-        zi = g.interp(data.x, data.y, t=data.t)
-        fill = np.isnan(dz_interp) & np.isfinite(zi)
-        dz_interp[fill] = zi[fill]
+    for directory in previous_product_dirs:
+        for nc_file in glob.glob(os.path.join(directory, 'ATL15_*_1km_*.nc')):
+            g = pc.grid.data().from_nc(nc_file, fields=['delta_h'],
+                                       group='delta_h', bounds=bounds)
+            if g is None or g.shape is None:
+                continue
+            zi = g.interp(data.x, data.y, t=data.t)
+            fill = np.isnan(dz_interp) & np.isfinite(zi)
+            dz_interp[fill] = zi[fill]
 
     valid = np.isfinite(z0_interp) & np.isfinite(dz_interp)
     if not np.any(valid):
@@ -851,7 +853,7 @@ def parse_args(argv=None):
     parser.add_argument('--error_res_scale','-s', type=str, default="5,2", help='if the errors are being calculated (see calc_error_file), scale the grid resolution in x and y to be coarser.  2-element comma-separated list')
     parser.add_argument('--bias_params', type=str, default="rgt,cycle", help='one bias parameter will be assigned for each unique combination of these ATL11 parameters (comma-separated list with no spaces)')
     parser.add_argument('--region', type=str, help='region for which calculation is being performed')
-    parser.add_argument('--previous_product', type=lambda p: os.path.abspath(os.path.expanduser(p)), default=None, help='directory containing ATL14/ATL15 .nc files from a previous run; used to pre-filter data before fitting')
+    parser.add_argument('--previous_product', type=lambda p: os.path.abspath(os.path.expanduser(p)), action='append', default=None, help='directory containing ATL14/ATL15 .nc files from a previous run; may be repeated for multiple sector directories (e.g. Antarctic A1-A4)')
     parser.add_argument('--previous_product_sigma', type=float, default=0.2, help='minimum sigma_extra (m) when pre-filtering against the previous product (default 0.2)')
     parser.add_argument('--verbose','-v', action="store_true")
     parser.add_argument('--write_data_only', action='store_true', help='save data without processing')

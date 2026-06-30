@@ -9,6 +9,7 @@ Created on Thu Jun  6 21:00:02 2019
 import sys
 import os
 import re
+import glob
 import argparse
 
 def main(argv=None):
@@ -26,6 +27,9 @@ def main(argv=None):
     parser.add_argument('--ATL14_reference_file', type=str)
     parser.add_argument('--Hemisphere', type=int, choices=[1, -1],
                         help='hemisphere: 1=north, -1=south')
+    parser.add_argument('--previous_product_top', type=str, default=None,
+                        help='top-level directory of previous ATL14/15 products; '
+                             'subdirs are north/<REGION> (Arctic) or south/A1..A4 (Antarctic)')
 
     args = parser.parse_args()
 
@@ -109,6 +113,16 @@ def main(argv=None):
         defaults['--ATL11_xover_dir'] = os.path.join(
             os.path.dirname(os.path.dirname(defaults['--ATL11_index'])), 'xover')
 
+    # resolve previous-product directories if a top-level path was given
+    pp_dirs = []
+    if args.previous_product_top is not None:
+        if hemisphere_base == 'north':
+            pp_dirs = [os.path.join(args.previous_product_top, 'north', defaults['--region'])]
+        else:
+            south_dir = os.path.join(args.previous_product_top, 'south')
+            pp_dirs = sorted(d for d in glob.glob(os.path.join(south_dir, '*'))
+                             if os.path.isdir(d))
+
     # write out the composite defaults file
     defaults_file=os.path.join(region_dir, f'input_args_{defaults["--region"]}.txt')
     with open(defaults_file, 'w') as fh:
@@ -116,6 +130,8 @@ def main(argv=None):
             if key in ["--hemi_suffix"]:
                 continue
             fh.write(f'{key}={val}\n')
+        for pp_dir in pp_dirs:
+            fh.write(f'--previous_product={pp_dir}\n')
         fh.write(f"-b={region_dir}\n")
 
     print("setup_ATL1415_region.py: wrote defaults to:")
