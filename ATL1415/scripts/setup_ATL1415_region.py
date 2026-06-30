@@ -82,21 +82,6 @@ def main(argv=None):
         if not os.path.isdir(this):
             os.mkdir(this)
 
-    # ATL11 index may be specified relative to ATL1r_root
-    if '--ATL11_index' in defaults and not os.path.isfile(defaults['--ATL11_index']):
-        temp1=os.path.join(defaults['--ATL14_root'], defaults['--ATL11_index'])
-        if os.path.isfile(temp1):
-            defaults['--ATL11_index']=temp1
-        else:
-            print(temp1 + ' not found')
-            temp2=os.path.join(os.path.dirname(defaults['--ATL14_root']), defaults['--ATL11_index'])
-            print(f'looking for {temp2}')
-            if os.path.isfile(temp2):
-                defaults['--ATL11_index']=temp2
-            else:
-                raise(OSError(f"ATL11 index file {defaults['--ATL11_index']} does not exist in \n\t{temp1}\n\t or\n\t {temp2}"))
-
-
     # if ATL11 release is specified and ATL11 geoindex is not specified, build the location
     if '--ATL11_index' not in defaults and '--ATL11_release' in defaults:
         defaults['--ATL11_index'] = os.path.join(defaults['--ATL14_root'], defaults['--ATL11_release'], hemisphere_base, 'index','GeoIndex.h5')
