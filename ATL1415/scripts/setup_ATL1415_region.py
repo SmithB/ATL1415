@@ -93,7 +93,7 @@ def main(argv=None):
     # derive xover dir from the index location unless explicitly specified
     if '--ATL11_xover_dir' not in defaults:
         defaults['--ATL11_xover_dir'] = os.path.join(
-            os.path.dirname(os.path.dirname(defaults['--ATL11_index'])), 'xover')
+            os.path.dirname(os.path.dirname(defaults['--ATL11_index'])), 'xover_tiles')
 
     # resolve previous-product directories if a top-level path was given
     pp_dirs = []

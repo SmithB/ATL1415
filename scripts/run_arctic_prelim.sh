@@ -75,7 +75,7 @@ for reg in $regions; do
     setup_slurm_run.py --run_name $run_name -q 1415_queue_$reg"_prelim.txt" --time 04:00:00 -j 7 -e ATL14
 
     pushd $run_name
-    sbatch slurm_run.sh
+    #sbatch slurm_run.sh
     popd
 
 done
