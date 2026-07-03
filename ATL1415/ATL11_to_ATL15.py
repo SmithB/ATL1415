@@ -281,19 +281,20 @@ def set_three_sigma_edit_from_previous_product(data, xy0, Wxy,
             g = pc.grid.data().from_nc(nc_file, fields=['h'], bounds=bounds)
             if g is None or g.shape is None:
                 continue
-            zi = g.interp(data.x, data.y)
+            zi = g.interp(data.x, data.y, field='h')
             fill = np.isnan(z0_interp) & np.isfinite(zi)
             z0_interp[fill] = zi[fill]
 
     # load ATL15 (delta_h) — use 1km files only; mosaic across directories as above
     dz_interp = np.full(data.size, np.nan)
     for directory in previous_product_dirs:
-        for nc_file in glob.glob(os.path.join(directory, 'ATL15_*_1km_*.nc')):
+        for nc_file in glob.glob(os.path.join(directory, 'ATL15_*1km_*.nc')):
             g = pc.grid.data().from_nc(nc_file, fields=['delta_h'],
                                        group='delta_h', bounds=bounds)
             if g is None or g.shape is None:
                 continue
-            zi = g.interp(data.x, data.y, t=data.t)
+            g.t = 2018 + g.t/365.25
+            zi = g.interp(data.x, data.y, t=data.time, field='delta_h')
             fill = np.isnan(dz_interp) & np.isfinite(zi)
             dz_interp[fill] = zi[fill]
 
@@ -324,7 +325,9 @@ def set_three_sigma_edit_from_previous_product(data, xy0, Wxy,
     if verbose:
        print("\tATL11_to_ATL15.set_three_sigma_edit_with_previous_product\n" +
              f"\t\t median(sigma_extra) = {np.nanmedian(sigma_extra)}\n" +
-             f"\t\t {np.sum(data.three_sigma_edit)}/{data.size} ({np.sum(data.three_sigma_edit)/data.size:2.2f}) accepted") 
+             f"\t\t {np.sum(valid)} points, {np.mean(valid)*100:2.1f} %, tested\n" +
+             f"\t\t {np.sum(data.three_sigma_edit[valid])}/{np.sum(valid)}" +
+             f"({np.sum(data.three_sigma_edit[valid])/np.sum(valid)*100:2.1f}%) accepted") 
 
 def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
             ATL11_xover_dir=None,\
