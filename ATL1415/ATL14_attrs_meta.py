@@ -108,13 +108,20 @@ def attributes_for_ATL11_file(file, delta_time_range, args):
         atl11path = args.ATL11_lineage_dir
         this_format='along-track'
     except Exception:
-        rx=re.compile('(ATL11xo)_.._E.*_N.*_c(\d\d)_(\d\d\d)_(\d\d).h5$')
+        rx=re.compile('(ATL11XO)_.._E.*_N.*_c(\d\d)_(\d\d\d)_(\d\d).h5$', flags=re.I)
         fa['shortName'],\
         fa['start_cycle'],\
         fa['release'],\
         fa['version'] = rx.search(file).groups()
         fa['end_cycle'] = fa['start_cycle']
         atl11path = os.path.join(args.ATL11_xover_dir, f'cycle_{fa["start_cycle"]}')
+        if not os.path.isfile( os.path.join(atl11path,file) ):
+            # we may be using a tiling schema to point to the file location
+            schema_files = glob.glob(os.path.join(atl11path, '*til*.json'))
+            if not schema_files:
+                raise FileNotFoundError(f"could not find {file}")
+            with open(schema_files[0],'r') as fh:
+                atl11path = json.load(fh)['directory']
         this_format='xo'
 
     with h5py.File(os.path.join(atl11path,file),'r') as fileID:
