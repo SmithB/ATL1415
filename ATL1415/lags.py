@@ -30,6 +30,7 @@ def infer_dzdt_lags(t_res, time_span):
         lags.add(round(0.25 / t_res))
         lags.add(round(0.5 / t_res))
     for year in range(1, max_years + 1):
+        lags.add(round(0.5 / t_res))
         lags.add(round(year / t_res))
 
     return sorted(lags)
