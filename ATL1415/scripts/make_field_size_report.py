@@ -10,7 +10,7 @@ import json
 
 def main():
 
-    if len(sys.argv)==3:
+    if len(sys.argv)==4:
         tile_root=sys.argv[1]
         region=sys.argv[2]
         step=sys.argv[3]

@@ -29,8 +29,27 @@ else
 fi
 echo $hemi_suffix
 
-release=`grep Release $release_file | sed s/\=/\ / | awk '{print $NF}'`
-root=`grep ATL14_root $loc_file | sed s/\=/\ / | awk '{print $NF}'`
+release=`grep '^--Release=' $release_file | sed s/\=/\ / | awk '{print $NF}'`
+root=`grep '^--ATL14_root=' $loc_file | sed s/\=/\ / | awk '{print $NF}'`
+time_span=`grep '^-t=' $release_file | sed s/\=/\ / | awk '{print $NF}'`
+
+if [ -z "$release" ]; then
+    echo "could not find --Release= in $release_file"; exit
+fi
+if [ -z "$root" ]; then
+    echo "could not find --ATL14_root= in $loc_file"; exit
+fi
+if [ -z "$time_span" ]; then
+    echo "could not find -t= in $release_file"; exit
+fi
+version=`grep '^--version=' $release_file | sed s/\=/\ / | awk '{print $NF}'`
+
+echo ""
+echo "======================================================"
+echo "  RELEASE: $release   VERSION: $version"
+echo "  Release file: $(readlink -f $release_file)"
+echo "======================================================"
+echo ""
 
 if [ $# -eq 0 ]; then
     regions="RA IS CN CS SV"
@@ -42,17 +61,20 @@ echo $release
 echo $root
 for reg in $regions; do
 
-    run_dir=${reg}${hemi_suffix}_mosaic
-    [ -d $run_dir ] && rm -r $run_dir
-
     base=${root}/rel${release}/north${hemi_suffix}/${reg}/
     echo $base
     if [ $time_resolution == "monthly" ] ; then
+        run_dir=${reg}${hemi_suffix}_mosaic
+        [ -d $run_dir ] && rm -r $run_dir
         make_mosaic_jobs_monthly $base
+        slurm_script=slurm_mos_run
     else
-        make_mosaic_jobs $base
+        run_dir=mosaic_run_${reg}
+        [ -d $run_dir ] && rm -r $run_dir
+        make_mosaic_jobs.py -b $base -rr $reg -t $time_span
+        slurm_script=slurm_run.sh
     fi
     pushd $run_dir
-    sbatch slurm_mos_run
+    sbatch $slurm_script
     popd
 done

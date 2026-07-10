@@ -11,29 +11,33 @@ import re
 import glob
 
 threads_re=re.compile(r"THREADS=(\S+)")
-n_threads="1"
+N_THREADS="1"
 for arg in sys.argv:
     try:
-        n_threads=str(threads_re.search(arg).group(1))
+        N_THREADS=str(threads_re.search(arg).group(1))
     except Exception:
         pass
 
 # if THREADS was not specified as an input argument, check if it's set by slurm
-if n_threads=="1" and "SLURM_NTASKS" in os.environ:
-    n_threads=os.environ['SLURM_NTASKS']
+if N_THREADS=="1" and "SLURM_NTASKS" in os.environ:
+    N_THREADS=os.environ['SLURM_NTASKS']
+    print(f"N_THREADS={N_THREADS}")
 
-os.environ["MKL_NUM_THREADS"]=n_threads
-os.environ["OPENBLAS_NUM_THREADS"]=n_threads
+os.environ["MKL_NUM_THREADS"]=N_THREADS
+os.environ["OPENBLAS_NUM_THREADS"]=N_THREADS
+os.environ['NUMEXPR_NUM_THREADS']=N_THREADS
+os.environ['OMP_NUM_THREADS']=N_THREADS
 
 import numpy as np
 from LSsurf.smooth_fit import smooth_fit
+from LSsurf.calc_sigma_extra import calc_sigma_extra, calc_sigma_extra_on_grid
 from SMBcorr import assign_firn_variable
 import pointCollection as pc
+from ATL1415.lags import infer_dzdt_lags
 
 import re
 import sys
 import h5py
-from ATL1415.reread_data_from_fits import reread_data_from_fits
 from ATL1415.make_mask_from_vector import make_mask_from_vector
 from ATL1415.SMB_corr_from_grid import SMB_corr_from_grid
 from ATL1415.read_ATL11 import read_ATL11
@@ -240,6 +244,91 @@ def set_three_sigma_edit_with_DEM(data, xy0, Wxy, DEM_file, DEM_tol, W_med=None)
             good[ii] &= (np.abs(r_DEM[ii] - np.nanmedian(r_DEM[ii])) < DEM_tol)
     data.three_sigma_edit &= good
 
+def set_three_sigma_edit_from_previous_product(data, xy0, Wxy,
+                                               previous_product_dirs,
+                                               previous_product_sigma=0.2,
+                                               sigma_extra_bin_spacing=None,
+                                               sigma_extra_max=None,
+                                               verbose=False):
+    '''
+    Pre-filter data against ATL14/15 .nc product files from a previous run.
+
+    Computes residuals between data.z and the interpolated previous solution
+    (ATL14 z0 + ATL15 delta_h), infers sigma_extra from those residuals using
+    LSsurf's calc_sigma_extra strategy, applies a floor of previous_product_sigma,
+    then updates data.three_sigma_edit.  Files are searched across all entries in
+    previous_product_dirs and mosaicked by filling NaN left-to-right (handles
+    Antarctic A1-A4 sectors stored in separate directories).
+
+    inputs:
+        data                    (pc.data): input data with x, y, t, z, sigma fields
+        xy0                     (list): tile center [x, y]
+        Wxy                     (float): tile width
+        previous_product_dirs   (list of str): directories containing ATL14_*.nc / ATL15_*.nc
+        previous_product_sigma  (float): minimum value for computed sigma_extra (m)
+        sigma_extra_bin_spacing (float): if set, compute spatially varying sigma_extra
+        sigma_extra_max         (float): cap on sigma_extra (on-grid variant only)
+        verbose                 (bool): print sigma_extra and acceptance fraction
+
+    outputs: None (modifies data.three_sigma_edit in place)
+    '''
+    bounds = [np.array([-0.6, 0.6]) * Wxy + xy for xy in xy0]
+
+    # load ATL14 (z0) — mosaic across all directories and any sector files therein
+    z0_interp = np.full(data.size, np.nan)
+    for directory in previous_product_dirs:
+        for nc_file in glob.glob(os.path.join(directory, 'ATL14_*.nc')):
+            g = pc.grid.data().from_nc(nc_file, fields=['h'], bounds=bounds)
+            if g is None or g.shape is None:
+                continue
+            zi = g.interp(data.x, data.y, field='h')
+            fill = np.isnan(z0_interp) & np.isfinite(zi)
+            z0_interp[fill] = zi[fill]
+
+    # load ATL15 (delta_h) — use 1km files only; mosaic across directories as above
+    dz_interp = np.full(data.size, np.nan)
+    for directory in previous_product_dirs:
+        for nc_file in glob.glob(os.path.join(directory, 'ATL15_*1km_*.nc')):
+            g = pc.grid.data().from_nc(nc_file, fields=['delta_h'],
+                                       group='delta_h', bounds=bounds)
+            if g is None or g.shape is None:
+                continue
+            g.t = 2018 + g.t/365.25
+            zi = g.interp(data.x, data.y, t=data.time, field='delta_h')
+            fill = np.isnan(dz_interp) & np.isfinite(zi)
+            dz_interp[fill] = zi[fill]
+
+    valid = np.isfinite(z0_interp) & np.isfinite(dz_interp)
+    if not np.any(valid):
+        print(f"set_three_sigma_edit_from_previous_product: "
+              f"no previous-product coverage for tile {xy0}, skipping")
+        return
+
+    # residuals (zero outside valid to keep calc_sigma_extra numerics clean)
+    r = np.where(valid, data.z - (z0_interp + dz_interp), 0.0)
+
+    if sigma_extra_bin_spacing is not None:
+        sigma_extra = calc_sigma_extra_on_grid(
+            data.x, data.y, r, data.sigma, valid,
+            spacing=sigma_extra_bin_spacing,
+            sigma_extra_max=sigma_extra_max)
+    else:
+        sigma_extra = calc_sigma_extra(r, data.sigma, valid)
+
+    sigma_extra = np.maximum(sigma_extra, previous_product_sigma)
+
+    if 'three_sigma_edit' not in data.fields:
+        data.assign({'three_sigma_edit': np.ones(data.size, dtype=bool)})
+
+    sigma_aug = np.sqrt(data.sigma**2 + sigma_extra**2)
+    data.three_sigma_edit[valid] &= np.abs(r[valid]) / sigma_aug[valid] < 3.0
+    if verbose:
+       print("\tATL11_to_ATL15.set_three_sigma_edit_with_previous_product\n" +
+             f"\t\t median(sigma_extra) = {np.nanmedian(sigma_extra)}\n" +
+             f"\t\t {np.sum(valid)} points, {np.mean(valid)*100:2.1f} %, tested\n" +
+             f"\t\t {np.sum(data.three_sigma_edit[valid])}/{np.sum(valid)}" +
+             f"({np.sum(data.three_sigma_edit[valid])/np.sum(valid)*100:2.1f}%) accepted") 
+
 def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
             ATL11_xover_dir=None,\
             E_RMS={}, \
@@ -252,7 +341,6 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
             hemisphere=1,\
             reference_epoch=None,\
             region=None,\
-            reread_dirs=None, \
             sigma_extra_bin_spacing=None,\
             sigma_extra_max=None,\
             prior_edge_args=None,\
@@ -289,7 +377,10 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
             calc_error_file=None,\
             bias_params=['rgt','cycle'],\
             verbose=False,\
-            write_data_only=False):
+            write_data_only=False,\
+            previous_product=None,\
+            previous_product_sigma=0.2,\
+            THREADS=1):
     '''
     Function to generate DEMs and height-change maps based on ATL11 surface height data.
 
@@ -303,8 +394,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
         dzdt_lags: (list) lags over which elevation change rates and errors will be calculated
         hemisphere: (int) the hemisphere in which the grids will be generated. 1 for northern hemisphere, -1 for southern
         reference_epoch: (int) The time slice (counting from zero, in steps of spacing['dt']) corresponding to the DEM
-        reread_dirs: (string) directory containing output files from which data will be read (if None, data will be read from the index file)
-        data_file: (string) output file from which to reread data (alternative to reread_dirs)
+        data_file: (string) output file from which to reread data
         max_iterations: (int) maximum number of iterations in three-sigma edit of the solution
         N_subset: (int) If specified, the domain is subdivided into this number of divisions in x and y, and a three-sigma edit is calculated for each
         sigma_extra_bin_spacing: (float) grid spacing that will be used to calculate extra geophysical errors
@@ -325,6 +415,11 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
         avg_scales: (list of floats) scales over which the output grids will be averaged and errors will be calculated
         error_res_scale: (float) If errors are calculated, the grid resolution will be coarsened by this factor
         calc_error_file: (string) Output file for which errors will be calculated.
+        previous_product: (string) Directory containing ATL14/ATL15 .nc files from a
+            previous run.  When set, data are pre-filtered against the previous solution
+            before the fit using the sigma_extra strategy.
+        previous_product_sigma: (float) Minimum value (m) for the sigma_extra computed
+            from the misfit against the previous product (default 0.2).
         verbose: (bool) Print progress of processing run
     outputs:
         S: dict containing fit output
@@ -414,8 +509,6 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
         data=pc.data().from_h5(calc_error_file, group='data')
         max_iterations=0
         compute_E=True
-    elif reread_dirs is not None:
-        data, tile_reread_list = reread_data_from_fits(xy0, Wxy, reread_dirs, template='E%d_N%d.h5')
     else:
         data, file_list = read_ATL11(xy0, Wxy, ATL11_index, SRS_proj4,
                                      sigma_geo=sigma_geo, sigma_radial=sigma_radial,
@@ -431,6 +524,18 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
         print("No data present for region, returning.")
         return None
 
+    # run_status flags describing what kind of data this is, so that later
+    # steps can tell whether they're looking at raw data or data that has
+    # already been through a previous fit.
+    # 'calc_error_or_data_file': True when data was read from a specific
+    #   output file (calc_error_file or data_file — e.g. the matched step
+    #   rereading its tile's prelim output), as opposed to a fresh read
+    #   from the ATL11 index.  Used to skip preprocessing steps (DEM edit,
+    #   tides, geoid, ATL14 reference) that were already applied in the
+    #   earlier fit.
+    run_status={}
+    run_status['calc_error_or_data_file'] = calc_error_file is not None or data_file is not None
+
     # if any manual edits are needed, make them here:
     manual_edits(data)
 
@@ -443,7 +548,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
         return None
 
     if edge_pad is not None:
-        ctr_dist = np.max(np.abs(data.x-xy0[0]), np.abs(data.y-xy0[1]))
+        ctr_dist = np.maximum(np.abs(data.x-xy0[0]), np.abs(data.y-xy0[1]))
         in_ctr = ctr_dist < Wxy/2 - edge_pad
         if np.sum(in_ctr) < 50:
             print("After editing by edge pad, <50 data present, returning")
@@ -474,13 +579,21 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
         # make the correction
         data.z -= data.h_firn
 
-    # to reject ATL06/11 blunders (don't do this if we are using an ATL14 reference and we're calculating errors)
-    if ATL14_reference_file is None or (calc_error_file is None and data_file is None):
+    # to reject ATL06/11 blunders (don't do this if we are using an ATL14 reference and we're calculating errors,
+    # or if the data have already been through a previous fit, e.g. when rereading neighbor-tile outputs)
+    if ATL14_reference_file is None or not run_status['calc_error_or_data_file']:
         set_three_sigma_edit_with_DEM(data, xy0, Wxy, DEM_file, DEM_tol)
+
+    if previous_product is not None and not run_status['calc_error_or_data_file']:
+        set_three_sigma_edit_from_previous_product(
+            data, xy0, Wxy, previous_product,
+            previous_product_sigma=previous_product_sigma,
+            sigma_extra_bin_spacing=sigma_extra_bin_spacing,
+            sigma_extra_max=sigma_extra_max, verbose=verbose)
 
     # apply the tides if a directory has been provided
     # NEW 2/19/2021: apply the tides only if we have not read the data from first-round fits.
-    if (tide_mask_file is not None or tide_mask_data is not None) and reread_dirs is None and calc_error_file is None and data_file is None:
+    if (tide_mask_file is not None or tide_mask_data is not None) and not run_status['calc_error_or_data_file']:
         apply_tides(data, xy0, Wxy,
                     tide_mask_file=tide_mask_file,
                     tide_mask_data=tide_mask_data,
@@ -502,10 +615,10 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
                 data.assign(floating=np.zeros_like(data.x, dtype=bool))
 
     # edit data points that are below the geoid
-    if geoid_tol is not None and (calc_error_file is None and data_file is None):
+    if geoid_tol is not None and not run_status['calc_error_or_data_file']:
         data.index((data.z - data.geoid_h) > geoid_tol)
 
-    if ATL14_reference_file is not None and (calc_error_file is None and data_file is None):
+    if ATL14_reference_file is not None and not run_status['calc_error_or_data_file']:
         # we need to build the reference dem from a list because in Antarctica, tiles may
         # overlap multiple quadrants.  Elsewhere, from_list should just read the file.
         # N.B.: for netCDFs, the root group is '' rather than '/'
@@ -514,7 +627,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
             group='', bounds = data.bounds(pad=2.e3), fields=['h','h_sigma'])
         data.assign(z_ref = ref_dem.interp(data.x, data.y, field='h'))
         data.assign(sigma_zref = ref_dem.interp(data.x, data.y, field='h_sigma'))
-        E_RMS['z0'] = np.nanmedian(data.sigma_zref)
+        E_RMS0['z0'] = np.nanmedian(data.sigma_zref)
         data.z -= data.z_ref
         data.index(np.isfinite(data.z) & (np.abs(data.z) < DEM_tol))
 
@@ -547,7 +660,8 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
                       mask_update_function=mask_update_function,
                       z0_average_scale = z0_average_scale,
                       erode_source_mask=erode_source_mask,
-                      avg_scales=avg_scales)
+                      avg_scales=avg_scales,
+                      THREADS=THREADS)
     S['file_list'] = file_list
     return S
 
@@ -673,8 +787,9 @@ def save_errors_to_file( S, filename, dzdt_lags=None, reference_epoch=None, grid
 
     return
 
-def main():
-    argv=sys.argv
+def parse_args(argv=None):
+    if argv is None:
+        argv=sys.argv
     # account for a bug in argparse that misinterprets negative agruents
     for i, arg in enumerate(argv):
         if (arg[0] == '-') and arg[1].isdigit(): argv[i] = ' ' + arg
@@ -709,7 +824,7 @@ def main():
     parser.add_argument('--data_gap_scale', type=float,  default=2500)
     parser.add_argument('--sigma_geo', type=float,  default=6.5)
     parser.add_argument('--sigma_radial', type=float,  default=0.03)
-    parser.add_argument('--dzdt_lags', type=str, default='1,4', help='lags for which to calculate dz/dt, comma-separated list, no spaces')
+    parser.add_argument('--dzdt_lags', type=str, default=None, help='lags for which to calculate dz/dt, comma-separated list, no spaces; inferred from --time_span and --grid_spacing if omitted')
     parser.add_argument('--avg_scales', type=str, default='10000,40000', help='scales at which to report average errors, comma-separated list, no spaces')
     parser.add_argument('--N_subset', type=int, default=None, help="number of pieces into which to divide the domain for (cheap) editing iterations.")
     parser.add_argument('--max_iterations', type=int, default=6, help="maximum number of iterations used to edit the data.")
@@ -741,12 +856,18 @@ def main():
     parser.add_argument('--error_res_scale','-s', type=str, default="5,2", help='if the errors are being calculated (see calc_error_file), scale the grid resolution in x and y to be coarser.  2-element comma-separated list')
     parser.add_argument('--bias_params', type=str, default="rgt,cycle", help='one bias parameter will be assigned for each unique combination of these ATL11 parameters (comma-separated list with no spaces)')
     parser.add_argument('--region', type=str, help='region for which calculation is being performed')
+    parser.add_argument('--previous_product', type=lambda p: os.path.abspath(os.path.expanduser(p)), action='append', default=None, help='directory containing ATL14/ATL15 .nc files from a previous run; may be repeated for multiple sector directories (e.g. Antarctic A1-A4)')
+    parser.add_argument('--previous_product_sigma', type=float, default=0.2, help='minimum sigma_extra (m) when pre-filtering against the previous product (default 0.2)')
     parser.add_argument('--verbose','-v', action="store_true")
     parser.add_argument('--write_data_only', action='store_true', help='save data without processing')
-    args, unknown=parser.parse_known_args()
+    parser.add_argument('--THREADS', type=int, default=1, help='number of threads to use in suitesparse calculations')
+    args, unknown=parser.parse_known_args(argv[1:])
+    if args.THREADS == 1 and int(N_THREADS) > 1:
+        args.THREADS = int(N_THREADS)
+    return args
 
+def resolve_run_config(args):
     # handle arguments with commas
-    args.dzdt_lags = [np.int64(temp) for temp in args.dzdt_lags.split(',')]
     args.time_span = [np.float64(temp) for temp in args.time_span.split(',')]
     args.avg_scales = [np.int64(temp) for temp in args.avg_scales.split(',')]
     args.error_res_scale = [np.int64(temp) for temp in args.error_res_scale.split(',')]
@@ -762,6 +883,12 @@ def main():
         spacing[dim] = this_sp
     args.grid_spacing = [spacing['z0'], spacing['dz'], spacing['dt']]
 
+    if args.dzdt_lags is not None:
+        args.dzdt_lags = [np.int64(temp) for temp in args.dzdt_lags.split(',')]
+    else:
+        args.dzdt_lags = [np.int64(lag) for lag in
+                           infer_dzdt_lags(args.grid_spacing[2], args.time_span)]
+
     if args.reference_epoch is None:
         if args.reference_time is None:
             raise(ValueError("Need to specify either reference_epoch or reference_time"))
@@ -776,7 +903,7 @@ def main():
         E_RMS[ 'd2z_dxdt'] = args.E_d3zdx2dt*args.data_gap_scale
     print("E_RMS="+str(E_RMS))
 
-    reread_dirs=None
+    prior_dirs=None
     dest_dir=args.base_directory
     if args.W_edit is None:
         W_edit=args.Width/2
@@ -790,7 +917,12 @@ def main():
     elif args.matched:
         dest_dir += '/matched'
         args.max_iterations=1
-        prior_dirs = [args.base_directory+'/'+ii for ii in ['prelim','centers','edges','corners']]
+        prior_dirs = [args.base_directory+'/prelim']
+        if args.data_file is None:
+            if args.xy0 is None:
+                raise ValueError("--matched requires --xy0 or an explicit --data_file")
+            args.data_file = args.base_directory + '/prelim/E%d_N%d.h5' % \
+                             (args.xy0[0]/1e3, args.xy0[1]/1e3)
 
     prior_edge_args=None
     if args.prior_edge_include is not None:
@@ -799,7 +931,7 @@ def main():
                          'sigma_scale':args.prior_sigma_scale,
                          'tile_spacing':args.tile_spacing}
 
-    if args.xy0 is None and args.calc_error_file is not None or args.data_file is not None:
+    if args.xy0 is None and (args.calc_error_file is not None or args.data_file is not None):
         # get xy0 from the filename
         if args.calc_error_file is not None:
             re_match=re.compile('E(.*)_N(.*).h5').search(os.path.basename(args.calc_error_file))
@@ -823,7 +955,7 @@ def main():
             E_RMS['d2z0_dx2'] = args.E_d2z0dx2
         if not os.path.isfile(args.out_name):
             print(f"{args.out_name} not found, returning")
-            return 1
+            return None
 
     if args.out_name is None:
         args.out_name=dest_dir + '/E%d_N%d.h5' % (args.xy0[0]/1e3, args.xy0[1]/1e3)
@@ -832,7 +964,7 @@ def main():
         args.calc_error_file=args.out_name
         if not os.path.isfile(args.out_name):
             print(f"{args.out_name} not found, returning")
-            return 1
+            return None
 
     if args.tide_adjustment_file is not None:
         args.tide_adjustment=True
@@ -849,24 +981,20 @@ def main():
 
     args.bias_params=args.bias_params.split(',')
 
-    if not os.path.isdir(args.base_directory):
-        os.mkdir(args.base_directory)
-    try:
-        os.mkdir(dest_dir)
-    except FileExistsError:
-        pass
+    return {'spacing':spacing, 'E_RMS':E_RMS,
+            'dest_dir':dest_dir, 'prior_dirs':prior_dirs, 'W_edit':W_edit,
+            'prior_edge_args':prior_edge_args, 'z0_average_scale':z0_average_scale}
 
-    print("ATL11_to_ATL15: working on "+args.out_name)
-
-    S=ATL11_to_ATL15(args.xy0, ATL11_index=args.ATL11_index,\
+def build_fit_kwargs(args, cfg):
+    return dict(ATL11_index=args.ATL11_index,\
            ATL11_xover_dir=args.ATL11_xover_dir,\
-           Wxy=args.Width, E_RMS=E_RMS, t_span=args.time_span, spacing=spacing, \
+           Wxy=args.Width, E_RMS=cfg['E_RMS'], t_span=args.time_span, spacing=cfg['spacing'], \
            E_d3zdx2dt_scale_file=args.E_d3zdx2dt_scale_file,\
            bias_params=args.bias_params,\
-           prior_edge_args=prior_edge_args, \
+           prior_edge_args=cfg['prior_edge_args'], \
            sigma_geo=args.sigma_geo, \
            sigma_radial=args.sigma_radial, \
-           hemisphere=args.Hemisphere, reread_dirs=reread_dirs, \
+           hemisphere=args.Hemisphere, \
            data_file=args.data_file, \
            ATL14_reference_file=args.ATL14_reference_file,\
            restart_edit=args.restart_edit, \
@@ -892,7 +1020,7 @@ def main():
            sigma_extra_bin_spacing=args.sigma_extra_bin_spacing,\
            sigma_extra_max=args.sigma_extra_max,\
            reference_epoch=args.reference_epoch, \
-           W_edit=W_edit,\
+           W_edit=cfg['W_edit'],\
            calc_error_file=args.calc_error_file, \
            error_res_scale=args.error_res_scale, \
            avg_scales=args.avg_scales, \
@@ -901,8 +1029,28 @@ def main():
            DEM_tol=args.DEM_tol, \
            geoid_tol=args.geoid_tol,\
            sigma_tol=args.sigma_tol, \
-           z0_average_scale = z0_average_scale,\
-           write_data_only=args.write_data_only)
+           z0_average_scale=cfg['z0_average_scale'],\
+           write_data_only=args.write_data_only,
+           previous_product=args.previous_product,
+           previous_product_sigma=args.previous_product_sigma,
+           THREADS=args.THREADS)
+
+def main():
+    args=parse_args()
+    cfg=resolve_run_config(args)
+    if cfg is None:
+        return 1
+
+    if not os.path.isdir(args.base_directory):
+        os.mkdir(args.base_directory)
+    try:
+        os.mkdir(cfg['dest_dir'])
+    except FileExistsError:
+        pass
+
+    print("ATL11_to_ATL15: working on "+args.out_name)
+
+    S=ATL11_to_ATL15(args.xy0, **build_fit_kwargs(args, cfg))
 
     status=0
     if S is None:

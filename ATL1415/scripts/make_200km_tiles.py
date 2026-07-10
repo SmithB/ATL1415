@@ -8,9 +8,10 @@ import sys
 import pointCollection as pc
 import os
 import stat
+import ATL1415
 
 
-def make_fields(first_lag=1, last_lag=28, dzdt_lags=None, t_res=0.25, skip_z0=False ):
+def make_fields(dzdt_lags, t_res=0.25, skip_z0=False ):
 
     fields={}
     if not skip_z0:
@@ -20,11 +21,6 @@ def make_fields(first_lag=1, last_lag=28, dzdt_lags=None, t_res=0.25, skip_z0=Fa
 
     time_ranges={}
     time_ranges['dz']=[2019, 2050]
-
-    if dzdt_lags is not None:
-        dzdt_lags = dzdt_lags.split(',')
-    else:
-        dzdt_lags = [first_lag] + list( range(4, last_lag+1, 4) )
 
     lags = [ f'_lag{lag}' for lag in dzdt_lags ]
 
@@ -89,9 +85,8 @@ def main():
     parser.add_argument('--spacing', type=int, default=40000)
     parser.add_argument('--skip_sigma', action='store_true')
     parser.add_argument('--skip_z0', action='store_true')
-    parser.add_argument('--dzdt_lags', type=str)
-    parser.add_argument('--first_lag', type=int, default=1, required=False)
-    parser.add_argument('--last_lag', type=int, required=False)
+    parser.add_argument('--time_span','-t', type=str, help='time span, first year,last year AD (comma separated, no spaces); used to infer --dzdt_lags if not given explicitly')
+    parser.add_argument('--dzdt_lags', type=str, default=None, help='comma-separated list of dzdt lags to process; inferred from --time_span and --grid_spacing if omitted')
     parser.add_argument('--name', type=str)
     parser.add_argument('--lags_only', action='store_true')
     parser.add_argument('--environment','-e', type=str, default='ATL14', help="environment that each job will activate")
@@ -127,9 +122,13 @@ def main():
     print(f"Skip sigma is {args.skip_sigma}, step is {step}")
     print("region_dir is " +region_dir)
 
-    fields, time_ranges=make_fields(first_lag=args.first_lag,
-                                    last_lag=args.last_lag,
-                                    dzdt_lags=args.dzdt_lags,
+    if args.dzdt_lags is not None:
+        dzdt_lags = [*map(int, args.dzdt_lags.split(','))]
+    else:
+        time_span = [*map(float, args.time_span.split(','))]
+        dzdt_lags = ATL1415.infer_dzdt_lags(args.grid_spacing[2], time_span)
+
+    fields, time_ranges=make_fields(dzdt_lags,
                                     t_res = args.grid_spacing[2],
                                     skip_z0 = args.skip_z0)
 

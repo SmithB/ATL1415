@@ -155,3 +155,8 @@ firn_run*
 
 # region files don't need to go in the archive (these are mostly obsolete, and were mostly for test runs)
 region_files/*
+
+
+# misc
+*.tar
+masks/*

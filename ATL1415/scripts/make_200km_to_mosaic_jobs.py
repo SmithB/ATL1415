@@ -18,7 +18,7 @@ def make_mosaic_jobs(base, region, lags, t_res=0.25, skip_z0=False, run=False):
 
     # Create mosaic_run directory and subdirectories
     os.makedirs(mosaic_run, exist_ok=True)
-    for thedir in ['queue', 'running', 'done', 'logs']:
+    for thedir in ['queue', 'running', 'done', 'logs', 'active_logs', 'error_logs']:
         os.makedirs(os.path.join(mosaic_run, thedir), exist_ok=True)
 
     compute_sigma = 'True'
@@ -113,7 +113,8 @@ def main():
                                                          '\t SV: Svalbard \n'
                                                          '\t RA: Russian Arctic')
     parser.add_argument('--grid_spacing','-g', type=str, help='grid spacing:DEM (meters),dh maps xy (meters),dh_maps time (years): comma-separated, no spaces', default='100.,1000.,1/4')
-    parser.add_argument('--dzdt_lags', type=str, help='comma-separated list of dzdt lags to process')
+    parser.add_argument('--time_span','-t', type=str, help='time span, first year,last year AD (comma separated, no spaces); used to infer --dzdt_lags if not given explicitly')
+    parser.add_argument('--dzdt_lags', type=str, default=None, help='comma-separated list of dzdt lags to process; inferred from --time_span and --grid_spacing if omitted')
     parser.add_argument('--run', action='store_true', help="run the script")
     args, unknown = parser.parse_known_args()
 
@@ -134,7 +135,13 @@ def main():
     else:
         skip_z0 = False
     
-    make_mosaic_jobs(args.base_dir, args.region, [ *map(int, args.dzdt_lags.split(',')) ], 
+    if args.dzdt_lags is not None:
+        lags = [*map(int, args.dzdt_lags.split(','))]
+    else:
+        time_span = [*map(float, args.time_span.split(','))]
+        lags = ATL1415.infer_dzdt_lags(args.grid_spacing[2], time_span)
+
+    make_mosaic_jobs(args.base_dir, args.region, lags,
                      t_res = args.grid_spacing[2],
                      run = args.run, skip_z0=skip_z0)
 

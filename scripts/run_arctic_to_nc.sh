@@ -19,8 +19,23 @@ if [ ! -f $release_file ]; then
     echo "release file not found"; exit
 fi
 
-release=`grep Release $release_file | sed s/\=/\ / | awk '{print $NF}'`
-root=`grep ATL14_root $loc_file | sed s/\=/\ / | awk '{print $NF}'`
+release=`grep '^--Release=' $release_file | sed s/\=/\ / | awk '{print $NF}'`
+root=`grep '^--ATL14_root=' $loc_file | sed s/\=/\ / | awk '{print $NF}'`
+
+if [ -z "$release" ]; then
+    echo "could not find --Release= in $release_file"; exit
+fi
+if [ -z "$root" ]; then
+    echo "could not find --ATL14_root= in $loc_file"; exit
+fi
+version=`grep '^--version=' $release_file | sed s/\=/\ / | awk '{print $NF}'`
+
+echo ""
+echo "======================================================"
+echo "  RELEASE: $release   VERSION: $version"
+echo "  Release file: $(readlink -f $release_file)"
+echo "======================================================"
+echo ""
 
 $(grep -q monthly $period_file) && hemi_suffix="_monthly" || hemi_suffix=""
 
@@ -35,7 +50,7 @@ fi
 
 for reg in $regions; do
     if $(grep -q monthly $period_file); then
-        echo "ATL15_write2nc_monthly.py @${root}/rel${release}/north${hemi_suffix}/${reg}/input_args_${reg}.txt" >> arctic_2nc_queue.txt
+        echo "ATL15_write2nc.py @${root}/rel${release}/north${hemi_suffix}/${reg}/input_args_${reg}.txt" >> arctic_2nc_queue.txt
     else
         echo "ATL14_write2nc.py @${root}/rel${release}/north${hemi_suffix}/${reg}/input_args_${reg}.txt" >> arctic_2nc_queue.txt
         echo "ATL15_write2nc.py @${root}/rel${release}/north${hemi_suffix}/${reg}/input_args_${reg}.txt" >> arctic_2nc_queue.txt

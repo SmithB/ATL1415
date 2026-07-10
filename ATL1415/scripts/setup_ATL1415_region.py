@@ -9,6 +9,7 @@ Created on Thu Jun  6 21:00:02 2019
 import sys
 import os
 import re
+import glob
 import argparse
 
 def main(argv=None):
@@ -24,7 +25,9 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description="generate directories and defaults files for ATL11_to_ATL15")
     parser.add_argument('defaults_files', nargs='+', type=str)
     parser.add_argument('--ATL14_reference_file', type=str)
-    
+    parser.add_argument('--Hemisphere', type=int, choices=[1, -1],
+                        help='hemisphere: 1=north, -1=south')
+
     args = parser.parse_args()
 
     defaults_re=re.compile('(.*)\s*=\s*(.*)')
@@ -41,6 +44,9 @@ def main(argv=None):
 
     if args.ATL14_reference_file is not None:
         defaults['--ATL14_reference_file']=args.ATL14_reference_file
+
+    if args.Hemisphere is not None:
+        defaults['--Hemisphere'] = str(args.Hemisphere)
 
     # check if enough parameters have been specified to allow a run
     required_keys_present=True
@@ -76,28 +82,28 @@ def main(argv=None):
         if not os.path.isdir(this):
             os.mkdir(this)
 
-    # ATL11 index may be specified relative to ATL1r_root
-    if '--ATL11_index' in defaults and not os.path.isfile(defaults['--ATL11_index']):
-        temp1=os.path.join(defaults['--ATL14_root'], defaults['--ATL11_index'])
-        if os.path.isfile(temp1):
-            defaults['--ATL11_index']=temp1
-        else:
-            print(temp1 + ' not found')
-            temp2=os.path.join(os.path.dirname(defaults['--ATL14_root']), defaults['--ATL11_index'])
-            print(f'looking for {temp2}')
-            if os.path.isfile(temp2):
-                defaults['--ATL11_index']=temp2
-            else:
-                raise(OSError(f"ATL11 index file {defaults['--ATL11_index']} does not exist in \n\t{temp1}\n\t or\n\t {temp2}"))
-
-
-    # if ATL11 release is specified and ATL11 geoindex is not specified, guess the location
+    # if ATL11 release is specified and ATL11 geoindex is not specified, build the location
     if '--ATL11_index' not in defaults and '--ATL11_release' in defaults:
-        defaults['--ATL11_index'] = os.path.join(defaults['--ATL14_root'], 'ATL11_'+defaults['--ATL11_release'], hemisphere_base, 'index','GeoIndex.h5')
+        defaults['--ATL11_index'] = os.path.join(defaults['--ATL14_root'], defaults['--ATL11_release'], hemisphere_base, 'index','GeoIndex.h5')
         defaults.pop('--ATL11_release')
 
     if not os.path.isfile(defaults['--ATL11_index']):
         raise(OSError(f"ATL11 index file {defaults['--ATL11_index']} does not exist"))
+
+    # derive xover dir from the index location unless explicitly specified
+    if '--ATL11_xover_dir' not in defaults:
+        defaults['--ATL11_xover_dir'] = os.path.join(
+            os.path.dirname(os.path.dirname(defaults['--ATL11_index'])), 'xover_tiles')
+
+    # resolve previous-product directories if a top-level path was given
+    pp_dirs = []
+    if '--previous_product_top' in defaults: 
+        if hemisphere_base == 'north':
+            pp_dirs = [os.path.join(defaults['--previous_product_top'], 'north', defaults['--region'])]
+        else:
+            south_dir = os.path.join(defaults['--previous_product_top'], 'south')
+            pp_dirs = sorted(d for d in glob.glob(os.path.join(south_dir, 'A?'))
+                             if os.path.isdir(d))
 
     # write out the composite defaults file
     defaults_file=os.path.join(region_dir, f'input_args_{defaults["--region"]}.txt')
@@ -106,6 +112,8 @@ def main(argv=None):
             if key in ["--hemi_suffix"]:
                 continue
             fh.write(f'{key}={val}\n')
+        for pp_dir in pp_dirs:
+            fh.write(f'--previous_product={pp_dir}\n')
         fh.write(f"-b={region_dir}\n")
 
     print("setup_ATL1415_region.py: wrote defaults to:")

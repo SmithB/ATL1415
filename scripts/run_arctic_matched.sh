@@ -24,10 +24,30 @@ fi
 $(grep -q monthly $period_file) && hemi_suffix="_monthly" || hemi_suffix=""
 echo $hemi_suffix
 
-release=`grep Release $release_file | sed s/\=/\ / | awk '{print $NF}'`
-root=`grep ATL14_root $loc_file | sed s/\=/\ / | awk '{print $NF}'`
-cycles=`grep cycles $release_file | sed s/\=/\ / | awk '{print $NF}'`
-version=`grep version $release_file | sed s/\=/\ / | awk '{print $NF}'`
+release=`grep '^--Release=' $release_file | sed s/\=/\ / | awk '{print $NF}'`
+root=`grep '^--ATL14_root=' $loc_file | sed s/\=/\ / | awk '{print $NF}'`
+cycles=`grep '^--cycles=' $release_file | sed s/\=/\ / | awk '{print $NF}'`
+version=`grep '^--version=' $release_file | sed s/\=/\ / | awk '{print $NF}'`
+
+if [ -z "$release" ]; then
+    echo "could not find --Release= in $release_file"; exit
+fi
+if [ -z "$root" ]; then
+    echo "could not find --ATL14_root= in $loc_file"; exit
+fi
+if [ -z "$cycles" ]; then
+    echo "could not find --cycles= in $release_file"; exit
+fi
+if [ -z "$version" ]; then
+    echo "could not find --version= in $release_file"; exit
+fi
+
+echo ""
+echo "======================================================"
+echo "  RELEASE: $release   CYCLES: $cycles   VERSION: $version"
+echo "  Release file: $(readlink -f $release_file)"
+echo "======================================================"
+echo ""
 
 if [ $# -eq 0 ]; then
     regions="RA IS CN CS SV"

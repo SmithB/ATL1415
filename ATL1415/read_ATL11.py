@@ -26,10 +26,7 @@ def select_best_xover_index(D):
     _, i_pts = pc.unique_by_rows(np.c_[D.rgt, D.ref_rgt, D.pair_track, D.ref_pair, D.cycle_number], return_dict=True)
     ii = np.zeros(len(i_pts), dtype=int)
     for count, (pt, i_pt) in enumerate(i_pts.items()):
-        if len(i_pt)==0:
-            ii[count]=i_pt
-        else:
-            ii[count]=i_pt[np.argsort(D.h_corr_sigma[i_pt])[0]]
+        ii[count]=i_pt[np.argsort(D.h_corr_sigma[i_pt])[0]]
     return ii
 
 

@@ -59,11 +59,13 @@ def ATL14_write2nc(args):
 
         attr_names=[x for x in reader[0].keys() if x != 'field' and x != 'group']
 
+        field_attrs_by_name = {row['field']: {attr_names[ii]:row[attr_names[ii]] for ii in range(len(attr_names))} for row in reader}
+
         field_names = [row['field'] for row in reader if 'ROOT' in row['group']]
 
         # create dimensions
         for field in ['x', 'y', 'ice_area']:
-            field_attrs = {row['field']: {attr_names[ii]:row[attr_names[ii]] for ii in range(len(attr_names))} for row in reader if field in row['field']}
+            field_attrs = {field: field_attrs_by_name[field]}
             dimensions = field_attrs[field]['dimensions'].split(',')
             dimensions = tuple(x.strip() for x in dimensions)
             # if field != 'ice_mask':
@@ -107,7 +109,7 @@ def ATL14_write2nc(args):
         crs_var_root.GeoTransform = (xll,dx,0,yll,0,dy)
 
         for field in [item for item in field_names if item != 'x' and item != 'y' and item != 'ice_area']:
-            field_attrs = {row['field']: {attr_names[ii]:row[attr_names[ii]] for ii in range(len(attr_names))} for row in reader if field in row['field']}
+            field_attrs = {field: field_attrs_by_name[field]}
             dimensions = field_attrs[field]['dimensions'].split(',')
             dimensions = tuple(x.strip() for x in dimensions)
             data = np.array(FH['z0'][dz_dict[field]])
