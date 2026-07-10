@@ -96,11 +96,11 @@ def ATL15_browse_plots(args):
         gl = ax.gridlines(draw_labels=True, dms=True, x_inline=False, y_inline=False, alpha=0.5, linestyle='--', crs=ccrs.PlateCarree())
         gl.top_labels = False
         gl.right_labels = False
-        ax.set_title(f'Mean quarterly dh/dt: {os.path.basename(filein)}',wrap=True)
+        ax.set_title(f'Mean {period_name} dh/dt: {os.path.basename(filein)}',wrap=True)
         if args.Hemisphere==1:
-            plt.figtext(0.1,0.01,f'Figure 1. Average {period_name} rate of height change ({src_group}/dhdt) at {ave[1:]}-resolution, in meters/yr, from cycle {args.cycles[0:2]} to cycle {args.cycles[2:4]}. Map is plotted in a polar-stereographic projection with a central longitude of 45W and a standard latitude of 70N.',wrap=True)
+            plt.figtext(0.1,0.01,f'Figure 1. Average {period_name} rate of height change ({src_group}/dhdt) at {ave}-resolution, in meters/yr, from cycle {args.cycles[0:2]} to cycle {args.cycles[2:4]}. Map is plotted in a polar-stereographic projection with a central longitude of 45W and a standard latitude of 70N.',wrap=True)
         elif args.Hemisphere==-1:
-            plt.figtext(0.1,0.01,f'Figure 1. Average {period_name} rate of height change ({src_group}/dhdt) at {ave[1:]}-resolution, in meters/yr, from cycle {args.cycles[0:2]} to cycle {args.cycles[2:4]}. Map is plotted in a polar-stereographic projection with a central longitude of 0W and a standard latitude of 71S.',wrap=True)
+            plt.figtext(0.1,0.01,f'Figure 1. Average {period_name} rate of height change ({src_group}/dhdt) at {ave}-resolution, in meters/yr, from cycle {args.cycles[0:2]} to cycle {args.cycles[2:4]}. Map is plotted in a polar-stereographic projection with a central longitude of 0W and a standard latitude of 71S.',wrap=True)
         plt.subplots_adjust(bottom=0.2)
         plt.tight_layout(rect=[0, 0.05, 1, 1])
         fig.savefig(f'{brw_base}_default1.png', bbox_inches='tight')
@@ -114,11 +114,11 @@ def ATL15_browse_plots(args):
         gl = ax.gridlines(draw_labels=True, dms=True, x_inline=False, y_inline=False, alpha=0.5, linestyle='--', crs=ccrs.PlateCarree())
         gl.top_labels = False
         gl.right_labels = False
-        ax.set_title(f'Standard deviation of quarterly dh/dt: {os.path.basename(filein)}',wrap=True)
+        ax.set_title(f'Standard deviation of {period_name} dh/dt: {os.path.basename(filein)}',wrap=True)
         if args.Hemisphere==1:
-            plt.figtext(0.1,0.01,f'Figure 2. Standard deviation of quarterly rate of height change (dhdt_003mo/dhdt) at {ave[1:]}-resolution, in meters, from cycle {args.cycles[0:2]} to cycle {args.cycles[2:4]}. Map is plotted in a polar-stereographic projection with a central longitude of 45W and a standard latitude of 70N.',wrap=True)
+            plt.figtext(0.1,0.01,f'Figure 2. Standard deviation of {period_name} rate of height change (dhdt_003mo/dhdt) at {ave}-resolution, in meters, from cycle {args.cycles[0:2]} to cycle {args.cycles[2:4]}. Map is plotted in a polar-stereographic projection with a central longitude of 45W and a standard latitude of 70N.',wrap=True)
         elif args.Hemisphere==-1:
-            plt.figtext(0.1,0.01,f'Figure 2. Standard deviation of quarterly rate of height change (dhdt_003mo/dhdt) at {ave[1:]}-resolution, in meters, from cycle {args.cycles[0:2]} to cycle {args.cycles[2:4]}. Map is plotted in a polar-stereographic projection with a central longitude of 0W and a standard latitude of 71S.',wrap=True)
+            plt.figtext(0.1,0.01,f'Figure 2. Standard deviation of {period_name} rate of height change (dhdt_003mo/dhdt) at {ave}-resolution, in meters, from cycle {args.cycles[0:2]} to cycle {args.cycles[2:4]}. Map is plotted in a polar-stereographic projection with a central longitude of 0W and a standard latitude of 71S.',wrap=True)
         plt.subplots_adjust(bottom=0.2)
         plt.tight_layout(rect=[0, 0.05, 1, 1])
         fig.savefig(f'{brw_base}_default2.png', bbox_inches='tight')
