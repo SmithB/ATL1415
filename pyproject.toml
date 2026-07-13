@@ -34,8 +34,8 @@ dependencies = [
     "cartopy",
     "imageio",
     "pointCollection @git+https://github.com/SmithB/pointCollection.git",
-    "LSsurf @ git+ssh://git@github.com/smithb/LSsurf.git",
-    "SMBcorr @ git+ssh://git@github.com/smithb/SMBcorr.git"
+    "LSsurf @ git+https://github.com/smithb/LSsurf.git",
+    "SMBcorr @ git+https://github.com/smithb/SMBcorr.git"
 ]
 
 classifiers=[
