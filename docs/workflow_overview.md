@@ -189,9 +189,13 @@ period_file, [region list])` and loop over the Arctic regions
 Svalbard) running the corresponding setup/queue/slurm steps for each region,
 submitting jobs with `sbatch` at the end of each stage. They detect monthly
 vs. quarterly processing by grepping the period file for "monthly" and
-adjust output paths/scripts accordingly (`*_monthly` suffix,
-`make_mosaic_jobs_monthly`; `ATL15_write2nc.py` itself picks monthly vs.
-quarterly from `--delta_t`/`--grid_spacing`, not from a separate script).
+adjust the output path accordingly (`*_monthly` suffix). `run_arctic_mosaic.sh`
+calls `make_mosaic_jobs.py` for both time resolutions, passing `@period_file`
+so its `-g`/`--dzdt_lags` lines (from `default_args/monthly.txt` or
+`quarterly.txt`) flow through — `skip_z0`, the dzdt lag list, and the lag/
+year-offset math are all derived from those values rather than
+hardcoded per resolution. (`ATL15_write2nc.py` itself picks monthly vs.
+quarterly from `--delta_t`/`--grid_spacing`, not from a separate script.)
 
 Antarctica has no single all-in-one wrapper; `docs/howto_AA.sh` runs the
 setup/queue/slurm/mosaic steps directly, split into north/south by
