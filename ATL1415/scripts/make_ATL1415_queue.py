@@ -58,8 +58,8 @@ def main():
     parser.add_argument('--replace', action='store_true')
     args = parser.parse_args()
 
-    if args.step not in ['centers', 'edges','corners','prelim', 'matched']:
-        raise(ValueError('step argument not known: must be one of : prelim, centers, edges, corners'))
+    if args.step not in ['prelim', 'matched']:
+        raise(ValueError('step argument not known: must be one of : prelim, matched'))
 
     if args.skip_errors:
         calc_errors=False
@@ -89,8 +89,8 @@ def main():
     # read in all defaults files (must be of syntax --key=value or -key=value)
     defaults={}
 
-    for defaults_file in args.defaults_files:
-        with open(defaults_file,'r') as fh:
+    for this_defaults_file in args.defaults_files:
+        with open(this_defaults_file,'r') as fh:
             for line in fh:
                 m=defaults_re.search(line)
                 if m is not None:
@@ -139,13 +139,7 @@ def main():
             print("could not find ATL11 index in " + defaults['--ATL11_index'] + " or " + original_index_file)
             sys.exit(1)
 
-    # write out the composite defaults file to add the region-dir:
-    if '-b' not in defaults:
-        defaults_file=os.path.join(region_dir, f'input_args_{defaults["--region"]}.txt')
-        with open(defaults_file, 'w') as fh:
-            for key, val in defaults.items():
-                fh.write(f'{key}={val}\n')
-            fh.write(f"-b={region_dir}\n")
+    defaults_file = os.path.abspath(args.defaults_files[0])
 
     step_dir=os.path.join(region_dir, args.step)
     if not os.path.isdir(step_dir):
@@ -233,16 +227,6 @@ def main():
     xg=xg[good]
     yg=yg[good]
 
-    if args.step=='centers' or args.step=='prelim' or args.step=='matched':
-        delta_x=[0]
-        delta_y=[0]
-    elif args.step=='edges':
-        delta_x=[-1, 0, 0, 1.]
-        delta_y=[0, -1, 1, 0.]
-    elif args.step=='corners':
-        delta_x=[-1, 1, -1, 1.]
-        delta_y=[-1, -1, 1, 1.]
-
     print(f'min_xy={args.min_xy}')
     print(f'max_xy={args.max_xy}')
 
@@ -254,48 +238,47 @@ def main():
 
     with open(queue_file,'w') as qh:
         for xy0 in zip(xg, yg):
-            for dx, dy in zip(delta_x, delta_y):  
-                xy1=np.array(xy0)+np.array([dx, dy])*Hxy
-                if args.min_R is not None:
-                    if np.abs(xy1[0]+1j*xy1[1]) <= args.min_R: 
-                        continue
-                if args.max_R is not None:
-                    if np.abs(xy1[0]+1j*xy1[1]) >= args.max_R:
-                        continue
-                if args.min_xy is not None:
-                    if np.abs(xy1).max() < args.min_xy:
-                        continue
-                if args.max_xy is not None:
-                    if np.any(np.abs(xy1) > args.max_xy):
-                        continue
-                if tuple(xy1) in queued:
+            xy1=np.array(xy0)
+            if args.min_R is not None:
+                if np.abs(xy1[0]+1j*xy1[1]) <= args.min_R:
                     continue
-                else:
-                    queued.add(tuple(xy1))
-                if not args.step=='matched':
-                    out_file='%s/E%d_N%d.h5' % (step_dir, xy1[0]/1000, xy1[1]/1000)
-                    if os.path.isfile(out_file) and not args.replace:
+            if args.max_R is not None:
+                if np.abs(xy1[0]+1j*xy1[1]) >= args.max_R:
+                    continue
+            if args.min_xy is not None:
+                if np.abs(xy1).max() < args.min_xy:
+                    continue
+            if args.max_xy is not None:
+                if np.any(np.abs(xy1) > args.max_xy):
+                    continue
+            if tuple(xy1) in queued:
+                continue
+            else:
+                queued.add(tuple(xy1))
+            if not args.step=='matched':
+                out_file='%s/E%d_N%d.h5' % (step_dir, xy1[0]/1000, xy1[1]/1000)
+                if os.path.isfile(out_file) and not args.replace:
+                    continue
+                cmd='%s --xy0 %d %d --%s @%s ' % (prog, xy1[0], xy1[1], args.step, defaults_file)
+                if calc_errors:
+                    if args.errors_only:
+                        cmd +=   '--calc_error_for_xy'
+                    else:
+                        cmd += '; '+cmd+' --calc_error_for_xy'
+            else:
+                prelim_file='%s/prelim/E%d_N%d.h5' % (region_dir, xy1[0]/1000, xy1[1]/1000)
+                if tile_list is not None:
+                    if os.path.basename(prelim_file) not in tile_list:
                         continue
-                    cmd='%s --xy0 %d %d --%s @%s ' % (prog, xy1[0], xy1[1], args.step, defaults_file)
-                    if calc_errors:
-                        if args.errors_only:
-                            cmd +=   '--calc_error_for_xy'
-                        else:
-                            cmd += '; '+cmd+' --calc_error_for_xy'
-                else:
-                    prelim_file='%s/prelim/E%d_N%d.h5' % (region_dir, xy1[0]/1000, xy1[1]/1000)
-                    if tile_list is not None:
-                        if os.path.basename(prelim_file) not in tile_list:
-                            continue
-                    matched_file=prelim_file.replace('prelim','matched')
-                    if not os.path.isfile(prelim_file):
-                        print(prelim_file)
-                        continue
-                    cmd=f'{prog} --matched --data_file {prelim_file} --out_name {matched_file}'+\
-                     f' --prior_edge_include {args.prior_edge_include} @{defaults_file}'
-                if args.environment is not None:
-                    cmd = f'source activate {args.environment}; '+cmd
-                qh.write( cmd+'; echo COMPLETE\n')
+                matched_file=prelim_file.replace('prelim','matched')
+                if not os.path.isfile(prelim_file):
+                    print(prelim_file)
+                    continue
+                cmd=f'{prog} --matched --data_file {prelim_file} --out_name {matched_file}'+\
+                 f' --prior_edge_include {args.prior_edge_include} @{defaults_file}'
+            if args.environment is not None:
+                cmd = f'source activate {args.environment}; '+cmd
+            qh.write( cmd+'; echo COMPLETE\n')
     print("Wrote commands to "+queue_file)
 
 if __name__=='__main__':
