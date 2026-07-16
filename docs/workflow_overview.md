@@ -40,6 +40,10 @@ contributing `--key=value` lines, combined positionally:
   (south) on the `setup_ATL1415_region.py` command line. `--ATL11_index` is
   derived from `--ATL11_release` (in the release file) and hemisphere;
   `--ATL11_xover_dir` is derived as the `xover/` sibling of the index directory.
+  `--ATL11_release` is stored bare, cycle-style (e.g. `007_cycle_03_31_v04`,
+  matching `--ATL11xo_version`'s convention) — both `make_ATL11_index.py`
+  and `setup_ATL1415_region.py` prepend an `ATL11_` prefix to get the actual
+  on-disk directory name under `--ATL14_root` (`ATL11_007_cycle_03_31_v04`).
 - **Period** (`quarterly.txt` / monthly variant): `--dzdt_lags`, output grid
   spacing (`-g`).
 - **Region** (`GL_0329.txt`, `AA_0329.txt`, etc.): `--region`, mask/tide
