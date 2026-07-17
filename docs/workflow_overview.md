@@ -40,6 +40,10 @@ contributing `--key=value` lines, combined positionally:
   (south) on the `setup_ATL1415_region.py` command line. `--ATL11_index` is
   derived from `--ATL11_release` (in the release file) and hemisphere;
   `--ATL11_xover_dir` is derived as the `xover/` sibling of the index directory.
+  `--ATL11_release` is stored bare, cycle-style (e.g. `007_cycle_03_31_v04`,
+  matching `--ATL11xo_version`'s convention) — both `make_ATL11_index.py`
+  and `setup_ATL1415_region.py` prepend an `ATL11_` prefix to get the actual
+  on-disk directory name under `--ATL14_root` (`ATL11_007_cycle_03_31_v04`).
 - **Period** (`quarterly.txt` / monthly variant): `--dzdt_lags`, output grid
   spacing (`-g`).
 - **Region** (`GL_0329.txt`, `AA_0329.txt`, etc.): `--region`, mask/tide
@@ -189,9 +193,13 @@ period_file, [region list])` and loop over the Arctic regions
 Svalbard) running the corresponding setup/queue/slurm steps for each region,
 submitting jobs with `sbatch` at the end of each stage. They detect monthly
 vs. quarterly processing by grepping the period file for "monthly" and
-adjust output paths/scripts accordingly (`*_monthly` suffix,
-`make_mosaic_jobs_monthly`; `ATL15_write2nc.py` itself picks monthly vs.
-quarterly from `--delta_t`/`--grid_spacing`, not from a separate script).
+adjust the output path accordingly (`*_monthly` suffix). `run_arctic_mosaic.sh`
+calls `make_mosaic_jobs.py` for both time resolutions, passing `@period_file`
+so its `-g`/`--dzdt_lags` lines (from `default_args/monthly.txt` or
+`quarterly.txt`) flow through — `skip_z0`, the dzdt lag list, and the lag/
+year-offset math are all derived from those values rather than
+hardcoded per resolution. (`ATL15_write2nc.py` itself picks monthly vs.
+quarterly from `--delta_t`/`--grid_spacing`, not from a separate script.)
 
 Antarctica has no single all-in-one wrapper; `docs/howto_AA.sh` runs the
 setup/queue/slurm/mosaic steps directly, split into north/south by

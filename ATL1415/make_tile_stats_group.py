@@ -14,7 +14,7 @@ import h5py
 from ATL1415 import  make_nc_projection_variable
 
 
-def make_tile_stats_group(nc, args):
+def make_tile_stats_group(nc, args, tile_spacing = 40):
     """
     make the tile_stats group for an ATL14 or ATL15 file
 
@@ -24,6 +24,8 @@ def make_tile_stats_group(nc, args):
         file handle for ouput file
     args: dict
         dictionary giving input arguments
+    tile_spacing: float
+        tile-center spacing in km
 
     Returns:
     -------
@@ -55,7 +57,7 @@ def make_tile_stats_group(nc, args):
             assert(os.path.isfile(file_path))
             tile_stats['x']['data'].append(int(re.match(r'^.*E(.*)\_.*$',file).group(1)))
         except Exception:
-            print(f"ATL15_write2nc problem in write_tile_stats with [ {file} ], skipping")
+            print(f"ATL15_write2nc: problem in write_tile_stats with [ {file} ], skipping")
             continue
         tile_stats['y']['data'].append(int(re.match(r'^.*N(.*)\..*$',file).group(1)))
 
@@ -75,12 +77,12 @@ def make_tile_stats_group(nc, args):
     # establish output grids from min/max of x and y
     for key in tile_stats.keys():
         if key == 'N_data' or key == 'N_bias':  # key == 'x' or key == 'y' or
-            tile_stats[key]['mapped'] = np.zeros( [len(np.arange(np.min(tile_stats['y']['data']),np.max(tile_stats['y']['data'])+40,40)),
-                                                    len(np.arange(np.min(tile_stats['x']['data']),np.max(tile_stats['x']['data'])+40,40))],
+            tile_stats[key]['mapped'] = np.zeros( [len(np.arange(np.min(tile_stats['y']['data']),np.max(tile_stats['y']['data'])+tile_spacing,tile_spacing)),
+                                                    len(np.arange(np.min(tile_stats['x']['data']),np.max(tile_stats['x']['data'])+tile_spacing,tile_spacing))],
                                                     dtype=int)
         else:
-            tile_stats[key]['mapped'] = np.zeros( [len(np.arange(np.min(tile_stats['y']['data']),np.max(tile_stats['y']['data'])+40,40)),
-                                                    len(np.arange(np.min(tile_stats['x']['data']),np.max(tile_stats['x']['data'])+40,40))],
+            tile_stats[key]['mapped'] = np.zeros( [len(np.arange(np.min(tile_stats['y']['data']),np.max(tile_stats['y']['data'])+tile_spacing,tile_spacing)),
+                                                    len(np.arange(np.min(tile_stats['x']['data']),np.max(tile_stats['x']['data'])+tile_spacing,tile_spacing))],
                                                     dtype=float)
     # put data into grids
     for key in tile_stats.keys():
@@ -89,27 +91,27 @@ def make_tile_stats_group(nc, args):
             continue
         for (yt, xt, dt) in zip(tile_stats['y']['data'], tile_stats['x']['data'], tile_stats[key]['data']):
             if not np.isfinite(dt):
-                print(f"ATL14_write2nc: found bad tile_stats value in field {key} at x={xt}, y={yt}")
+                print(f"ATL14_write2nc: found bad tile_stats value in field {key} : {dt} at x={xt}, y={yt}")
                 continue
-            row=int((yt-np.min(tile_stats['y']['data']))/40)
-            col=int((xt-np.min(tile_stats['x']['data']))/40)
+            row=int((yt-np.min(tile_stats['y']['data']))/tile_spacing)
+            col=int((xt-np.min(tile_stats['x']['data']))/tile_spacing)
             tile_stats[key]['mapped'][row,col] = dt
         tile_stats[key]['mapped'] = np.ma.masked_where(tile_stats[key]['mapped'] == 0, tile_stats[key]['mapped'])
 
     # make dimensions, fill them as variables
-    tilegrp.createDimension('y',len(np.arange(np.min(tile_stats['y']['data']),np.max(tile_stats['y']['data'])+40,40)))
-    tilegrp.createDimension('x',len(np.arange(np.min(tile_stats['x']['data']),np.max(tile_stats['x']['data'])+40,40)))
+    tilegrp.createDimension('y',len(np.arange(np.min(tile_stats['y']['data']),np.max(tile_stats['y']['data'])+tile_spacing,tile_spacing)))
+    tilegrp.createDimension('x',len(np.arange(np.min(tile_stats['x']['data']),np.max(tile_stats['x']['data'])+tile_spacing,tile_spacing)))
 
     # create tile_stats/ variables in .nc file
     for field in tile_field_names:
         tile_field_attrs = {field: tile_field_attrs_by_name[field]}
         if field == 'x':
             dsetvar = tilegrp.createVariable('x', tile_field_attrs[field]['datatype'], ('x',), fill_value=np.finfo(tile_field_attrs[field]['datatype']).max, zlib=True)
-            dsetvar[:] = np.arange(np.min(tile_stats['x']['data']),np.max(tile_stats['x']['data'])+40,40.) * 1000 # convert from km to meter
+            dsetvar[:] = np.arange(np.min(tile_stats['x']['data']),np.max(tile_stats['x']['data'])+tile_spacing,tile_spacing) * 1000 # convert from km to meter
             dsetvar.setncattr('standard_name','projection_x_coordinate')
         elif field == 'y':
             dsetvar = tilegrp.createVariable('y', tile_field_attrs[field]['datatype'], ('y',), fill_value=np.finfo(tile_field_attrs[field]['datatype']).max, zlib=True)
-            dsetvar[:] = np.arange(np.min(tile_stats['y']['data']),np.max(tile_stats['y']['data'])+40,40.) * 1000 # convert from km to meter
+            dsetvar[:] = np.arange(np.min(tile_stats['y']['data']),np.max(tile_stats['y']['data'])+tile_spacing,tile_spacing) * 1000 # convert from km to meter
             dsetvar.setncattr('standard_name','projection_y_coordinate')
         elif field == 'N_data' or field == 'N_bias':
             dsetvar = tilegrp.createVariable(field, tile_field_attrs[field]['datatype'],('y','x'),fill_value=np.iinfo(tile_field_attrs[field]['datatype']).max, zlib=True)

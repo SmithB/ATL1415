@@ -84,7 +84,10 @@ def main(argv=None):
 
     # if ATL11 release is specified and ATL11 geoindex is not specified, build the location
     if '--ATL11_index' not in defaults and '--ATL11_release' in defaults:
-        defaults['--ATL11_index'] = os.path.join(defaults['--ATL14_root'], defaults['--ATL11_release'], hemisphere_base, 'index','GeoIndex.h5')
+        atl11_release = defaults['--ATL11_release']
+        if not atl11_release.startswith('ATL11_'):
+            atl11_release = f'ATL11_{atl11_release}'
+        defaults['--ATL11_index'] = os.path.join(defaults['--ATL14_root'], atl11_release, hemisphere_base, 'index','GeoIndex.h5')
         defaults.pop('--ATL11_release')
 
     if not os.path.isfile(defaults['--ATL11_index']):
