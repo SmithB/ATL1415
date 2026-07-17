@@ -11,6 +11,7 @@ import os
 import re
 import glob
 import argparse
+import ATL1415
 
 def main(argv=None):
 
@@ -97,6 +98,18 @@ def main(argv=None):
     if '--ATL11_xover_dir' not in defaults:
         defaults['--ATL11_xover_dir'] = os.path.join(
             os.path.dirname(os.path.dirname(defaults['--ATL11_index'])), 'xover_tiles')
+
+    # infer dzdt lags from grid spacing / time span if not explicitly given
+    if '--dzdt_lags' not in defaults and '-g' in defaults and '-t' in defaults:
+        dt_str = defaults['-g'].split(',')[2]
+        if '/' in dt_str:
+            num, den = dt_str.split('/')
+            t_res = float(num) / float(den)
+        else:
+            t_res = float(dt_str)
+        time_span = [*map(float, defaults['-t'].split(','))]
+        lags = ATL1415.infer_dzdt_lags(t_res, time_span)
+        defaults['--dzdt_lags'] = ','.join(map(str, lags))
 
     # resolve previous-product directories if a top-level path was given
     pp_dirs = []
