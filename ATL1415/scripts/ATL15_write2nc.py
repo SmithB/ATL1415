@@ -223,6 +223,19 @@ def ATL15_write2nc_monthly(args):
             nc_group.setncattr('description', group_description)
             crs_var = make_nc_projection_variable(args.region, nc.groups[group])
 
+            # crop epochs to args.t_crop, requiring that the entire
+            # averaging window of a lagged (dhdt) epoch -- not just its
+            # center time -- fall within the requested range
+            time_attrs = group_attrs['time']
+            if time_attrs['source_file'] not in fh_in:
+                fh_in[time_attrs['source_file']] = h5py.File(os.path.join(args.base_dir, time_attrs['source_file']), 'r')
+            raw_time = np.array(fh_in[time_attrs['source_file']][time_attrs['source_group']][time_attrs['source_var']])
+            half_window = 0.0 if lag is None else lag * args.delta_t / 2.0
+            if args.t_crop is not None:
+                t_mask = (raw_time - half_window >= args.t_crop[0]) & (raw_time + half_window <= args.t_crop[1])
+            else:
+                t_mask = np.ones(raw_time.shape, dtype=bool)
+
             for field, attrs in group_attrs.items():
                 dimscale = False
                 # out field
@@ -241,10 +254,12 @@ def ATL15_write2nc_monthly(args):
                     dy = data[1]-data[0]
                     dimscale = True
                 elif field == 'time':
+                    data = data[t_mask]
                     data = (data-2018.)*365.25
                     dimscale = True
                 if data.ndim==3:
                     # hdf5 files store data as y, x, t
+                    data = data[:,:,t_mask]
                     data = np.moveaxis(data,2,0)  # t, y, x
                 if field == 'ice_area':
                     data[data==0.0] = np.nan
@@ -291,6 +306,9 @@ def main():
     parser.add_argument('--avg_scale', type=str, default=None, help='average scale')
     parser.add_argument('--avg_scales', type=str, default=None, help='list of average scales, comma separated')
     parser.add_argument('--dzdt_lags', type=str, default='1,4', help='lags for which to calculate dz/dt, comma-separated list, no spaces')
+    parser.add_argument('--t_crop', type=str, default='2019,2050',
+                        help='time range to include in the output, first_year,last_year AD (comma-separated, no spaces); '
+                             'epochs are dropped unless their full averaging window falls within this range')
     parser.add_argument('--grid_spacing','-g', type=str, help='DEM (meters),dh maps xy (meters),dh_maps time (years): comma-separated, no spaces', default='100.,1000.,0.25')
     parser.add_argument('--delta_t', type=str, help='time-step spacing, yr')
     parser.add_argument('--verbose', action='store_true')
@@ -313,6 +331,7 @@ def main():
             args.delta_t = args.delta_t[0] / args.delta_t[1]
 
     args.dzdt_lags =  [*map(int, args.dzdt_lags.split(','))]
+    args.t_crop = [*map(float, args.t_crop.split(','))] if args.t_crop else None
 
     if args.ATL11_lineage_dir is None:
         # if ATL11 lineage_dir is not specified, assume that the grandparent of the ATL11_index works
