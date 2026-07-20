@@ -39,7 +39,8 @@ def make_mosaic_jobs(base, region, lags,
                      t_res=0.25,
                      skip_z0=False,
                      tasks=4,
-                     environment='IS2'):
+                     environment='IS2',
+                     run_name=None):
     """
     make a set of jobs for mosaicking a region
 
@@ -51,6 +52,9 @@ def make_mosaic_jobs(base, region, lags,
         region name.
     lags : iterable
         lags for which to calculate dz/dt.
+    run_name : str, optional
+        name of the directory to create for the slurm run. Defaults to
+        f"mosaic_run_{region}" if not given.
     step : str, optional
         'prelim' or 'matched. The default is 'matched'.
     t_res : float, optional
@@ -69,7 +73,7 @@ def make_mosaic_jobs(base, region, lags,
 
     """
 
-    mosaic_run = f"mosaic_run_{region}"
+    mosaic_run = run_name if run_name is not None else f"mosaic_run_{region}"
 
     # crop handling
     bounds_file = os.path.join(base, "bounds.txt")
@@ -276,6 +280,8 @@ def main():
     parser.add_argument('--time_span','-t', type=str, help='time span, first year,last year AD (comma separated, no spaces); used to infer --dzdt_lags if not given explicitly')
     parser.add_argument('--dzdt_lags', type=str, default=None, help='comma-separated list of dzdt lags to process; inferred from --time_span and --grid_spacing if omitted')
     parser.add_argument('--run', action='store_true', help="run the script")
+    parser.add_argument('--run_name', type=str, default=None,
+                        help='name of the directory to create for the slurm run; defaults to mosaic_run_<region>')
     parser.add_argument('--num_tasks', type=int, default=4, help='number of slurm tasks to assign')
     parser.add_argument('--environment','-e', type=str, default='IS2', help='environment to activate for each job')
     args, unknown = parser.parse_known_args()
@@ -307,7 +313,8 @@ def main():
                                          lags,
                                          t_res = args.grid_spacing[2],
                                          skip_z0=skip_z0,
-                                         environment=args.environment)
+                                         environment=args.environment,
+                                         run_name=args.run_name)
     ATL1415.make_slurm_file(os.path.join(mosaic_run, 'slurm_run.sh'),
                 subs={'JOB_NAME': f'mosaic_{args.region}',
                       'TIME': "04:00:00",
