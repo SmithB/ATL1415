@@ -298,7 +298,7 @@ def set_three_sigma_edit_from_previous_product(data, xy0, Wxy,
             if last_epoch is not None:
                 g=g[:, :, :last_epoch]
                 if verbose:
-                    print('\tset_three_sigma_edit_from_previous_product: \n"
+                    print('\tset_three_sigma_edit_from_previous_product: \n'
                           f'\t\tprevious ATL15 ends at {g.t[-1]/365.25+2018:2.2f}')
             if g is None or g.shape is None:
                 continue
