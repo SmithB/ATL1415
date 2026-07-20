@@ -1,0 +1,8 @@
+{
+  "tiers": [
+    {"R_min": 0,     "R_max": 3.0e5, "ncpu": 28},
+    {"R_min": 3.0e5, "R_max": 4.0e5, "ncpu": 18},
+    {"R_min": 4.0e5, "R_max": 5.0e5, "ncpu": 12},
+    {"R_min": 5.0e5, "R_max": 1.0e8, "ncpu": 7}
+  ]
+}

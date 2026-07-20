@@ -57,8 +57,8 @@ for reg in $regions; do
     fi
 done
 
-run_name=arctic${hemi_suffix}_2nc
-rm -r arctic${hemi_suffix}_2nc
+run_name=arctic${hemi_suffix}_to_nc
+[ -d $run_name ] && rm -r $run_name
 setup_slurm_run.py --run_name $run_name -q arctic_2nc_queue.txt --time 02:00:00 -j 1 -e ATL14
 mv arctic_2nc_queue.txt $run_name
 pushd $run_name; sbatch slurm_run.sh; popd

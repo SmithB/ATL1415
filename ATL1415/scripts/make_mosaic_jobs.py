@@ -36,10 +36,10 @@ def write_task(task_id, content, mosaic_run, environment, append=False):
 
 def make_mosaic_jobs(base, region, lags,
                      step='matched',
-                     t_res=0.25,
                      skip_z0=False,
                      tasks=4,
-                     environment='IS2'):
+                     environment='IS2',
+                     run_name=None):
     """
     make a set of jobs for mosaicking a region
 
@@ -51,10 +51,11 @@ def make_mosaic_jobs(base, region, lags,
         region name.
     lags : iterable
         lags for which to calculate dz/dt.
+    run_name : str, optional
+        name of the directory to create for the slurm run. Defaults to
+        f"mosaic_run_{region}" if not given.
     step : str, optional
         'prelim' or 'matched. The default is 'matched'.
-    t_res : float, optional
-        time interval between steps. The default is 0.25.
     skip_z0 : bool, optional
         if true, do not mosaic z0. The default is False.
     tasks : int, optional
@@ -69,7 +70,7 @@ def make_mosaic_jobs(base, region, lags,
 
     """
 
-    mosaic_run = f"mosaic_run_{region}"
+    mosaic_run = run_name if run_name is not None else f"mosaic_run_{region}"
 
     # crop handling
     bounds_file = os.path.join(base, "bounds.txt")
@@ -155,11 +156,10 @@ def make_mosaic_jobs(base, region, lags,
             this_w = ""
 
         out = group.replace("000m", "km").replace("avg_", "")
-        TR = "--t_range 2019 2050"
 
         task += 1
         cmd = (
-            f"make_mosaic.py {crop} {this_w} {TR} -R "
+            f"make_mosaic.py {crop} {this_w} -R "
             f"-d {base} -g {glob_str} -p {this_pad} -f {this_feather} {this_S} "
             f"-O {base}/{out}.h5 --in_group {group}/ -F {field} cell_area"
         )
@@ -167,7 +167,7 @@ def make_mosaic_jobs(base, region, lags,
 
         if compute_sigma:
             cmd2 = (
-                f"make_mosaic.py {crop} {this_w} {TR} -d {base} "
+                f"make_mosaic.py {crop} {this_w} -d {base} "
                 f"-g 'prelim/*.h5' -p {this_pad} -f {this_feather} {this_S} "
                 f"-O {base}/{out}.h5 --in_group {group}/ -F sigma_{group}"
             )
@@ -183,11 +183,8 @@ def make_mosaic_jobs(base, region, lags,
 
             task += 1
 
-            start_year = 2019 + t_res * lag_num / 2
-            TR = f"--t_range {start_year} 2050"
-
             cmd = (
-                f"make_mosaic.py {crop} {TR} -R {this_w} "
+                f"make_mosaic.py {crop} -R {this_w} "
                 f"-d {base} -g {glob_str} -p {this_pad} -f {this_feather} {this_S} "
                 f"-O {base}/{out_dt}{lag}.h5 --in_group {field}/ -F {field_list}"
             )
@@ -196,7 +193,7 @@ def make_mosaic_jobs(base, region, lags,
             if compute_sigma:
                 sigma_field = f"sigma_{group_dt}{lag}"
                 cmd2 = (
-                    f"make_mosaic.py {crop} {TR} {this_w} -d {base} "
+                    f"make_mosaic.py {crop} {this_w} -d {base} "
                     f"-g 'prelim/*.h5' -p {this_pad} -f {this_feather} {this_S} "
                     f"-O {base}/{out_dt}{lag}.h5 --in_group {field}/ -F {sigma_field}"
                 )
@@ -204,11 +201,10 @@ def make_mosaic_jobs(base, region, lags,
 
     # ---- dz base task ----
     field = "dz"
-    TR = "--t_range 2019 2050"
 
     task += 1
     cmd = (
-        f"make_mosaic.py {crop} {TR} -R -w "
+        f"make_mosaic.py {crop} -R -w "
         f"-d {base} -g {glob_str} -p {pad} -f {feather} "
         f"-O {base}/dz.h5 --in_group dz/ "
         f"-F count misfit_rms misfit_scaled_rms mask cell_area {field}"
@@ -217,7 +213,7 @@ def make_mosaic_jobs(base, region, lags,
 
     if compute_sigma:
         cmd2 = (
-            f"make_mosaic.py {crop} {TR} -w -d {base} "
+            f"make_mosaic.py {crop} -w -d {base} "
             f"-g 'prelim/*.h5' -p {pad} -f {feather} "
             f"-O {base}/dz.h5 --in_group dz/ -F sigma_dz"
         )
@@ -225,7 +221,7 @@ def make_mosaic_jobs(base, region, lags,
 
     if compute_SMB:
         cmd3 = (
-            f"make_mosaic.py {crop} -w {TR} -d {base} "
+            f"make_mosaic.py {crop} -w -d {base} "
             f"-g 'prelim/*.h5' -p {pad} -f {feather} "
             f"-O {base}/dz.h5 --in_group dz/ -F SMB_a FAC"
         )
@@ -234,14 +230,12 @@ def make_mosaic_jobs(base, region, lags,
     # ---- lag loop for dzdt ----
     for lag_num in lags:
         lag = f'_lag{lag_num}'
-        start_year = 2019 + t_res * lag_num / 2
-        TR = f"--t_range {start_year} 2050"
 
         task += 1
         field = f"dzdt{lag}"
 
         cmd = (
-            f"make_mosaic.py {crop} {TR} -R -w "
+            f"make_mosaic.py {crop} -R -w "
             f"-d {base} -g {glob_str} -p {pad} -f {feather} "
             f"-O {base}/dzdt{lag}.h5 --in_group dzdt{lag}/ "
             f"-F {field} cell_area"
@@ -250,7 +244,7 @@ def make_mosaic_jobs(base, region, lags,
 
         if compute_sigma:
             cmd2 = (
-                f"make_mosaic.py {crop} {TR} -w -d {base} "
+                f"make_mosaic.py {crop} -w -d {base} "
                 f"-g 'prelim/*.h5' -p {pad} -f {feather} "
                 f"-O {base}/dzdt{lag}.h5 --in_group dzdt{lag}/ "
                 f"-F sigma_{field}"
@@ -276,6 +270,8 @@ def main():
     parser.add_argument('--time_span','-t', type=str, help='time span, first year,last year AD (comma separated, no spaces); used to infer --dzdt_lags if not given explicitly')
     parser.add_argument('--dzdt_lags', type=str, default=None, help='comma-separated list of dzdt lags to process; inferred from --time_span and --grid_spacing if omitted')
     parser.add_argument('--run', action='store_true', help="run the script")
+    parser.add_argument('--run_name', type=str, default=None,
+                        help='name of the directory to create for the slurm run; defaults to mosaic_run_<region>')
     parser.add_argument('--num_tasks', type=int, default=4, help='number of slurm tasks to assign')
     parser.add_argument('--environment','-e', type=str, default='IS2', help='environment to activate for each job')
     args, unknown = parser.parse_known_args()
@@ -305,9 +301,9 @@ def main():
 
     mosaic_run, tasks = make_mosaic_jobs(args.base_dir, args.region,
                                          lags,
-                                         t_res = args.grid_spacing[2],
                                          skip_z0=skip_z0,
-                                         environment=args.environment)
+                                         environment=args.environment,
+                                         run_name=args.run_name)
     ATL1415.make_slurm_file(os.path.join(mosaic_run, 'slurm_run.sh'),
                 subs={'JOB_NAME': f'mosaic_{args.region}',
                       'TIME': "04:00:00",

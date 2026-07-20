@@ -38,6 +38,7 @@ from ATL1415.lags import infer_dzdt_lags
 import re
 import sys
 import h5py
+import json
 from ATL1415.make_mask_from_vector import make_mask_from_vector
 from ATL1415.SMB_corr_from_grid import SMB_corr_from_grid
 from ATL1415.read_ATL11 import read_ATL11
@@ -714,6 +715,37 @@ def save_fit_to_file(S,  filename, dzdt_lags=None, reference_epoch=0):
                            chunks=True, compression="gzip", fillvalue=-1)
     return
 
+def save_field_size_report(filename):
+    """
+    write a JSON report of dz/dz and dz/sigma_dz array shapes for one tile file
+
+    Ports the per-file logic of scripts/make_field_size_report.py so each tile
+    self-reports as it's written, instead of relying on a separate batch pass
+    over the whole step directory after all tile jobs finish.
+    """
+    dst_directory = os.path.join(os.path.dirname(filename), 'field_sizes')
+    # hundreds of tile jobs may reach this directory at once; avoid the
+    # exists-check/mkdir race by just catching the loser's FileExistsError
+    try:
+        os.mkdir(dst_directory)
+    except FileExistsError:
+        pass
+    report = {'file': filename}
+    try:
+        with h5py.File(filename, 'r') as h5f:
+            for field in ['dz/dz', 'dz/sigma_dz']:
+                try:
+                    report[field] = list(h5f[field].shape)
+                except Exception:
+                    report[field] = None
+    except Exception as e:
+        # a report failure should never fail the tile fit job itself
+        print(f"save_field_size_report: could not read {filename}: {e}")
+        return
+    report_file = os.path.join(dst_directory, os.path.basename(filename).replace('.h5', '_report.json'))
+    with open(report_file, 'w') as fh:
+        json.dump(report, fh)
+
 def mask_components_by_time(dz):
     """
     identify the connected components in the data, mark unconstrained epochs as invalid
@@ -1072,6 +1104,7 @@ def main():
     if args.calc_error_file is None and 'm' in S and len(S['m'].keys()) > 0:
         # if this isn't an error-calculation run, save the gridded fit data to the output file
         save_fit_to_file(S, args.out_name, dzdt_lags=args.dzdt_lags, reference_epoch=args.reference_epoch)
+        save_field_size_report(args.out_name)
         status=0
     elif 'E' in S and len(S['E'].keys()) > 0:
         # If this is an error-calculation run, save the errors to the output file

@@ -61,9 +61,9 @@ for reg in $regions; do
 
     base=${root}/rel${release}/north${hemi_suffix}/${reg}/
     echo $base
-    run_dir=mosaic_run_${reg}
+    run_dir=${reg}${hemi_suffix}_mosaic
     [ -d $run_dir ] && rm -r $run_dir
-    make_mosaic_jobs.py -b $base -rr $reg -t $time_span @$period_file
+    make_mosaic_jobs.py -b $base -rr $reg -t $time_span --run_name $run_dir @$period_file
     slurm_script=slurm_run.sh
     pushd $run_dir
     sbatch $slurm_script

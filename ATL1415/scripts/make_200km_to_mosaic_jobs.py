@@ -4,7 +4,7 @@ import argparse
 import ATL1415
 import subprocess
 
-def make_mosaic_jobs(base, region, lags, t_res=0.25, skip_z0=False, run=False):
+def make_mosaic_jobs(base, region, lags, skip_z0=False, run=False):
 
     mosaic_run = f"mosaic_run_{region}"
     
@@ -40,13 +40,12 @@ def make_mosaic_jobs(base, region, lags, t_res=0.25, skip_z0=False, run=False):
     for lag_num in lags:
         lag = f'_lag{lag_num}'
         task += 1
-        TR = f"--t_range {2019 + t_res * int(lag_num) / 2} 2050"
         field = f"dzdt{lag}"
         with open(f"{mosaic_run}/queue/task_{task}", 'w') as f:
             f.write("source activate IS2\n")
             this_replace = '-R'
             for ff in [field, f"sigma_{field}", "cell_area"]:
-                f.write(f"make_mosaic.py {crop} {TR} {this_replace} -d {base}/200km_tiles/{field} -g '*.h5' -O {base}/{field}.h5 --in_group {field}/ -F {ff}\n")
+                f.write(f"make_mosaic.py {crop} {this_replace} -d {base}/200km_tiles/{field} -g '*.h5' -O {base}/{field}.h5 --in_group {field}/ -F {ff}\n")
                 this_replace = ''
 
     for group in ["avg_dz_40000m", "avg_dz_20000m", "avg_dz_10000m"]:
@@ -68,7 +67,6 @@ def make_mosaic_jobs(base, region, lags, t_res=0.25, skip_z0=False, run=False):
         for lag_num in lags:
             lag = f'_lag{lag_num}'
             field = f"{group}{lag}"
-            TR = f"--t_range {2019 + t_res * lag_num / 2} 2050"
             task += 1
             with open(f"{mosaic_run}/queue/task_{task}", 'w') as f:
                 f.write("source activate IS2\n")
@@ -76,7 +74,7 @@ def make_mosaic_jobs(base, region, lags, t_res=0.25, skip_z0=False, run=False):
 
                 print(f"lag={lag}, group={group}, task={task}")
                 for ff in [field, f"sigma_{field}", "cell_area"]:
-                    f.write(f"make_mosaic.py {crop} {TR} {this_replace} -d {base}/200km_tiles/{field} -g '*.h5' -O {base}/{out}{lag}.h5 --in_group {field}/ -F {ff}\n")
+                    f.write(f"make_mosaic.py {crop} {this_replace} -d {base}/200km_tiles/{field} -g '*.h5' -O {base}/{out}{lag}.h5 --in_group {field}/ -F {ff}\n")
                     this_replace = ''
 
     if os.path.isdir(os.path.join(base, "200km_tiles", "z0")) and not skip_z0:
@@ -142,7 +140,6 @@ def main():
         lags = ATL1415.infer_dzdt_lags(args.grid_spacing[2], time_span)
 
     make_mosaic_jobs(args.base_dir, args.region, lags,
-                     t_res = args.grid_spacing[2],
                      run = args.run, skip_z0=skip_z0)
 
 if __name__=="__main__":
