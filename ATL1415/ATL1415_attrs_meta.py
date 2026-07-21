@@ -18,7 +18,7 @@ import warnings
 from datetime import datetime
 from ATL1415.version import softwareVersion,softwareDate,softwareTitle,identifier,series_version
 
-def write_atl14meta(dst,fileout,ncTemplate,args):
+def write_atl1415meta(dst,fileout,ncTemplate,args):
 
     # setup basic dictionary of attributes to touch
     root_info={'date_created':'', 'fileName':'', 'geospatial_lat_max':0., \
@@ -62,6 +62,31 @@ def write_atl14meta(dst,fileout,ncTemplate,args):
     # lat/lon bounds
     set_geobounds(dst,fileout,root_info)
 
+    if os.path.basename(fileout).lower().startswith('atl14'):
+        # output file format:
+        # ATL14_IS_0331_100m_006_01.nc
+        out_file_match = re.compile('(ATL\d\d)_(\D\D)_(\d\d)(\d\d)_(.*)_(\d\d\d)_(\d\d).nc')\
+                           .search(os.path.basename(fileout)).groups()
+        out_file_attrs ={'short_name':out_file_match[0],
+                     'region':out_file_match[1],
+                     'c0':out_file_match[2],
+                     'c1':out_file.match[3],
+                     'resolution':out_file_match[4],
+                     'release':out_file_match[5],
+                     'version':out_file_match[6]}
+    elif os.path.basename(fileout).lower().startswith('atl15'):
+        # output file format:
+        #ATL15_IS_0331_3mo_10km_006_01.nc
+        out_file_match = re.compile('(ATL\d\d)_(\D\D)_(\d\d)(\d\d)_(.*)_(\d\d\d)_(\d\d).nc')\
+                           .search(os.path.basename(fileout)).groups()
+        out_file_attrs ={'short_name':out_file_match[0],
+                     'region':out_file_match[1],
+                     'c0':out_file_match[2],
+                     'c1':out_file.match[3],
+                     'time_res':out_file.match[4]
+                     'resolution':out_file_match[5],
+                     'release':out_file_match[6],
+                     'version':out_file_match[7]}
     # set file and date attributes
     root_info.update({'netcdfversion': netCDF4.__netcdf4libversion__})
     root_info.update({'identifier_file_uuid': str(uuid.uuid4())})
@@ -73,9 +98,9 @@ def write_atl14meta(dst,fileout,ncTemplate,args):
     dst['METADATA/DatasetIdentification'].setncattr('creationDate', str(datetime.now().date()))
     root_info.update({'fileName': os.path.basename(fileout)})
     dst['METADATA/DatasetIdentification'].setncattr('fileName', os.path.basename(fileout))
-    dst['METADATA/DatasetIdentification'].setncattr('VersionID', os.path.basename(fileout).split('_')[4])
-# Add RevisionID
-    dst['METADATA/DatasetIdentification'].setncattr('RevisionID', os.path.basename(fileout).split('_')[5][:2])
+    dst['METADATA/DatasetIdentification'].setncattr('VersionID', our_file_attrs['release'])
+    # Add RevisionID
+    dst['METADATA/DatasetIdentification'].setncattr('RevisionID', out_file_attrs['version'])
     root_info.update({'identifier_product_format_version': series_version()})
     dst['METADATA/SeriesIdentification'].setncattr('VersionID', series_version())
     dst['METADATA/ProcessStep/PGE'].setncattr('softwareDate', softwareDate())
