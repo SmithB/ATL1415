@@ -96,7 +96,7 @@ def main():
         line_count=[-1]
         while N_added > 0:
             first_task=get_last_task(args.run_name)
-            N_added = add_files_to_queue(run_name=args.run_name, task_list_file=tier_files[ii], shell=args.shell, env=args.environment, max_jobs=args.max_jobs, lines_per_task=args.lines_per_task, line_count=line_count)
+            N_added = add_files_to_queue(run_name=args.run_name, task_list_file=tier_files[ii], shell=args.shell, max_jobs=args.max_jobs, lines_per_task=args.lines_per_task, line_count=line_count)
             if N_added <1:
                 continue
             last_task=get_last_task(args.run_name)
@@ -107,6 +107,7 @@ def main():
                                 subs={'JOB_NAME':args.run_name,
                                       'TIME':args.time,
                                       'NUM_TASKS':str(N_tasks),
+                                      'ENVIRONMENT':args.environment,
                                       'JOB_NUMBERS':f'{first_task+1}-{last_task}'}, css=args.css)
             part_count += 1
 

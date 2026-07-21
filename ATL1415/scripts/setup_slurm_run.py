@@ -35,7 +35,7 @@ def get_last_task(run_name):
         last_file_num=0
     return last_file_num
 
-def add_files_to_queue(run_name=None, task_list_file=None,  shell=None, env=None, max_jobs=None, lines_per_task=1, line_count=None):
+def add_files_to_queue(run_name=None, task_list_file=None,  shell=None, max_jobs=None, lines_per_task=1, line_count=None):
     last_file_num=get_last_task(run_name)
 
     add_count=0
@@ -58,10 +58,16 @@ def add_files_to_queue(run_name=None, task_list_file=None,  shell=None, env=None
                     #print("adding %s to queue" % this_file)
                     if shell is not None:
                         out_fh.write(f'#! /usr/bin/env {shell}\n')
-                    if env is not None and "source activate" not in line:
-                        out_fh.write("source activate %s\n" % env)
                     for line in task_lines:
-                        out_fh.write('%s\n'% line.rstrip());
+                        line = line.rstrip()
+                        if not line.strip():
+                            continue
+                        # bundled lines run one after another regardless of
+                        # each other's exit status; self-report failure via
+                        # a grep-able marker so an early line's crash isn't
+                        # masked by a later line's clean exit (see
+                        # packable_job.txt's error_logs check)
+                        out_fh.write(line + '; rc=$?; [ $rc -ne 0 ] && echo "##TASK_LINE_FAILED## rc=$rc"; (exit $rc)\n')
                 os.chmod(this_file, os.stat(this_file).st_mode | stat.S_IEXEC)
                 # reset count and empty task list
                 this_count = 0
@@ -96,7 +102,7 @@ def main():
     line_count=[-1]
     while N_added > 0:
         first_task=get_last_task(args.run_name)
-        N_added = add_files_to_queue(run_name=args.run_name, task_list_file=args.queue_file, shell=args.shell, env=args.environment, max_jobs=args.max_jobs, lines_per_task=args.lines_per_task, line_count=line_count)
+        N_added = add_files_to_queue(run_name=args.run_name, task_list_file=args.queue_file, shell=args.shell, max_jobs=args.max_jobs, lines_per_task=args.lines_per_task, line_count=line_count)
         if N_added <1:
             continue
         last_task=get_last_task(args.run_name)
@@ -107,6 +113,7 @@ def main():
                             subs={'JOB_NAME':args.run_name,
                                   'TIME':args.time,
                                   'NUM_TASKS':str(N_tasks),
+                                  'ENVIRONMENT':args.environment,
                                   'JOB_NUMBERS':f'{first_task+1}-{last_task}'}, css=args.css)
         part_count += 1
 

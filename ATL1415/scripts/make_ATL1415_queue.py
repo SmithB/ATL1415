@@ -48,7 +48,6 @@ def main():
     parser.add_argument('--errors_only', action='store_true')
     parser.add_argument('--tile_spacing', type=int)
     parser.add_argument('--prior_edge_include', type=float, default=1000)
-    parser.add_argument('--environment','-e', type=str)
     parser.add_argument('--min_R', type=float)
     parser.add_argument('--max_R', type=float)
     parser.add_argument('--min_xy', type=float)
@@ -264,7 +263,10 @@ def main():
                     if args.errors_only:
                         cmd +=   '--calc_error_for_xy'
                     else:
-                        cmd += '; '+cmd+' --calc_error_for_xy'
+                        # '&&' (not ';') so a failed fit short-circuits the
+                        # error-calc companion, and the line's exit status
+                        # reflects whichever command actually failed
+                        cmd += ' && '+cmd+' --calc_error_for_xy'
             else:
                 prelim_file='%s/prelim/E%d_N%d.h5' % (region_dir, xy1[0]/1000, xy1[1]/1000)
                 if tile_list is not None:
@@ -276,9 +278,7 @@ def main():
                     continue
                 cmd=f'{prog} --matched --data_file {prelim_file} --out_name {matched_file}'+\
                  f' --prior_edge_include {args.prior_edge_include} @{defaults_file}'
-            if args.environment is not None:
-                cmd = f'source activate {args.environment}; '+cmd
-            qh.write( cmd+'; echo COMPLETE\n')
+            qh.write( cmd+'\n')
     print("Wrote commands to "+queue_file)
 
 if __name__=='__main__':
