@@ -21,7 +21,8 @@ from ATL1415.version import softwareVersion,softwareDate,softwareTitle,identifie
 def write_atl1415meta(dst,fileout,ncTemplate,args):
 
     # setup basic dictionary of attributes to touch
-    root_info={'date_created':'', 'fileName':'', 'geospatial_lat_max':0., \
+    root_info={'date_created':'', 'fileName':'', \
+        'geospatial_bounds':'SET_BY_PGE', 'geospatial_bounds_crs':'SET_BY_PGE', 'geospatial_lat_max':0., \
         'geospatial_lat_min':0., 'geospatial_lon_max':0., 'geospatial_lon_min':0., \
         'netcdfversion':'', 'history':'SET_BY_PGE', \
         'identifier_product_format_version':'SET_BY_PGE', 'time_coverage_duration':0., \
@@ -272,6 +273,10 @@ def set_geobounds(dst,fileout,root_info):
       latmax = max(np.array(y))
       lonmin=ma.min(ma.masked_where(abs(np.array(y)) > 88.0, np.array(x)))
       lonmax=ma.max(ma.masked_where(abs(np.array(y)) > 88.0, np.array(x)))
+      # Build csv style geospatial bounds for root attribute (lat lon, lat lon)
+      geo_bounds_str = ','.join(f"{a},{b}" for a, b in zip(y, x))
+      root_info.update({'geospatial_bounds':'POLYGON(('+geo_bounds_str+'))'})
+
     except (FileNotFoundError, KeyError):
       warnings.filterwarnings("always")
       warnings.warn("Deprecated. Use polygon from json file", DeprecationWarning)
@@ -286,4 +291,5 @@ def set_geobounds(dst,fileout,root_info):
     root_info.update({'geospatial_lon_max': lonmax})
     root_info.update({'geospatial_lat_min': latmin})
     root_info.update({'geospatial_lat_max': latmax})
+    root_info.update({'geospatial_bounds_crs': 'EPSG:4326'})
 
