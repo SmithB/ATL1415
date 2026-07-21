@@ -16,7 +16,7 @@ import importlib
 from netCDF4 import Dataset
 #import matplotlib.pyplot as plt
 #from ATL1415 import ATL14_attrs_meta
-from ATL1415 import ATL14_attrs_meta, make_nc_projection_variable, make_tile_stats_group
+from ATL1415 import ATL1415_attrs_meta, make_nc_projection_variable, make_tile_stats_group
 
 
 #from ATL11.h5util import create_attribute
@@ -129,7 +129,7 @@ def ATL14_write2nc(args):
                 dsetvar.setncattr(attr,field_attrs[field][attr])
             dsetvar.setncattr('grid_mapping','Polar_Stereographic')
         with importlib.resources.path('ATL1415.resources', 'atl14_metadata_template.nc') as ncTemplate:
-            ATL14_attrs_meta.write_atl14meta(nc, fileout, ncTemplate, args)
+            ATL1415_attrs_meta.write_atl1415meta(nc, fileout, ncTemplate, args)
 
         FH.close()
 

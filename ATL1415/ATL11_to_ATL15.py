@@ -250,7 +250,9 @@ def set_three_sigma_edit_from_previous_product(data, xy0, Wxy,
                                                previous_product_sigma=0.2,
                                                sigma_extra_bin_spacing=None,
                                                sigma_extra_max=None,
-                                               verbose=False):
+                                               last_epoch=-1,
+                                               verbose=False,
+                                               ):
     '''
     Pre-filter data against ATL14/15 .nc product files from a previous run.
 
@@ -267,6 +269,8 @@ def set_three_sigma_edit_from_previous_product(data, xy0, Wxy,
         Wxy                     (float): tile width
         previous_product_dirs   (list of str): directories containing ATL14_*.nc / ATL15_*.nc
         previous_product_sigma  (float): minimum value for computed sigma_extra (m)
+        last_epoch              (int) : last epoch of previous ATL15 to use, defaults to -1,
+                                        pass None to ignore
         sigma_extra_bin_spacing (float): if set, compute spatially varying sigma_extra
         sigma_extra_max         (float): cap on sigma_extra (on-grid variant only)
         verbose                 (bool): print sigma_extra and acceptance fraction
@@ -292,6 +296,11 @@ def set_three_sigma_edit_from_previous_product(data, xy0, Wxy,
         for nc_file in glob.glob(os.path.join(directory, 'ATL15_*1km_*.nc')):
             g = pc.grid.data().from_nc(nc_file, fields=['delta_h'],
                                        group='delta_h', bounds=bounds)
+            if last_epoch is not None:
+                g=g[:, :, :last_epoch]
+                if verbose:
+                    print('\tset_three_sigma_edit_from_previous_product: \n'
+                          f'\t\tprevious ATL15 ends at {g.t[-1]/365.25+2018:2.2f}')
             if g is None or g.shape is None:
                 continue
             g.t = 2018 + g.t/365.25
@@ -301,8 +310,8 @@ def set_three_sigma_edit_from_previous_product(data, xy0, Wxy,
 
     valid = np.isfinite(z0_interp) & np.isfinite(dz_interp)
     if not np.any(valid):
-        print(f"set_three_sigma_edit_from_previous_product: "
-              f"no previous-product coverage for tile {xy0}, skipping")
+        print(f"\tset_three_sigma_edit_from_previous_product: \n"
+              f"\t\tno previous-product coverage for tile {xy0}, skipping")
         return
 
     # residuals (zero outside valid to keep calc_sigma_extra numerics clean)
@@ -1095,7 +1104,6 @@ def main():
     if args.calc_error_file is None and 'm' in S and len(S['m'].keys()) > 0:
         # if this isn't an error-calculation run, save the gridded fit data to the output file
         save_fit_to_file(S, args.out_name, dzdt_lags=args.dzdt_lags, reference_epoch=args.reference_epoch)
-        save_field_size_report(args.out_name)
         status=0
     elif 'E' in S and len(S['E'].keys()) > 0:
         # If this is an error-calculation run, save the errors to the output file
@@ -1103,7 +1111,9 @@ def main():
         for field in ['sigma_dz'] + [ f'sigma_dzdt_lag{lag}' for lag in args.dzdt_lags ]:
             S['E'][field] = interp_ds( S['E'][field], args.error_res_scale[1] )
         save_errors_to_file(S, args.out_name, dzdt_lags=args.dzdt_lags, reference_epoch=args.reference_epoch)
+        save_field_size_report(args.out_name)
         status=0
+        
     print(f"done with {args.out_name}")
     return status
 

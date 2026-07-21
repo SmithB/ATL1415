@@ -15,7 +15,7 @@ import matplotlib.pyplot as plt
 #import cartopy.crs as ccrs
 #import cartopy.feature
 from scipy import stats
-from ATL1415 import ATL14_attrs_meta, make_nc_projection_variable, make_tile_stats_group
+from ATL1415 import ATL1415_attrs_meta, make_nc_projection_variable, make_tile_stats_group
 
 def update_attr_dict(attr_template, args, res_m, res_km):
     '''
@@ -274,7 +274,7 @@ def ATL15_write2nc_monthly(args):
 
         #ncTemplate=pkg_resources.resource_filename('ATL1415','resources/atl15_metadata_template.nc')
         with importlib.resources.path('ATL1415.resources', 'atl15_metadata_template.nc') as ncTemplate: 
-            ATL14_attrs_meta.write_atl14meta(nc, fileout, ncTemplate, args)
+            ATL1415_attrs_meta.write_atl1415meta(nc, fileout, ncTemplate, args)
     for fh in fh_in.values():
         try:
             fh.close()

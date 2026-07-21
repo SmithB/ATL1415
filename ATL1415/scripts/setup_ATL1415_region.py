@@ -53,7 +53,7 @@ def main(argv=None):
     required_keys_present=True
     for key in ['--ATL14_root', '--region', '--Release','--Hemisphere', '--mask_file']:
         if key not in defaults:
-            print(f"make_1415_queue.py:\n\tError: required key {key} not in defaults files")
+            print(f"setup_ATL1415_region.py:\n\tError: required key {key} not in defaults files")
             required_keys_present=False
     if not required_keys_present:
         sys.exit(1)
