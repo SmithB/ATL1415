@@ -1104,7 +1104,6 @@ def main():
     if args.calc_error_file is None and 'm' in S and len(S['m'].keys()) > 0:
         # if this isn't an error-calculation run, save the gridded fit data to the output file
         save_fit_to_file(S, args.out_name, dzdt_lags=args.dzdt_lags, reference_epoch=args.reference_epoch)
-        save_field_size_report(args.out_name)
         status=0
     elif 'E' in S and len(S['E'].keys()) > 0:
         # If this is an error-calculation run, save the errors to the output file
@@ -1112,7 +1111,9 @@ def main():
         for field in ['sigma_dz'] + [ f'sigma_dzdt_lag{lag}' for lag in args.dzdt_lags ]:
             S['E'][field] = interp_ds( S['E'][field], args.error_res_scale[1] )
         save_errors_to_file(S, args.out_name, dzdt_lags=args.dzdt_lags, reference_epoch=args.reference_epoch)
+        save_field_size_report(args.out_name)
         status=0
+        
     print(f"done with {args.out_name}")
     return status
 
