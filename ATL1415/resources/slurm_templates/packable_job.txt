@@ -44,7 +44,7 @@ echo "exit code="$job_status >> $active_log_file
 log_file=logs/${task_file}.log
 mv $active_log_file $log_file
 
-if [ $job_status -ne 0 ]; then
+if [ $job_status -ne 0 ] || grep -qE '^##TASK_LINE_FAILED##' "$log_file"; then
     cp $log_file error_logs/${task_file}.log
 fi
 
