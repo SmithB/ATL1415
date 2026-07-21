@@ -274,7 +274,7 @@ def ATL15_write2nc_monthly(args):
 
         #ncTemplate=pkg_resources.resource_filename('ATL1415','resources/atl15_metadata_template.nc')
         with importlib.resources.path('ATL1415.resources', 'atl15_metadata_template.nc') as ncTemplate: 
-            ATL14_attrs_meta.write_atl1415meta(nc, fileout, ncTemplate, args)
+            ATL1415_attrs_meta.write_atl1415meta(nc, fileout, ncTemplate, args)
     for fh in fh_in.values():
         try:
             fh.close()

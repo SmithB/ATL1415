@@ -68,23 +68,23 @@ def write_atl1415meta(dst,fileout,ncTemplate,args):
         # ATL14_IS_0331_100m_006_01.nc
         out_file_match = re.compile('(ATL\d\d)_(\D\D)_(\d\d)(\d\d)_(.*)_(\d\d\d)_(\d\d).nc')\
                            .search(os.path.basename(fileout)).groups()
-        out_file_attrs ={'short_name':out_file_match[0],
+        out_file_attrs ={'shortname':out_file_match[0],
                      'region':out_file_match[1],
                      'c0':out_file_match[2],
-                     'c1':out_file.match[3],
+                     'c1':out_file_match[3],
                      'resolution':out_file_match[4],
                      'release':out_file_match[5],
                      'version':out_file_match[6]}
     elif os.path.basename(fileout).lower().startswith('atl15'):
         # output file format:
         #ATL15_IS_0331_3mo_10km_006_01.nc
-        out_file_match = re.compile('(ATL\d\d)_(\D\D)_(\d\d)(\d\d)_(.*)_(\d\d\d)_(\d\d).nc')\
+        out_file_match = re.compile('(ATL\d\d)_(\D\D)_(\d\d)(\d\d)_(.*mo)_(.*m)_(\d\d\d)_(\d\d).nc')\
                            .search(os.path.basename(fileout)).groups()
-        out_file_attrs ={'short_name':out_file_match[0],
+        out_file_attrs ={'shortname':out_file_match[0],
                      'region':out_file_match[1],
                      'c0':out_file_match[2],
-                     'c1':out_file.match[3],
-                     'time_res':out_file.match[4]
+                     'c1':out_file_match[3],
+                     'time_res':out_file_match[4],
                      'resolution':out_file_match[5],
                      'release':out_file_match[6],
                      'version':out_file_match[7]}
@@ -99,7 +99,8 @@ def write_atl1415meta(dst,fileout,ncTemplate,args):
     dst['METADATA/DatasetIdentification'].setncattr('creationDate', str(datetime.now().date()))
     root_info.update({'fileName': os.path.basename(fileout)})
     dst['METADATA/DatasetIdentification'].setncattr('fileName', os.path.basename(fileout))
-    dst['METADATA/DatasetIdentification'].setncattr('VersionID', our_file_attrs['release'])
+    dst['METADATA/DatasetIdentification'].setncattr('shortName', out_file_attrs['shortname'])
+    dst['METADATA/DatasetIdentification'].setncattr('VersionID', out_file_attrs['release'])
     # Add RevisionID
     dst['METADATA/DatasetIdentification'].setncattr('RevisionID', out_file_attrs['version'])
     root_info.update({'identifier_product_format_version': series_version()})
