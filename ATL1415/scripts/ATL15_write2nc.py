@@ -231,7 +231,7 @@ def ATL15_write2nc(args):
             # introduce a time tolerance so that we do not crop epochs unnecessarily b/c of floating-point errors
             t_tol = 3/365.25
             if args.t_crop is not None:
-                t_mask = (raw_time - half_window - t_tol >= args.t_crop[0]) & (raw_time + half_window + t_tol <= args.t_crop[1])
+                t_mask = (raw_time - half_window + t_tol >= args.t_crop[0]) & (raw_time + half_window - t_tol <= args.t_crop[1])
             else:
                 t_mask = np.ones(raw_time.shape, dtype=bool)
 
