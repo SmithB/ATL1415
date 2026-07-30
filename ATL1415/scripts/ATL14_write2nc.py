@@ -37,7 +37,8 @@ def ATL14_write2nc(args):
 
     # establish output file
     fileout = args.base_dir.rstrip('/') + '/ATL14_' + args.region + '_' + args.cycles + '_100m_' + args.Release + '_' + args.version +'.nc'
-    print('output file:',fileout)
+    if args.verbose:
+        print('output file:',fileout)
 
     with Dataset(fileout,'w',clobber=True) as nc:
         nc.setncattr('GDAL_AREA_OR_POINT','Area')
@@ -52,7 +53,8 @@ def ATL14_write2nc(args):
             FH.close()
             exit(-1)
         else:
-            print('Reading file:',args.base_dir.rstrip('/')+'/z0.h5')
+            if args.verbose:
+                print('Reading file:',args.base_dir.rstrip('/')+'/z0.h5')
 
         with importlib.resources.open_text('ATL1415.resources', 'ATL14_output_attrs.csv', encoding='utf-8-sig') as attrfile:
             reader=list(csv.DictReader(attrfile))
@@ -150,13 +152,17 @@ def main():
                                                          '\t SV: Svalbard \n'
                                                          '\t RA: Russian Arctic')
     parser.add_argument('-c','--cycles', type=str, help="4-digit number specifying first/last cycles for output filename")
+    parser.add_argument('--t_crop', type=str, help="comma-separated start and end time for the ATL14/15 products", required=True)
     parser.add_argument('-R','--Release', type=str, help="3-digit release number for output filename")
     parser.add_argument('-v','--version', type=str, help="2-digit version number for output filename")
     parser.add_argument('-list11','--ATL11_lineage_dir', type=str, help='directory in which to look for ATL11 .h5 filenames')
     parser.add_argument('--tiles_dir', type=str, help='directory in which to look for tile .h5 files, defaults to [base_dir]/prelim')
     parser.add_argument('--ATL11_xover_dir', type=str, help="directory in which to look for ATL11 crossover files")
     parser.add_argument('--ATL11_index', type=str, help='GeoIndex file pointing to ATL11 data')
+    parser.add_argument('--verbose', action='store_true')
     args, _=parser.parse_known_args()
+
+    args.t_crop = [*map(float, args.t_crop.split(','))]
 
     if args.ATL11_lineage_dir is None:
         # if ATL11 lineage_dir is not specified, assume that the grandparent of the ATL11_index works
@@ -165,9 +171,8 @@ def main():
     if args.tiles_dir is None:
         args.tiles_dir=os.path.join(args.base_dir, 'prelim')
 
-    print('args:',args)
-
-
+    if args.verbose:
+        print('ATL14_write2nc args',args)
 
     fileout = ATL14_write2nc(args)
 

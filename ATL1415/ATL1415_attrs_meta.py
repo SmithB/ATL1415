@@ -15,7 +15,7 @@ import uuid
 import timescale
 from importlib import resources
 import warnings
-from datetime import datetime
+from datetime import datetime, timedelta
 from ATL1415.version import softwareVersion,softwareDate,softwareTitle,identifier,series_version
 
 def write_atl1415meta(dst,fileout,ncTemplate,args):
@@ -58,8 +58,10 @@ def write_atl1415meta(dst,fileout,ncTemplate,args):
                     dg.variables[name][:] = child.variables[name][:]
                     for attribute in child.variables[name].ncattrs():
                         dg.variables[name].setncattr(attribute, child.variables[name].getncattr(attribute))
+    # set the starting time and time span:
+    set_time_range(dst, root_info, args)
     # build ATL11 lineage
-    set_lineage(dst,root_info,args)
+    set_lineage(dst, root_info, args)
     # lat/lon bounds
     set_geobounds(dst,fileout,root_info)
 
@@ -112,7 +114,7 @@ def write_atl1415meta(dst,fileout,ncTemplate,args):
     for key, keyval in root_info.items():
         dst.setncattr(key, keyval)
 
-def attributes_for_ATL11_file(file, delta_time_range, args):
+def attributes_for_ATL11_file(file, args):
 
     # regular expression for extracting ATL11 parameters
     rx = re.compile(r'(ATL\d{2})_(\d{4})(\d{2})_(\d{2})(\d{2})_(\d{3})_(\d{2}).*?.h5$')
@@ -167,11 +169,7 @@ def attributes_for_ATL11_file(file, delta_time_range, args):
             fa['end_region'] = fa['start_region']
         sdeltatime = fileID['ancillary_data/start_delta_time'][0]
         edeltatime = fileID['ancillary_data/end_delta_time'][0]
-        # track earliest and latest delta time and UTC
-        if sdeltatime < delta_time_range['start']:
-            delta_time_range['start'] = sdeltatime
-        if edeltatime > delta_time_range['end']:
-            delta_time_range['end'] = edeltatime
+
     fa['end_rgt'] = fa['start_rgt']
 
     return fa
@@ -187,9 +185,6 @@ def set_lineage(dst,root_info,args):
     atl11path = args.ATL11_lineage_dir
 # list of lineage attributes
     lineage = []
-# For each tile:
-    delta_time_range = {'start':np.finfo(np.float64()).max,
-                        'end': np.finfo(np.float64()).tiny}
     ATL11_files=set()
     for tile in glob.iglob(os.path.join(tilepath,'*.h5')):
         try:
@@ -201,14 +196,11 @@ def set_lineage(dst,root_info,args):
         except Exception:
             print("ATL14_attrs_meta.py: failed to open tile file : "+tile)
     for file in ATL11_files:
-        fa = attributes_for_ATL11_file(file, delta_time_range, args)
+        fa = attributes_for_ATL11_file(file, args)
         # add attributes to list, if not already present
         if fa not in lineage:
             lineage.append(fa)
-    # convert starting and ending delta times to UTC
-    sUTCtime, eUTCtime = [
-        timescale.timescale.from_deltatime(delta_time, epoch=timescale.time._atlas_sdp_epoch, standard='GPS').to_string()
-                for delta_time in [delta_time_range['start'], delta_time_range['end']] ]
+
     # reduce to unique lineage attributes (no repeat files)
     #    sorted(set(lineage))
     slineage={ key:[] for key in lineage[0] }
@@ -218,10 +210,31 @@ def set_lineage(dst,root_info,args):
     for field, val in slineage.items():
         dst['METADATA/Lineage/ATL11'].setncattr(field, val)
 
-# set time attributes
+# set time range
+def set_time_range(dst, root_info, args):
+    # set the nominal time range of the product.
+    # N.B.  This is coded explicitly to satisfy requirements from SIPS and NSIDC
+    t_span = args.t_crop
+    datetime_start = datetime(2019, 1, 1, 0, 0, 0) + timedelta(days = (t_span[0]-2019.0)*365.25)
+    datetime_end = datetime(2019, 1, 1, 0, 0, 0) + timedelta(days = (t_span[1]-2019.0)*365.25)
+
+    # Give each region a unique time offset:
+    unicode_vals=[]
+    for char in args.region:
+        unicode_vals.append(ord(char))
+    datetime_start += timedelta( seconds = int(unicode_vals[0]*3+unicode_vals[1]*2) )
+    # convert starting and ending delta times to UTC
+    sUTCtime = (str(datetime_start.date())+'T'+
+                    datetime_start.strftime("%H:%M:%S.%f")+'Z')
+    eUTCtime = (str(datetime_end.date())+'T'+
+                    datetime_end.strftime("%H:%M:%S.%f")+'Z')
+    if args.verbose:
+        print(f"ATL1415_attrs_meta: UTC time range: {sUTCtime} - {eUTCtime}")
+
+    # set time attributes
     root_info.update({'time_coverage_start': sUTCtime})
     root_info.update({'time_coverage_end': eUTCtime})
-    root_info.update({'time_coverage_duration': delta_time_range['end'] - delta_time_range['start']})
+    root_info.update({'time_coverage_duration': int((datetime_start-datetime_end).seconds)})
     dst['/METADATA/Extent'].setncattr('rangeBeginningDateTime',sUTCtime)
     dst['/METADATA/Extent'].setncattr('rangeEndingDateTime',eUTCtime)
 

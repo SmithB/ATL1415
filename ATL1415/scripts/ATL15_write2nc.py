@@ -68,8 +68,7 @@ def update_attr_dict(attr_template, args, res_m, res_km):
         lag_monthly_names[lag] = f'{months:03d}mo'
         lag_names[lag] = lag_adjectives[lag_adjective_key_list[this]]
         lag_months[lag] = months
-    if args.verbose:
-        print(lag_names)
+
     lags = args.dzdt_lags
     new_attrs=[]
     average_key='None' if args.avg_scale is None else '{res}'
@@ -162,7 +161,7 @@ def get_group_attrs(group,  all_attrs):
             group_attrs[row['field']] = {attr_name: attr for attr_name, attr in row.items()}
     return group_attrs, group_description
 
-def ATL15_write2nc_monthly(args):
+def ATL15_write2nc(args):
 
     with importlib.resources.open_text('ATL1415.resources', 'ATL15_output_attrs.csv', encoding='utf-8-sig') as attrfile:
         all_attrs = list(csv.DictReader(attrfile))
@@ -176,7 +175,7 @@ def ATL15_write2nc_monthly(args):
     else:
         res_km = f'{res/1000:0.1f}'
     if args.verbose:
-        print(f"ATL15_write2nc_monthly: making nc for resolution {res_km} km, for lags {args.dzdt_lags}")
+        print(f"ATL15_write2nc: making nc for resolution {res_km} km, for lags {args.dzdt_lags}")
 
     # establish output file
     avg_name = f'{res_km}km'
@@ -211,8 +210,6 @@ def ATL15_write2nc_monthly(args):
             else:
                 months = int(round(lag * args.delta_t*12))
                 group = f'dhdt_{months:03d}mo'
-            if args.verbose:
-                print('-'*20 + '\n'+ group+'\n'+'-'*20)
             try:
                 group_attrs, group_description = get_group_attrs(group,  all_attrs)
             except Exception as e:
@@ -231,8 +228,10 @@ def ATL15_write2nc_monthly(args):
                 fh_in[time_attrs['source_file']] = h5py.File(os.path.join(args.base_dir, time_attrs['source_file']), 'r')
             raw_time = np.array(fh_in[time_attrs['source_file']][time_attrs['source_group']][time_attrs['source_var']])
             half_window = 0.0 if lag is None else lag * args.delta_t / 2.0
+            # introduce a time tolerance so that we do not crop epochs unnecessarily b/c of floating-point errors
+            t_tol = 3/365.25
             if args.t_crop is not None:
-                t_mask = (raw_time - half_window >= args.t_crop[0]) & (raw_time + half_window <= args.t_crop[1])
+                t_mask = (raw_time - half_window + t_tol >= args.t_crop[0]) & (raw_time + half_window - t_tol <= args.t_crop[1])
             else:
                 t_mask = np.ones(raw_time.shape, dtype=bool)
 
@@ -306,7 +305,7 @@ def main():
     parser.add_argument('--avg_scale', type=str, default=None, help='average scale')
     parser.add_argument('--avg_scales', type=str, default=None, help='list of average scales, comma separated')
     parser.add_argument('--dzdt_lags', type=str, default='1,4', help='lags for which to calculate dz/dt, comma-separated list, no spaces')
-    parser.add_argument('--t_crop', type=str, default='2019,2050',
+    parser.add_argument('--t_crop', type=str, required=True,
                         help='time range to include in the output, first_year,last_year AD (comma-separated, no spaces); '
                              'epochs are dropped unless their full averaging window falls within this range')
     parser.add_argument('--grid_spacing','-g', type=str, help='DEM (meters),dh maps xy (meters),dh_maps time (years): comma-separated, no spaces', default='100.,1000.,0.25')
@@ -314,6 +313,7 @@ def main():
     parser.add_argument('--verbose', action='store_true')
 
     args, unknown = parser.parse_known_args()
+
     args.grid_spacing = args.grid_spacing.split(',')
     for ind, spacing in enumerate(args.grid_spacing):
         if '/' in spacing:
@@ -331,7 +331,7 @@ def main():
             args.delta_t = args.delta_t[0] / args.delta_t[1]
 
     args.dzdt_lags =  [*map(int, args.dzdt_lags.split(','))]
-    args.t_crop = [*map(float, args.t_crop.split(','))] if args.t_crop else None
+    args.t_crop = [*map(float, args.t_crop.split(','))]
 
     if args.ATL11_lineage_dir is None:
         # if ATL11 lineage_dir is not specified, assume that the grandparent of the ATL11_index works
@@ -339,14 +339,14 @@ def main():
 
     if args.tiles_dir is None:
         args.tiles_dir=os.path.join(args.base_dir, 'prelim')
-
-    print('args',args)
+    if args.verbose:
+        print('ATL15_write2nc args',args)
     if args.avg_scales is not None:
         for avg_scale in [None]+[*map(int, args.avg_scales.split(','))]:
             args.avg_scale=avg_scale
-            fileout = ATL15_write2nc_monthly(args)
+            fileout = ATL15_write2nc(args)
     else:
-        fileout = ATL15_write2nc_monthly(args)
+        fileout = ATL15_write2nc(args)
 
 if __name__=='__main__':
     main()
