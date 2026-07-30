@@ -4,14 +4,34 @@
 import glob
 import numpy as np
 import re
-import sys
 import pointCollection as pc
 import os
 import stat
 import ATL1415
+from ATL1415.scripts.setup_slurm_run import setup_directories
 
 
 def make_fields(dzdt_lags, t_res=0.25, skip_z0=False ):
+    """
+    Build the field lists and time ranges to mosaic for each output group.
+
+    Parameters
+    ----------
+    dzdt_lags : iterable
+        dzdt lags (in grid-spacing units) to generate dzdt/avg_dzdt groups for.
+    t_res : float, optional
+        dz/dt grid time resolution, used to convert lags to years. The default is 0.25.
+    skip_z0 : bool, optional
+        if true, omit the z0 group. The default is False.
+
+    Returns
+    -------
+    fields : dict
+        mapping of group name to list of fields to mosaic.
+    time_ranges : dict
+        mapping of group name to [start, end] year range for the mosaic.
+
+    """
 
     fields={}
     if not skip_z0:
@@ -41,6 +61,23 @@ def make_fields(dzdt_lags, t_res=0.25, skip_z0=False ):
     return fields, time_ranges
 
 def make_200km_tiles(region_dir, tile_W=200e3):
+    """
+    Find or build the list of 200km-tile centers for a region.
+
+    Parameters
+    ----------
+    region_dir : str
+        directory containing the region's prelim tile output.
+    tile_W : float, optional
+        width of the tiles into which the small tiles are grouped, in meters.
+        The default is 200e3.
+
+    Returns
+    -------
+    xyc : list
+        list of [x, y] tile-center coordinates.
+
+    """
     print("looking for tiles for "+region_dir)
     tile_ctr_file=os.path.join(region_dir,'200km_tile_list.txt')
 
@@ -146,12 +183,10 @@ def main():
 
     if os.path.isdir(run_dir+'/logs'):
         N=len(glob.glob(run_dir+'/logs_round_*'))
-        os.rename(run_dir+'/logs', run_dir+f'/logs_round_{N+1}')
-        os.rename(run_dir+'/done', run_dir+f'/done_round_{N+1}')
+        for sub in ['logs','done','active_logs','error_logs']:
+            os.rename(run_dir+'/'+sub, run_dir+f'/{sub}_round_{N+1}')
 
-    for sub in ['queue','logs','done','running']:
-        if not os.path.isdir(run_dir+'/'+sub):
-            os.mkdir(run_dir+'/'+sub)
+    setup_directories(run_dir)
 
     non_sigma_fields={}
     sigma_fields={}
@@ -168,7 +203,6 @@ def main():
 
         task_file=f'{run_dir}/queue/task_{count+1}'
         with open(task_file,'w') as fh:
-            fh.write("source activate IS2\n")
             for group in fields.keys():
                 pad=args.pad
                 feather=args.feather
@@ -194,15 +228,23 @@ def main():
                     time_str = f"--t_range {time_ranges[group][0]} {time_ranges[group][1]}"
                 if args.lags_only and 'lag' not in group:
                     continue
-                fh.write(f"make_mosaic.py -w -R -d {region_dir} -g '{step}/E*.h5' -r {search_bounds_str} -f {feather} -p {pad} -c {tile_bounds_str} -G {group} -F {non_sigma_fields[group]} -O {out_file} {spacing_str} {time_str}\n")
+                # bundled lines run one after another regardless of each
+                # other's exit status; self-report failure via a grep-able
+                # marker so an early line's crash isn't masked by a later
+                # line's clean exit (see packable_job.txt's error_logs check)
+                rc_suffix = '; rc=$?; [ $rc -ne 0 ] && echo "##TASK_LINE_FAILED## rc=$rc"; (exit $rc)\n'
+                fh.write(f"make_mosaic.py -w -R -d {region_dir} -g '{step}/E*.h5' -r {search_bounds_str} -f {feather} -p {pad} -c {tile_bounds_str} -G {group} -F {non_sigma_fields[group]} -O {out_file} {spacing_str} {time_str}"+rc_suffix)
                 if not args.skip_sigma:
-                    fh.write(f"make_mosaic.py -w  -d {region_dir} -g 'prelim/E*.h5' -r {search_bounds_str} -f {feather} -p {pad} -c {tile_bounds_str} -G {group} -F {sigma_fields[group]} -O {out_file} {spacing_str} {time_str}\n")
+                    fh.write(f"make_mosaic.py -w  -d {region_dir} -g 'prelim/E*.h5' -r {search_bounds_str} -f {feather} -p {pad} -c {tile_bounds_str} -G {group} -F {sigma_fields[group]} -O {out_file} {spacing_str} {time_str}"+rc_suffix)
         st=os.stat(task_file)
         os.chmod(task_file, st.st_mode | stat.S_IEXEC)
 
-    with open('slurm_scripts/slurm_mos_run','r') as fh_in:
-        with open(run_dir+'/slurm_mos_run','w') as fh_out:
-            for line in fh_in:
-                fh_out.write(line.replace('LAST_TASK', str(count+1)).replace('_XX_', '_'+args.name+'_'))
+    ATL1415.make_slurm_file(os.path.join(run_dir, 'slurm_mos_run'),
+                subs={'JOB_NAME': f'1415_{args.name}_mos',
+                      'TIME': "04:00:00",
+                      'NUM_TASKS': "4",
+                      'ENVIRONMENT': args.environment,
+                      'JOB_NUMBERS': f'1-{count+1}'})
+
 if __name__=='__main__':
     main()
