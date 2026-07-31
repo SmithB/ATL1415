@@ -76,6 +76,7 @@ dev = ["flake8", "pytest>=4.6", "pytest-cov"]
 "make_mosaic_jobs.py" = "ATL1415.scripts.make_mosaic_jobs:main"
 "make_GL_ATL1415_queue.py" = "ATL1415.scripts.make_GL_ATL1415_queue:main"
 "make_field_size_report.py" = "ATL1415.scripts.make_field_size_report:main"
+"setup_AA_sectors.py" = "ATL1415.scripts.setup_AA_sectors:main"
 "setup_ATL1415_region.py" = "ATL1415.scripts.setup_ATL1415_region:main"
 "setup_ATL1415_run.py" = "ATL1415.scripts.setup_ATL1415_run:main"
 "setup_slurm_run.py" = "ATL1415.scripts.setup_slurm_run:main"

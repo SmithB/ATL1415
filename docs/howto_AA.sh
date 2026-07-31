@@ -29,7 +29,8 @@ make_200km_tiles.py  ~/shared/ATL14_processing/rel005/south/AA AA -t 2018.75,202
 # then run the slurm_run in tile_run_AA
 scripts/make_200km_tiles.py  ~/shared/ATL14_processing/rel005/south/AA_44km AA --name AA_south --W 44000 --spacing 40000 -t 2018.75,2026.0
 
-# now run git_repos/notebooks/make_and_check_links.ipynb
+# split AA / AA_44km into sectors A1..A4:
+setup_AA_sectors.py ~/shared/ATL14_processing/rel005/south
 
 # then mosaic the tiles:
 for sector in A1 A2 A3 A4; do make_200km_to_mosaic_jobs.py -b /discover/nobackup/projects/icesat2/ATL14_processing/rel005/south/$sector -rr $sector -t 2018.75,2026.0; done
