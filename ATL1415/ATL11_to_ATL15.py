@@ -297,9 +297,14 @@ def set_three_sigma_edit_from_previous_product(data, xy0, Wxy,
     z0_interp = np.full(data.size, np.nan)
     for directory in previous_product_dirs:
         for nc_file in glob.glob(os.path.join(directory, 'ATL14_*.nc')):
-            g = pc.grid.data().from_nc(nc_file, fields=['h'], bounds=bounds)
+            try:
+                g = pc.grid.data().from_nc(nc_file, fields=['h'], bounds=bounds)
+            except IndexError:
+                g = None
             if g is None or g.shape is None:
                 continue
+            if verbose:
+                print(f'\tset_three_sigma_edit_from_previous_product: read {nc_file}')
             zi = g.interp(data.x, data.y, field='h')
             fill = np.isnan(z0_interp) & np.isfinite(zi)
             z0_interp[fill] = zi[fill]
@@ -308,15 +313,20 @@ def set_three_sigma_edit_from_previous_product(data, xy0, Wxy,
     dz_interp = np.full(data.size, np.nan)
     for directory in previous_product_dirs:
         for nc_file in glob.glob(os.path.join(directory, 'ATL15_*1km_*.nc')):
-            g = pc.grid.data().from_nc(nc_file, fields=['delta_h'],
-                                       group='delta_h', bounds=bounds)
-            if last_epoch is not None:
-                g=g[:, :, :last_epoch]
-                if verbose:
-                    print('\tset_three_sigma_edit_from_previous_product: \n'
-                          f'\t\tprevious ATL15 ends at {g.t[-1]/365.25+2018:2.2f}')
+            try:
+                g = pc.grid.data().from_nc(nc_file, fields=['delta_h'],
+                                           group='delta_h', bounds=bounds)
+                if last_epoch is not None:
+                    g=g[:, :, :last_epoch]
+                    if verbose:
+                        print('\tset_three_sigma_edit_from_previous_product: \n'
+                              f'\t\tprevious ATL15 ends at {g.t[-1]/365.25+2018:2.2f}')
+            except IndexError:
+                g=None
             if g is None or g.shape is None:
                 continue
+            if verbose:
+                print(f'\tset_three_sigma_edit_from_previous_product: read {nc_file}')
             g.t = 2018 + g.t/365.25
             zi = g.interp(data.x, data.y, t=data.time, field='delta_h')
             fill = np.isnan(dz_interp) & np.isfinite(zi)
@@ -499,10 +509,11 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
                 rock=rock_mask.interp(mask_data.x, mask_data.y, gridded=True, field='reject') > 0.5
                 for band in range(mask_data.z.shape[2]):
                     mask_data.z[:,:,band] *= (rock==0)
-            while mask_data.t[-1] < ctr['t']+W['t']/2:
-                # append a copy of the last field in the mask data to the end of the mask data
-                mask_data.z = np.concatenate([mask_data.z,mask_data.z[:,:,-1:]], axis=2)
-                mask_data.t = np.concatenate([mask_data.t,mask_data.t[-1:]+1], axis=0)
+            if mask_data.t is not None:
+                while mask_data.t[-1] < ctr['t']+W['t']/2:
+                    # append a copy of the last field in the mask data to the end of the mask data
+                    mask_data.z = np.concatenate([mask_data.z,mask_data.z[:,:,-1:]], axis=2)
+                    mask_data.t = np.concatenate([mask_data.t,mask_data.t[-1:]+1], axis=0)
             mask_data.__update_size_and_shape__()
             mask_data.z[~np.isfinite(mask_data.z)]=0.
             mask_file=None
@@ -652,7 +663,6 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
             group='', bounds = data.bounds(pad=2.e3), fields=['h','h_sigma'])
         data.assign(z_ref = ref_dem.interp(data.x, data.y, field='h'))
         data.assign(sigma_zref = ref_dem.interp(data.x, data.y, field='h_sigma'))
-        E_RMS0['z0'] = np.nanmedian(data.sigma_zref)
         data.z -= data.z_ref
         data.index(np.isfinite(data.z) & (np.abs(data.z) < DEM_tol))
 
@@ -1119,6 +1129,7 @@ def main():
     if args.calc_error_file is None and 'm' in S and len(S['m'].keys()) > 0:
         # if this isn't an error-calculation run, save the gridded fit data to the output file
         save_fit_to_file(S, args.out_name, dzdt_lags=args.dzdt_lags, reference_epoch=args.reference_epoch)
+        save_field_size_report(args.out_name)
         status=0
     elif 'E' in S and len(S['E'].keys()) > 0:
         # If this is an error-calculation run, save the errors to the output file
@@ -1128,7 +1139,7 @@ def main():
         save_errors_to_file(S, args.out_name, dzdt_lags=args.dzdt_lags, reference_epoch=args.reference_epoch)
         save_field_size_report(args.out_name)
         status=0
-        
+
     print(f"done with {args.out_name}")
     return status
 
