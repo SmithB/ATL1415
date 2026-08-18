@@ -12,6 +12,9 @@ shift
 loc_file=$1
 shift
 
+suffix=$1
+shift
+
 if [ ! -f $release_file ]; then
     echo "release file not found"; exit
 fi
@@ -43,8 +46,8 @@ fi
 > AA_2nc_queue.txt
 
 for reg in $regions; do
-    echo "ATL14_write2nc.py @${root}/rel${release}/south/${reg}/input_args_${reg}.txt" >> AA_2nc_queue.txt
-    echo "ATL15_write2nc.py @${root}/rel${release}/south/${reg}/input_args_${reg}.txt" >> AA_2nc_queue.txt
+    echo "ATL14_write2nc.py @${root}/rel${release}/south${suffix}/${reg}/input_args_${reg}.txt" >> AA_2nc_queue.txt
+    echo "ATL15_write2nc.py @${root}/rel${release}/south${suffix}/${reg}/input_args_${reg}.txt" >> AA_2nc_queue.txt
 done
 
 setup_slurm_run.py --run_name AA_2nc -q AA_2nc_queue.txt --time 03:00:00 -j 8 -e IS2
