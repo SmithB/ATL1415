@@ -83,9 +83,9 @@ def make_mosaic_jobs(base, region, lags, skip_z0=False, run=False):
         this_replace = '-R'
 
         field_list.append("sigma_z0")
-        for field in field_list:
-            print(field)
-            with open(f"{mosaic_run}/queue/task_{task}", 'w') as f:
+        with open(f"{mosaic_run}/queue/task_{task}", 'w') as f:
+            for field in field_list:
+                print(field)
                 f.write(f"make_mosaic.py {crop} {this_replace} -d {base}/200km_tiles/z0 -g '*.h5' -O {base}/z0.h5 --in_group z0/ -F {field}\n")
                 this_replace = ''
 
