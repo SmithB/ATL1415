@@ -96,11 +96,12 @@ def check_source_dirs(top_N, top_S):
     None.
 
     """
-    missing = [thedir for thedir in [top_N, top_S] if not os.path.isdir(thedir)]
-    if missing:
-        for thedir in missing:
+    for thedir in [top_N, top_S]:
+        if thedir is None:
+            continue
+        if not os.path.isdir(thedir):
             print(f"setup_AA_sectors.py:\n\tError: source directory not found: {thedir}")
-        sys.exit(1)
+            sys.exit(1)
 
 
 def make_sector_dirs(top_dir):
@@ -182,6 +183,8 @@ def link_200km_tiles(top_dir, top_S, top_N, near_pole_radius):
         return np.all(np.abs(ctr_m) < near_pole_radius)
 
     for src_top, use_south in zip([top_S, top_N], [True, False]):
+        if src_top is None:
+            continue
         src_subs = sorted(glob.glob(os.path.join(src_top, '200km_tiles', '*')))
         print(f"linking 200km tiles from {src_top}: {len(src_subs)} field(s)")
         for src_sub in src_subs:
@@ -233,6 +236,8 @@ def link_tiles(top_dir, top_S, top_N, near_pole_radius, steps):
 
     for src, test in zip([top_S, top_N], [south_test, north_test]):
         for step in steps:
+            if src is None:
+                continue
             tiles = glob.glob(os.path.join(src, step, 'E*.h5'))
             print(f"linking {len(tiles)} {step} tiles from {src}")
             for tile in tiles:
@@ -350,7 +355,11 @@ def main():
     args, _ = parser.parse_known_args()
 
     top_N = os.path.join(args.top_dir, args.north_name)
-    top_S = os.path.join(args.top_dir, args.south_name)
+    
+    if args.near_pole_radius > 0:
+        top_S = os.path.join(args.top_dir, args.south_name)
+    else:
+        top_S = None
 
     check_source_dirs(top_N, top_S)
 
