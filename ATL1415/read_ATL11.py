@@ -32,7 +32,7 @@ def select_best_xover_index(D):
 
 def read_ATL11(xy0, Wxy, index_file, SRS_proj4, xover_tile_root=None,
                sigma_geo=6.5, sigma_radial=0.03, xover_cycles=[1,2],
-               verbose=False, hemisphere=None):
+               verbose=False, hemisphere=None, fs=None):
 
 
     bounds = [xy0[0]+np.array([-Wxy/2, Wxy/2]), xy0[1]+np.array([-Wxy/2, Wxy/2])]
@@ -52,7 +52,8 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, xover_tile_root=None,
     D_xo, xover_file_list = read_ATL11_xovers(bounds, SRS_proj4,
                                               xover_tile_dir = xover_tile_root,
                                               xover_cycles = xover_cycles,
-                                              verbose=verbose, hemisphere=hemisphere)
+                                              verbose=verbose, hemisphere=hemisphere,
+                                              fs=fs)
     return pc.data().from_list([D_at, D_xo]), ATL11_file_list + xover_file_list
 
 
@@ -131,7 +132,7 @@ def read_ATL11_at(bounds, index_file, SRS_proj4,
 
     return pc.data().from_list(D_list), D11_files
 
-def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2], hemisphere=None, verbose=True):
+def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2], hemisphere=None, verbose=True, fs=None):
     '''
     read crossover data from tiles
 
@@ -147,6 +148,11 @@ def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2]
         crossover cycles to be read. The default is [1,2].
     verbose : bool, optional
         if True, report status
+    fs : s3fs.S3FileSystem, optional
+        filesystem to reuse for remote tiles (only relevant if the tiling
+        schema's 'source' specifies a remote source). If None and a remote
+        source is used, one is obtained automatically and reused across
+        every tile/cycle in this call.
 
     Returns
     -------
@@ -165,31 +171,28 @@ def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2]
     D_x=[]
     D_d=[]
     D_r=[]
+    xover_files_used = []
     for x_cycle in xover_cycles:
         schema_file = os.path.join(xover_tile_dir,
                                    f'cycle_{x_cycle:02d}',
                                    f'200km_tiling_{hemi}.json')
-        xover_files = pc.tilingSchema().from_file(schema_file).filenames_for_box(bounds)
-        xover_files_used = []
-        for xover_file in xover_files:
-            if not os.path.isfile(xover_file):
-                if verbose:
-                    print(f'read_ATL11_xovers: {xover_file} not found')
-                continue
-
-            D_ri = pc.data().from_h5(xover_file).get_xy(proj4_string=SRS_proj4)
-            keep = (D_ri.x >= bounds[0][0]) & (D_ri.x <= bounds[0][1]) &\
-                 (D_ri.y >= bounds[1][0]) & (D_ri.y <= bounds[1][1])
-            if not np.any(keep):
-                continue
-            D_ri.index(keep)
-            D_xi = pc.data().from_h5(xover_file, group='crossing_track')
-            D_xi.index(keep)
-            D_di = pc.data().from_h5(xover_file, group='datum_track',
-                                     fields=['rgt','ref_pt','pair_track',
-                                             'dem_h','geoid_h','fit_quality',
-                                             'n_slope','e_slope'])
-            D_di.index(keep)
+        schema = pc.tilingSchema().from_file(schema_file)
+        resolved, fs = schema.resolve_files_for_box(bounds, fs=fs, verbose=verbose)
+        for tile_name, xover_file in resolved.items():
+            with pc.io_utils.open_h5(xover_file, fs=fs) as h5f:
+                D_ri = pc.data().from_h5(xover_file, h5_f=h5f).get_xy(proj4_string=SRS_proj4)
+                keep = (D_ri.x >= bounds[0][0]) & (D_ri.x <= bounds[0][1]) &\
+                     (D_ri.y >= bounds[1][0]) & (D_ri.y <= bounds[1][1])
+                if not np.any(keep):
+                    continue
+                D_ri.index(keep)
+                D_xi = pc.data().from_h5(xover_file, group='crossing_track', h5_f=h5f)
+                D_xi.index(keep)
+                D_di = pc.data().from_h5(xover_file, group='datum_track',
+                                         fields=['rgt','ref_pt','pair_track',
+                                                 'dem_h','geoid_h','fit_quality',
+                                                 'n_slope','e_slope'], h5_f=h5f)
+                D_di.index(keep)
             D_xi.assign(cycle_number=np.zeros_like(D_ri.x)+x_cycle)
             D_x += [D_xi]
             D_d += [D_di]
