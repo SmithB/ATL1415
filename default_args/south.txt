@@ -1,0 +1,3 @@
+--ATL11_index=ATL11_007_0329_v02/south/index/GeoIndex.h5
+--ATL11_xover_dir=/home/besmith4/nobackup/ATL11/rel007_0329_v02/xover_tiles/
+--Hemisphere=-1
