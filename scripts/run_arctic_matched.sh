@@ -15,8 +15,6 @@ shift
 period_file=$1
 shift
 
-
-
 if [ ! -f $release_file ]; then
     echo "release file not found"; exit
 fi
@@ -52,7 +50,7 @@ echo ""
 if [ $# -eq 0 ]; then
     regions="RA IS CN CS SV"
 else
-    regions=$1
+    regions=$*
 fi
 
 for reg in $regions; do
