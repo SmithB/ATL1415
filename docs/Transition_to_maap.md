@@ -117,21 +117,46 @@ There is no chaining/DAG mechanism -- jobs are independent and couple only throu
     [ X ] Greenland tide mask
         - masks/Arctic/BedMachineGreenland-v6_shelf_edited.tif, 1.6 MiB, staged 2026-09-03;
           that is what GL_0331.txt names as --tide_mask_file
-    [ ] Download Antarctic and Greenland masks from Zenodo (inc. tide adj mask and Antarctic shelf only)
-        - staged and REAL under s3://maap-ops-workspace/ben_smith/ATL1415/masks/ (2026-09-03):
-          Arctic/{GrimpIceMask_2018.1_2026.0_100m, GL_d3z_dx2dt_scaling_map, GL_Ed2z0dx2,
-          BedMachineGreenland-v6_shelf_edited}.tif, Antarctic/{BedMachineAntarcticaOceanv2,
-          AA_Ed2z0dx2}.tif and Antarctic/Greene_22_shelf_plus_10m_mask_2018_2026.25_v2_240m.h5
-          (357 MiB).  That covers every mask GL_0331.txt names, and all but one of AA_0331.txt's.
-        - STILL MISSING: Antarctic/ATL11_0314_tide_adj_scale_200m.h5, the tide-adjustment grid
-          AA_0331.txt requires (--tide_adjustment).  Both the repo copy and the S3 copy are
-          134-byte git-lfs POINTERS; the real object is 203 MB.  Same for the shelf-only
-          variants (Greene_22_shelf_plus_10m_mask{,_1km,_240m,_full},
+    [ X ] Download Antarctic and Greenland masks from Zenodo
+        - SOURCE: Zenodo record 22259649, doi:10.5281/zenodo.22259649, "Ice and tide masks for
+          ICESat-2 ATL14/15 data products" (Smith & Sutterley, CC-BY-4.0, published 2026-09-02).
+          This is now the canonical distribution point for these masks -- prefer it over the
+          repo's lfs copies, and expect a new version 3-4 times a year with each ATL14/15 release.
+        - all 5 files downloaded and md5-verified against the Zenodo manifest, then staged to
+          s3://maap-ops-workspace/ben_smith/ATL1415/masks/ (2026-09-03) and re-verified by
+          md5 after the copy:
+            Antarctic/AntarcticIceMask_2018.00_2026.25_240m_v4.1.tif        23.1 MiB
+            Antarctic/AntarcticIceMask_..._v4.1_time_stamps.txt
+            Antarctic/ATL11_0314_tide_adj_scale_200m.tif                   130.6 MiB
+            Arctic/GreenlandIceMask_2018.1_2026.0_100m_v4.1.tif             22.9 MiB
+            Arctic/GreenlandIceMask_..._v4.1_time_stamps.txt
+        - the ice masks are TIME-VARYING multi-band geotiffs: 40 bands each, one per time slice,
+          the decimal year in a per-band 'time' tag (AA 2018.200-2026.250 on EPSG:3031/240 m;
+          GL 2018.00-2025.83 on EPSG:3413/100 m; neither has duplicate bands -- that was the
+          v4.0 bug v4.1 fixes).  That is exactly what pc.grid.data.from_gdal reads: it builds
+          self.t from the 'time' tags and selects bands with t_range, which is how
+          ATL11_to_ATL15 already calls from_file for --mask_file.  The sidecar time_stamps.txt
+          is informational; nothing in the code reads it.
+        - the tide-adjustment grid is now a single-band geotiff (EPSG:3031, 200 m, float32,
+          NaN fill), NOT the .h5 the args used to name -- so AA_0331.txt needed BOTH
+          --tide_adjustment_file and --tide_adjustment_format changed (see Defaults below).
+          Values over Ross are 0-1, mean 0.993, as expected for a flexure scaling.
+        - defaults repointed to match (AA_0331.txt, GL_0331.txt) -- see Defaults below.
+        - NOT on Zenodo, so still 134-byte git-lfs POINTERS both in the repo and on S3:
+          the Antarctic shelf-only variants (Greene_22_shelf_plus_10m_mask{,_1km,_240m,_full},
           scripps_antarctica_IceShelves1km_v1, bedmap2_thickness_gt_50_plus_sio_shelves) and
-          for Arctic/{U_Texas_ice_mask_2019_100m,_1km, Ice_Ocean_Bed_100m_2019_compress,
-          BedMachineGreenland-2021-04-20_shelf_125m}.
-        - cause: the mask upload copied the repo tree, which had never been lfs-pulled, so
-          anything not separately re-uploaded landed as a pointer.  See the lfs item under OTHER.
+          Arctic/{U_Texas_ice_mask_2019_100m,_1km, Ice_Ocean_Bed_100m_2019_compress,
+          BedMachineGreenland-2021-04-20_shelf_125m}.  No rel_006 args file names any of them,
+          so nothing is blocked; they matter only if an older processing string is revived.
+        - cause of those pointers: the mask upload copied the repo tree, which had never been
+          lfs-pulled, so anything not separately re-uploaded landed as a pointer.  See the lfs
+          item under OTHER.
+        - LEFT IN PLACE on the bucket, now unreferenced: the superseded Antarctic mask
+          Greene_22_shelf_plus_10m_mask_2018_2026.25_v2_240m.h5 (357 MiB), the superseded
+          Arctic/GrimpIceMask_2018.1_2026.0_100m.tif, and the dead 134-byte
+          Antarctic/ATL11_0314_tide_adj_scale_200m.h5 pointer.  Delete when you are confident
+          in the v4.1 run; the .h5 pointer in particular is a trap, since it has the name the
+          old args expected but no content.
     [ ] masks/EGM2008_geoid_h.nc -- rel_006_0331.txt passes --geoid_file for it, it is not in
         the repo (only named in .gitattributes) and nothing matching it is on the bucket.
 [ X ] Set up a location fromfile for MAAP (ADE)
@@ -174,6 +199,31 @@ There is no chaining/DAG mechanism -- jobs are independent and couple only throu
       should authenticate there as it does in the ADE -- unconfirmed, see the smoke-test TBD
 [ ] Speed tests and costwise benchmarks
     - nothing in the MAAP docs about per-job or per-queue cost; will have to be measured
+
+## Defaults (processing strings)
+[ X ] Repoint the rel_006 0331 args at the published Zenodo v4.1 masks (2026-09-03).
+    default_args/AA_0331.txt:
+      --mask_file             Antarctic/Greene_22_shelf_plus_10m_mask_2018_2026.25_v2_240m.h5
+                           -> Antarctic/AntarcticIceMask_2018.00_2026.25_240m_v4.1.tif
+      --tide_adjustment_file  Antarctic/ATL11_0314_tide_adj_scale_200m.h5
+                           -> Antarctic/ATL11_0314_tide_adj_scale_200m.tif
+      --tide_adjustment_format  h5 -> geotif   (argparse choices are geotif/h5/nc)
+    default_args/GL_0331.txt:
+      --mask_file             Arctic/GrimpIceMask_2018.1_2026.0_100m.tif
+                           -> Arctic/GreenlandIceMask_2018.1_2026.0_100m_v4.1.tif
+    - the AA tide-adjustment line was BROKEN before this: the .h5 it named is a 134-byte lfs
+      pointer both in the repo and on S3, so --tide_adjustment could never have worked on MAAP.
+    - the two ice-mask swaps are a DATA VERSION CHANGE, not just a rename: v4.1 is the published
+      successor at the same grid and time span, but it has not been run end-to-end here, and
+      neither mask has been compared band-for-band against the file it replaces.
+    - reading the .tif through the geotif branch also means field_mapping=dict(z='tide_adj_scale')
+      in ATL11_to_ATL15.read_ATL11_data is now inert: from_gdal swallows it in **kwargs and puts
+      the band in .z anyway, which is the field .interp() defaults to.  Same result, but the
+      kwarg no longer documents anything -- worth deleting if the h5 path is retired.
+[ ] Run one AA tile and one GL tile against the v4.1 masks before trusting them in production.
+    Nothing on this path has been executed: pointCollection and LSsurf are not importable in the
+    ADE notebook env, so the checks above are file-format checks (gdal band tags, projections,
+    value ranges), not a solve.
 
 ## OTHER: 
 [ ] There are lfs-tracked files that get overwritten when ATL1415 gets installed.  These should be cleaned up.
