@@ -33,9 +33,13 @@ dependencies = [
     "shapely",
     "cartopy",
     "imageio",
-    "pointCollection @git+https://github.com/SmithB/pointCollection.git",
-    "LSsurf @ git+https://github.com/smithb/LSsurf.git",
-    "SMBcorr @ git+https://github.com/smithb/SMBcorr.git"
+    # [cloud] pulls earthaccess/s3fs/fsspec, without which the ATL11 cloud read
+    # path fails at import.  The extra is purely additive, so this one install
+    # also satisfies the plain pointCollection that LSsurf resolves to.
+    "pointCollection[cloud] @ git+https://github.com/SmithB/pointCollection.git",
+    "LSsurf @ git+https://github.com/smithb/LSsurf.git"
+    # SMBcorr is NOT required: it is needed only for the --firn_model correction,
+    # which is imported lazily.  See the [firn] extra below.
 ]
 
 classifiers=[
@@ -61,6 +65,11 @@ Issues = "https://github.com/SmithB/ATL1415/issues"
 [project.optional-dependencies]
 all = ["gdal", "notebook", "shapely"]
 dev = ["flake8", "pytest>=4.6", "pytest-cov"]
+# Only needed to run the firn correction (--firn_model, without --firn_grid_file).
+# Upstream tsutterley/SMBcorr rather than the smithb fork: the fork has diverged
+# (40 commits behind / 27 ahead) and still uses np.NaN, removed in numpy 2.0.
+# No tags upstream, so pin the sha -- a DPS build clones fresh every time.
+firn = ["SMBcorr @ git+https://github.com/tsutterley/SMBcorr.git@282e6be64e9b8b46e2f1deb6a89960dcd026705b"]
 
 [project.scripts]
 "ATL11_to_ATL15.py" = "ATL1415.ATL11_to_ATL15:main"

@@ -31,7 +31,6 @@ os.environ['OMP_NUM_THREADS']=N_THREADS
 import numpy as np
 from LSsurf.smooth_fit import smooth_fit
 from LSsurf.calc_sigma_extra import calc_sigma_extra, calc_sigma_extra_on_grid
-from SMBcorr import assign_firn_variable
 import pointCollection as pc
 from ATL1415.lags import infer_dzdt_lags
 
@@ -618,6 +617,15 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
                 SMB_corr_from_grid(data,
                     model_file=os.path.join(firn_directory,firn_grid_file))
         else:
+            # SMBcorr is an optional dependency: it is only needed here, when a
+            # firn model is requested without a pre-gridded firn file.
+            try:
+                from SMBcorr.assign_firn_variable import assign_firn_variable
+            except ImportError as exc:
+                raise ImportError(
+                    f'--firn_model={firn_correction} requires SMBcorr, which is not '
+                    'installed.  Install it with "pip install ATL1415[firn]", or supply '
+                    'a pre-gridded firn model with --firn_grid_file instead.') from exc
             assign_firn_variable(data, firn_correction, firn_directory, hemisphere,
                              model_version=firn_version, subset_valid=False)
         # make the correction
