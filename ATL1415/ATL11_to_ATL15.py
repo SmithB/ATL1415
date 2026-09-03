@@ -364,6 +364,7 @@ def set_three_sigma_edit_from_previous_product(data, xy0, Wxy,
              f"({np.sum(data.three_sigma_edit[valid])/np.sum(valid)*100:2.1f}%) accepted") 
 
 def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
+            ATL11_earthaccess=False,\
             ATL11_xover_dir=None,\
             E_RMS={}, \
             t_span=[2019.25, 2020.5], \
@@ -421,7 +422,14 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
     Inputs:
         xy0: 2 elements specifying the center of the domain
         Wxy: (float) Width of the domain
-        ATL11_index: (string) Index file (from pointCollection.geoIndex) for ATL11 data
+        ATL11_index: (string) Index file (from pointCollection.geoIndex) for ATL11 data.
+            If ATL11_earthaccess is True, this is instead the root directory
+            of per-granule geoIndex files, and ATL11 granules are found by
+            searching NASA Earthdata Cloud (via earthaccess) for the tile's
+            bounding box and read directly from S3.
+        ATL11_earthaccess: (bool) if True, read ATL11 granules from NASA
+            Earthdata Cloud via earthaccess instead of a single local index
+            file; see ATL11_index.
         E_RMS: (dict) dictionary specifying constraints on derivatives of the ice-sheet surface.
         t_span: (2-element list of floats) starting and ending times for the output grids (in years CE)
         spacing: (dict) dictionary specifying the grid spacing for z0, dz, and dt
@@ -547,7 +555,8 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
     else:
         data, file_list = read_ATL11(xy0, Wxy, ATL11_index, SRS_proj4,
                                      sigma_geo=sigma_geo, sigma_radial=sigma_radial,
-                                     xover_tile_root=ATL11_xover_dir, hemisphere=hemisphere)
+                                     xover_tile_root=ATL11_xover_dir, hemisphere=hemisphere,
+                                     earthaccess=ATL11_earthaccess)
         if sigma_tol is not None and data is not None:
             data.index(data.sigma < sigma_tol)
         if data is not None:
@@ -865,7 +874,15 @@ def parse_args(argv=None):
         description="function to fit ICESat-2 data with a smooth elevation-change model", \
         fromfile_prefix_chars="@")
     parser.add_argument('--xy0', type=float, nargs=2, help="fit center location")
-    parser.add_argument('--ATL11_index', type=lambda p: os.path.abspath(os.path.expanduser(p)), required=True, help="ATL11 index file")
+    parser.add_argument('--ATL11_index', type=lambda p: os.path.abspath(os.path.expanduser(p)), required=True,
+        help="ATL11 index: a local geoIndex file (from pointCollection.geoIndex) covering the "
+             "archive, or -- if --ATL11_earthaccess is set -- the root directory of per-granule "
+             "geoIndex files, one 'ATL11_index_<cycles>_<release>_<version>/<granule>.h5' subtree "
+             "per release combo")
+    parser.add_argument('--ATL11_earthaccess', action='store_true',
+        help="read ATL11 granules from NASA Earthdata Cloud (S3) via earthaccess instead of a "
+             "single local index file -- granules are found by searching earthaccess for the "
+             "tile's bounding box, then --ATL11_index is used as the per-granule geoIndex root")
     parser.add_argument('--ATL11_xover_dir', type=str, help="ATL11 crossover directory.  Tiles should be in cycle_xx subdirectories")
     parser.add_argument('--Width','-W',  type=float, help="Width of grid")
     parser.add_argument('--time_span','-t', type=str, help="time span, first year,last year AD (comma separated, no spaces)")
@@ -1053,6 +1070,7 @@ def resolve_run_config(args):
 
 def build_fit_kwargs(args, cfg):
     return dict(ATL11_index=args.ATL11_index,\
+           ATL11_earthaccess=args.ATL11_earthaccess,\
            ATL11_xover_dir=args.ATL11_xover_dir,\
            Wxy=args.Width, E_RMS=cfg['E_RMS'], t_span=args.time_span, spacing=cfg['spacing'], \
            E_d3zdx2dt_scale_file=args.E_d3zdx2dt_scale_file,\

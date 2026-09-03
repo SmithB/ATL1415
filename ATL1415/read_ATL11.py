@@ -10,6 +10,58 @@ import numpy as np
 import os
 
 
+def _lonlat_bounding_box(bounds, SRS_proj4):
+    '''
+    Compute a geographic (lon/lat) bounding box for a projected [x,y] box,
+    for use in an earthaccess.search_data(bounding_box=...) call.
+
+    Samples the box's 4 corners, 4 edge midpoints, and center (9 points) --
+    plain corners can under-estimate the true lon/lat extent under
+    polar-stereographic curvature near the pole; a little slack costs
+    nothing since this only feeds a CMR candidate search over full
+    orbit-length granules.
+
+    Handles the antimeridian correctly: near-pole tiles routinely have
+    sample points on both sides of the +-180 deg discontinuity even when
+    nowhere near the true pole singularity. In that case the returned
+    lon_min > lon_max, which is how a CMR bounding_box search signals
+    "crosses the antimeridian" -- this is intentional, not a bug. If the
+    box appears to span (nearly) the full longitude range even after
+    accounting for that, it's assumed to contain the pole itself, and the
+    full (-180, 180) longitude range is returned.
+
+    inputs:
+        bounds: 2-element iterable of 2-element iterables, [[xmin,xmax],[ymin,ymax]]
+        SRS_proj4: proj4 string for the coordinate system of bounds
+    output:
+        (lon_min, lat_min, lon_max, lat_max)
+    '''
+    xs = [bounds[0][0], bounds[0][1], np.mean(bounds[0])]
+    ys = [bounds[1][0], bounds[1][1], np.mean(bounds[1])]
+    xg, yg = np.meshgrid(xs, ys)
+    D = pc.data().from_dict({'x': xg.ravel(), 'y': yg.ravel()}).get_latlon(proj4_string=SRS_proj4)
+    lat_min, lat_max = D.latitude.min(), D.latitude.max()
+    lon = D.longitude
+    lon_min, lon_max = lon.min(), lon.max()
+    if lon_max - lon_min > 180:
+        # points are likely wrapped around +-180, not genuinely spanning
+        # most of the globe (true for any tile far smaller than the earth,
+        # unless it actually contains the pole) -- recompute in a shifted
+        # [0, 360) frame and convert back
+        lon_shifted = np.mod(lon, 360)
+        lo, hi = lon_shifted.min(), lon_shifted.max()
+        if hi - lo > 180:
+            # genuinely spans (near-)all longitudes -- the tile contains
+            # or nearly surrounds the pole; search the whole longitude range
+            lon_min, lon_max = -180., 180.
+        else:
+            # convert back to signed longitude; lon_min > lon_max here is
+            # intentional and correct, see docstring
+            lon_min = ((lo + 180) % 360) - 180
+            lon_max = ((hi + 180) % 360) - 180
+    return (lon_min, lat_min, lon_max, lat_max)
+
+
 def select_best_xover_index(D):
     """
     Select the best crossing-track data for each crossover location
@@ -32,14 +84,15 @@ def select_best_xover_index(D):
 
 def read_ATL11(xy0, Wxy, index_file, SRS_proj4, xover_tile_root=None,
                sigma_geo=6.5, sigma_radial=0.03, xover_cycles=[1,2],
-               verbose=False, hemisphere=None, fs=None):
+               verbose=False, hemisphere=None, fs=None, earthaccess=False):
 
 
     bounds = [xy0[0]+np.array([-Wxy/2, Wxy/2]), xy0[1]+np.array([-Wxy/2, Wxy/2])]
 
     D_at, ATL11_file_list = read_ATL11_at(bounds, index_file, SRS_proj4,
                   sigma_geo=sigma_geo,
-                  sigma_radial=sigma_radial)
+                  sigma_radial=sigma_radial,
+                  earthaccess=earthaccess, fs=fs, verbose=verbose)
 
     # exit if no data returned
     if D_at is None:
@@ -58,15 +111,31 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, xover_tile_root=None,
 
 
 def read_ATL11_at(bounds, index_file, SRS_proj4,
-               sigma_geo=6.5, sigma_radial=0.03):
+               sigma_geo=6.5, sigma_radial=0.03,
+               earthaccess=False, fs=None, verbose=False):
     '''
-    read ATL11 data from an index file
+    read ATL11 data from an index file, or from NASA Earthdata Cloud
 
     inputs:
         xy0 : 2-element iterable specifying the domain center
         Wxy : Width of the domain
-        index_file : file made by pointCollection.geoindex pointing at ATL11 data
+        index_file : local mode (earthaccess=False, default): file made by
+            pointCollection.geoindex pointing at ATL11 data, covering the
+            whole archive.
+            cloud mode (earthaccess=True): root directory of per-granule
+            geoIndex files (one 'ATL11_index_<cycles>_<release>_<version>/
+            <granule>.h5' subtree per release combo -- see
+            pointCollection.scripts.query_ATL11_cloud.index_path_for_granule).
         SRS_proj4: projection information for the data
+        earthaccess: if True, search NASA Earthdata Cloud (via earthaccess)
+            for ATL11 granules intersecting the domain and read them
+            directly from S3, using index_file as the per-granule geoIndex
+            root. Uses short_name='ATL11' and version_mismatch='error'.
+        fs: s3fs.S3FileSystem, optional (cloud mode only); reused across
+            granules to avoid re-deriving S3 credentials. If None, one is
+            obtained automatically.
+        verbose: if True (cloud mode only), report the number of candidate
+            granules found.
 
     output:
         D: data structure
@@ -79,12 +148,32 @@ def read_ATL11_at(bounds, index_file, SRS_proj4,
                         'cycle_stats' : {'tide_ocean','dac'},
                         'ref_surf':['e_slope','n_slope', 'x_atc', 'fit_quality', 'dem_h', 'geoid_h']}
 
-    try:
-        # catch empty data
-        D11_list=pc.geoIndex().from_file(index_file).query_xy_box(
-            *bounds, fields=field_dict_11)
-    except ValueError:
-        return None, []
+    if earthaccess:
+        from pointCollection.scripts.query_ATL11_cloud import (
+            find_ATL11_granules, index_path_for_granule, read_ATL11_granule_cloud_items)
+
+        bbox = _lonlat_bounding_box(bounds, SRS_proj4)
+        granules = find_ATL11_granules(bbox)
+        if fs is None:
+            fs = pc.io_utils.get_s3fs(daac='NSIDC')
+        if verbose:
+            print(f'read_ATL11_at: found {len(granules)} candidate granules')
+        D11_list = []
+        for granule in granules:
+            s3_url = granule.data_links(access='direct')[0]
+            idx_file = index_path_for_granule(os.path.basename(s3_url), index_file)
+            items = read_ATL11_granule_cloud_items(s3_url, idx_file, bounds[0], bounds[1],
+                                                    fields=field_dict_11, fs=fs,
+                                                    version_mismatch='error')
+            if items:
+                D11_list.extend(items)
+    else:
+        try:
+            # catch empty data
+            D11_list=pc.geoIndex().from_file(index_file).query_xy_box(
+                *bounds, fields=field_dict_11)
+        except ValueError:
+            return None, []
     if D11_list is None:
         return None, []
     D_list=[]
