@@ -1,0 +1,4 @@
+--mask_dir=/home/jovyan/my-private-bucket/ATL1415/masks/
+--tide_directory=/home/jovyan/my-private-bucket/tide_models
+--ATL14_root=/home/jovyan/ATL14_processing
+
