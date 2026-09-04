@@ -15,6 +15,11 @@ dependencies:
   - c-compiler
   - cxx-compiler
   - suitesparse
+  # LSsurf/smooth_fit.py imports threadpool_limits, but LSsurf's requirements.txt
+  # (which feeds its install_requires) omits threadpoolctl, so pip never pulls
+  # it.  smooth_fit is the core solve, so this would fail on every tile job, not
+  # just at import.  The real fix belongs upstream in SmithB/LSsurf.
+  - threadpoolctl
   # From conda so pip never tries to build cartopy's trace.cpp from source.
   - cartopy
   - pip
@@ -32,3 +37,13 @@ dependencies:
   - cython
   - tmux
   - netcdf4
+  # Runtime imports that neither pyproject.toml nor LSsurf's requirements.txt
+  # declares, found by walking the import graph from ATL1415/__init__.py:
+  #   pytmd      -- 'import pyTMD' at ATL11_to_ATL15.py:45, top level
+  #   timescale  -- 'import timescale' at ATL1415_attrs_meta.py:15, top level
+  # Both are reached by `import ATL1415`, so they break the solve immediately.
+  - pytmd
+  - timescale
+  # xarray is imported lazily inside read_bedmachine_greenland, so it does not
+  # break the import -- it breaks the Greenland bedmachine mask path at runtime.
+  - xarray
