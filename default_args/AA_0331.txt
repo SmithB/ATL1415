@@ -1,6 +1,6 @@
 --mask_file=Antarctic/AntarcticIceMask_2018.00_2026.25_240m_v4.1.tif
 --tide_mask_file=Antarctic/BedMachineAntarcticaOceanv2.tif
---tide_model=CATS2008
+--tide_model=CATS2008-v2023
 --region=AA
 --d2z0_file=Antarctic/AA_Ed2z0dx2.tif
 --tide_adjustment_file=Antarctic/ATL11_0314_tide_adj_scale_200m.tif

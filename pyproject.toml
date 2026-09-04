@@ -33,6 +33,12 @@ dependencies = [
     "shapely",
     "cartopy",
     "imageio",
+    # ATL11_to_ATL15 imports pyTMD at module level.  environment.yml declares it
+    # for the conda-based DPS build; declare it here too so a plain `pip install .`
+    # can `import ATL1415` at all.  zarr is for the cloud tide stores read by
+    # ATL1415.tides; their s3fs arrives with pointCollection[cloud].
+    "pyTMD",
+    "zarr",
     # [cloud] pulls earthaccess/s3fs/fsspec, without which the ATL11 cloud read
     # path fails at import.  The extra is purely additive, so this one install
     # also satisfies the plain pointCollection that LSsurf resolves to.

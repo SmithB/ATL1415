@@ -47,3 +47,8 @@ dependencies:
   # xarray is imported lazily inside read_bedmachine_greenland, so it does not
   # break the import -- it breaks the Greenland bedmachine mask path at runtime.
   - xarray
+  # zarr is imported lazily inside ATL1415.tides.open_tide_dataset, so it too
+  # survives `import ATL1415` -- but MAAP_dps.txt sets --tide_directory=s3://pytmd,
+  # and that path reads the published <model>.zarr stores, so every DPS tile job
+  # with a tide model needs it.
+  - zarr

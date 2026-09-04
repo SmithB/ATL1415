@@ -89,8 +89,13 @@ if [ "$step" = "prelim" ]; then
     base_directory="${PWD}/output"
     tile_name=$(awk -v x="$x0" -v y="$y0" 'BEGIN{printf "E%d_N%d.h5", int(x/1000), int(y/1000)}')
 
+    # --base_directory goes AFTER @${args_file}, unlike --THREADS: argparse takes
+    # the last occurrence, and setup_ATL1415_region.py writes '-b=<region_dir>'
+    # (the same dest as --base_directory) as the final line of the composed args
+    # file.  Passed before the args file it would be overridden by that ADE path,
+    # which does not exist on a worker.
     run_solve --THREADS="${threads}" --xy0 "$x0" "$y0" --prelim \
-              --base_directory "$base_directory" "@${args_file}"
+              "@${args_file}" --base_directory "$base_directory"
 
     # A tile with too little data is a normal outcome: ATL11_to_ATL15 returns 0
     # without writing a file.  Running the error calculation on it would then
@@ -102,7 +107,7 @@ if [ "$step" = "prelim" ]; then
     fi
 
     run_solve --THREADS="${threads}" --xy0 "$x0" "$y0" --prelim \
-              --base_directory "$base_directory" "@${args_file}" --calc_error_for_xy
+              "@${args_file}" --base_directory "$base_directory" --calc_error_for_xy
 else
     # --matched reads the tile's own prelim fit AND its neighbours', through
     # prior_edge_include, so a matched job needs the surrounding prelim tiles
@@ -135,8 +140,9 @@ else
     run_solve --THREADS="${threads}" --matched \
               --prior_edge_include "$prior_edge_include" \
               --data_file "$prelim_file" \
+              "@${args_file}" \
               --out_name "${PWD}/output/${tile_name}" \
-              --base_directory "$base_directory" "@${args_file}"
+              --base_directory "$base_directory"
 fi
 
 echo "=== tile job complete; output/ contains: ==="

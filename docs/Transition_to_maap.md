@@ -40,6 +40,21 @@
   returns HTTP 500 ('NoneType' object has no attribute 'get') while a build is still pending,
   which is just "not registered yet" surfacing badly -- not a failure signal in itself.
 
+2026-09-04, ~13 h later: THE BUILD FAILED.  ATL1415_tile_solve is still absent from
+  listAlgorithms() (200, 649 algorithms) and describeAlgorithm still returns the same 500.
+  At that age it is a failure, not a slow build.  The log is the only diagnostic and it is
+  browser-only -- repo.maap-project.org/api/v4 answers 401/404 unauthenticated and the raw
+  job URL 302s to users/sign_in, so no script can fetch it.
+  Cheap hypotheses ELIMINATED locally, so do not re-check them when reading the log:
+    - the on_s3 branch IS pushed, at exactly the registered commit (ab37947)
+    - all four git+ dep repos (pointCollection, LSsurf, PySPQR, ATL1415) answer 200 to an
+      unauthenticated git-upload-pack probe, so they are public
+    - `conda env update --name X --file Y --prune` DOES create a missing env (tested on
+      conda 26.3.2), so build-env.sh line 27 is not the failure
+    - build-env.sh and run.sh are mode 100755 in git, environment.yml does list suitesparse,
+      and ATL11_to_ATL15.py is a real [project.scripts] entry point
+  So look at the log for the SuiteSparseQR.hpp check first, then pip/network.
+
 ## Software: 
 [ X ] Check build environment for suiteSparse
     - NO MAAP base image ships it.  maap_base is debian:11 + git + Miniforge and nothing else;
@@ -68,11 +83,168 @@
       with one shared s3fs handle reused across granules.  In this mode --ATL11_index is
       reinterpreted as the per-granule geoIndex ROOT.  Crossovers get the equivalent
       treatment through the tiling schema's remote source (299ab26).
-    - CAVEAT for DPS: --ATL11_index is os.path.abspath'ed, and the xover schema JSON is
-      read with a plain open() inside tilingSchema.from_file, so BOTH still have to name
-      a local path.  On a worker with no workspace mount they must either be localized as
-      DPS `file` inputs or learn to accept s3:// URIs -- see the MAAP_dps.txt item.
+    - [ X ] the abspath/open() caveat is FIXED (2026-09-04): the code now accepts s3:// URIs
+      for these.  See the "Cloud paths" section below for what changed and what was verified.
 [ ] Create a processing string for ATL11_to_ATL15 to read previous versions of ATL14/15 from the cloud
+
+## Cloud paths (s3://)
+Decided 2026-09-04: rather than localizing the static data as DPS `file` inputs, the CODE
+learned to read s3:// URIs.  A DPS worker has no ~/my-private-bucket mount, so masks, ancillary
+grids and the ATL11 geoIndex are now named by URI in the args file and read straight from the
+bucket.  Credentials come from the worker's ordinary AWS chain (~/.aws is bind-mounted), which
+is deliberately NOT the earthaccess/NSIDC session: those buckets are ours, not a DAAC's.
+
+THE ONE EXCEPTION IS THE TIDE MODEL.  pyTMD resolves and reads its model files with plain file
+I/O, so --tide_directory cannot be a URI and the model must be staged onto local disk.  run.sh
+does that before the solve.  It is the expensive part of a job -- CATS2008 is ~1.0 GiB and
+greenlandTMD_v2 ~1.5 GiB, copied once PER TILE JOB.  In-region so it is fast and free of egress
+charges, but at a fan-out of thousands of tiles it is worth moving into the build (bake the
+model into the image once) rather than repeating it per job.  Not done: build-env.sh is where
+that would go.
+
+pointCollection (branch s3_static_paths, off origin/main):
+    - io_utils.get_s3fs(daac=None) returns a plain s3fs.S3FileSystem on the default AWS
+      credential chain, alongside the existing earthaccess DAAC sessions.  Everything reading
+      OUR data defaults to it.
+    - io_utils.as_gdal_path() maps s3:// -> /vsis3/, gs:// -> /vsigs/, http(s):// -> /vsicurl/;
+      local and already-/vsi paths pass through.  grid.data.from_geotif() routes through it.
+    - grid.data.h5_open() opens a remote file through s3fs and hands the object to
+      h5py/bz2/gzip.  grid.data.nc_open() must instead read the whole object into memory and
+      use netCDF4's memory= (netCDF4 takes a name or a buffer, never a file object) -- fine for
+      ancillary grids, not for large rasters.  Both take fs=, plumbed through from_h5/from_nc.
+    - tilingSchema.from_file() reads a remote .json/.h5 schema; its directory default then
+      correctly resolves to the remote directory holding the tiles.
+    - geoIndex.from_file() takes fs= and opens a remote index.
+    - query_ATL11_cloud: TWO BUGS FIXED.  (1) the index existence check was os.path.isfile(),
+      which is False for ANY URI -- so with an s3 index root every granule would have been
+      warned-and-skipped and every tile would have come back EMPTY rather than failing.
+      (2) the index needs different credentials from the granule, so there is now a separate
+      index_fs= parameter; the granule keeps the earthaccess session in fs=.
+
+ATL1415:
+    - new ATL1415/paths.py: path_or_uri() (the argparse type -- abspath() would rewrite
+      's3://bucket/key' as '<cwd>/s3:/bucket/key'), join_path_or_uri() (os.path.join treats a
+      URI as relative, since it does not start with '/'), and exists().
+    - ATL11_to_ATL15: twelve input path arguments now use path_or_uri --- ATL11_index,
+      ATL14_reference_file, E_d2z0dx2_file, DEM_file, mask_file, rock_mask_file, geoid_file,
+      tide_mask_file, tide_adjustment_file, data_file, calc_error_file, previous_product.
+      base_directory, out_name and map_dir stay local (they are outputs), and so does
+      tide_directory (pyTMD).
+    - setup_ATL1415_region.py, three fixes:
+      * BARE FLAGS WERE BEING SILENTLY DROPPED.  The key=value regex does not match a line like
+        '--tide_adjustment', so any store_true option asked for in a defaults file never reached
+        the composed args file and the run proceeded with it OFF.  This bit --tide_adjustment in
+        AA_0331.txt, and would have made --ATL11_earthaccess impossible to compose.  NOTE this
+        means AA runs now actually get --tide_adjustment, which they did not before: that is a
+        REAL OUTPUT CHANGE, and wants a look before it goes to production.
+      * the key is now captured non-greedily, so only the first '=' splits key from value, and
+        both sides are stripped.
+      * --ATL11_earthaccess makes --ATL11_index the ROOT of the per-granule geoIndex tree, i.e.
+        a directory.  The old os.path.isfile() check rejected that outright, so no cloud args
+        file could be composed at all; the index is also no longer synthesized from
+        --ATL11_release, and --ATL11_xover_dir is no longer derived, in that mode.
+    - run.sh: --base_directory now goes AFTER @argsfile.  setup writes '-b=<region_dir>' as the
+      composed file's last line and -b is the same dest, so argparse's last-wins rule meant the
+      worker would have written its tiles to an ADE path that does not exist on it.
+
+Verified against the real bucket from the ADE (not simulated):
+    - windowed, band-selected read of the 23 MiB Antarctic v4.1 ice mask through /vsis3
+      (250x250x1 over Ross, t=2020.2, all ice) in ~0.7 s
+    - the tide-adjustment grid (130 MiB) and the tide mask, likewise windowed
+    - nc_open() over s3fs on EGM2008_geoid_h.nc
+    - geoIndex.from_file() on a per-granule index in ATL11_index_0331_007_04/ (34 bins)
+    - every s3:// path in a composed AA args file resolves, and none is an lfs pointer
+Not verified: the ATL11 granule read itself (needs the earthaccess session, unchanged here),
+and anything requiring pyTMD or sparseqr, neither of which installs in the ADE env.
+Tests: pointCollection tests/test_cloud_paths.py (11) and ATL1415 tests/test_paths.py (7) +
+tests/test_setup_region.py (8); suites are 211 and 18 green.  Four of the setup_region tests
+fail against the pre-change code, which is the point of them.
+
+## Tide models in the cloud -- measured, and the plan
+ANSWER: use the zarr stores pyTMD already publishes on its public bucket, read with s3fs, and
+predict through the .tmd accessors -- the "Predict tides from model hosted on s3" recipe in
+https://pytmd.readthedocs.io/en/latest/user_guide/Cloud-Access.html .  s3://pytmd/ already
+holds CATS2008-v2023.zarr, Gr1km-v2.zarr and FES2022.zarr, publicly readable (anon=True), so
+BOTH hemispheres are covered and nothing has to be converted or staged by us.
+
+Measured on one 50k-point 60 km Ross tile, against pyTMD v3.0.9:
+
+    route                                        time      bytes pulled
+    netCDF over https, compute, chunks='auto'    27.5 s    1809.8 MiB   (362 range requests)
+    netCDF over https, compute, chunks=None      14.3 s     582.4 MiB   (7 requests)
+    netCDF over https, compute, crop=True        20.9 s     605.2 MiB
+    ZARR ON S3, .tmd accessors                    2.6 s       1.56 MiB  (19 object reads)
+
+    Gr1km-v2 zarr, SE Greenland tile              1.8 s       6.32 MiB  (17 object reads)
+
+That is a ~370x reduction in bytes and ~6x in time against the best netCDF configuration.
+The two routes AGREE: over the same 50000 points, max|A-B| = 7.2e-05 m and rms = 3.5e-05 m on
+tides spanning +/-1.07 m.  The residual is consistent with the netCDF storing hRe/hIm as scaled
+int16 while the zarr store holds complex64 -- i.e. the zarr is the more precise of the two, and
+the difference is four orders of magnitude below --sigma_geo (4.5 m).  Treat that comparison as
+the acceptance test; it has been run.
+
+Why the netCDF route is so expensive, for the record: every variable in CATS2008_v2023.nc is
+CONTIGUOUS AND UNCOMPRESSED (h5py reports chunks=None for all of them), so no spatial subset can
+avoid reading through a variable's full extent -- 582 MiB = hRe (256.9) + hIm (256.9) + coords
+and mask, exactly.  chunks='auto' makes it worse, not better: dask issues overlapping ranged
+reads totalling MORE than the whole 1695.7 MiB file, and it fails outright when combined with
+either extrapolate=True or crop=True ("inconsistent chunks along dimension y").  The zarr
+stores are chunked (CATS2008-v2023 254x416, Gr1km-v2 442x274), which is the whole difference.
+Also worth knowing: reaching the netCDF at all needs two pyTMD one-line fixes -- open_tmd3_dataset
+hands a pyTMD.utilities.URL straight to xr.open_dataset (no inferable backend, needs
+fsspec-wrapping and an explicit engine), and the next line's pathlib.Path(input_file).name
+raises on the same URL.  The zarr route needs NEITHER; it does not go through model.open_dataset.
+
+MODEL NAMES: Greenland is Gr1km-v2 (NOT greenlandTMD_v2, which is the directory and is not a
+model name pyTMD accepts).  default_args/GL_0321.txt, GL_0329.txt and GL_0331.txt already say
+Gr1km-v2 and need no change.  Antarctica currently says CATS2008; the zarr store is for
+CATS2008-v2023, so pointing AA at the cloud model is a MODEL VERSION CHANGE and wants a
+deliberate decision, not a silent rename.
+
+DONE (2026-09-04) -- the cloud tide path is implemented and wired up:
+  [ X ] ATL1415/tides.py.  tide_elevations() dispatches on --tide_directory: a local directory
+      goes to pyTMD.compute.tide_elevations with exactly the arguments it always got, so local
+      and SLURM runs are untouched; an s3:// prefix opens s3://<bucket>/<model>.zarr and runs
+      the same post-open sequence compute does (coords_as -> interp -> predict + infer).  No
+      tide computation is reimplemented -- only the dataset is substituted.
+      - THE STORE IS READ ANONYMOUSLY, and that is not cosmetic: pyTMD's bucket is public but
+        REJECTS SIGNED REQUESTS from other accounts.  s3fs.S3FileSystem() with the ADE's own
+        credentials gets AccessDenied; anon=True works.  A DPS worker has its own credentials,
+        so it would have hit exactly this.  Override with ATL1415_TIDE_ANON=0 for a private store.
+  [ X ] ATL11_to_ATL15 calls ATL1415.tides.tide_elevations instead of pyTMD.compute directly,
+      and --tide_directory is back to path_or_uri (it was briefly local-only).
+  [ X ] AA moved to CATS2008-v2023 (default_args/AA_0331.txt), which is the model the zarr store
+      is published for.  NOTE this is a MODEL VERSION CHANGE for Antarctica, not a rename, and
+      it applies to LOCAL runs of the 0331 string too -- a local run now needs the TMD3 netCDF
+      (CATS2008_v2023/CATS2008_v2023.nc) in its tide_directory, or a cloud --tide_directory.
+      AA.txt and AA_0329.txt are older processing strings and were deliberately left on CATS2008.
+      Greenland needed no change: GL_0321/0329/0331.txt already say Gr1km-v2.
+  [ X ] MAAP_dps.txt --tide_directory=s3://pytmd, and run.sh's 39-line per-job staging block is
+      gone along with the ATL1415_TIDE_S3 escape hatch.  There is nothing left to stage.
+  [ X ] pyproject.toml declares pyTMD (pulls timescale) and zarr.  pyTMD was imported at module
+      level by ATL11_to_ATL15 but declared NOWHERE, so `import ATL1415` could not have worked in
+      a clean install -- build-env.sh's import check would have failed the DPS build there.
+  [ X ] tests/test_tides.py: 5 offline tests (dispatch, store naming, that a local directory
+      still reaches pyTMD with the same arguments, and the anonymous-access default) plus an
+      opt-in live read of both stores, enabled with ATL1415_TIDE_NETWORK_TESTS=1.  Composing a
+      real AA DPS args file end to end was checked too.
+
+Still open:
+  [ ] Ask upstream for a zarr branch in pyTMD's model.open_dataset, or for compute.tide_elevations
+      to accept an already-open dataset.  Either would let ATL1415/tides.py's cloud branch be
+      deleted and --tide_directory passed straight through.  Worth doing: the accessor sequence
+      we now carry is short, but it is a copy of pyTMD internals and will drift.
+  [ ] The two URL bugs in the netCDF path are still worth a PR even though we no longer depend
+      on it: open_tmd3_dataset hands a pyTMD.utilities.URL to xr.open_dataset (no inferable
+      backend), and the next line's pathlib.Path(input_file).name raises on it.
+  [ ] --tide_adjustment is unaffected but unverified end to end: ATL1415 applies its own
+      tide_adj_scale grid after the prediction and never passes pyTMD's apply_flexure, so the
+      CATS2008-v2023 store's own `flexure` variable is not double-counted.  Confirm on the first
+      real AA tile rather than assuming.
+  [ ] CATS2008 (the OTIS model) still has no hf.CATS2008.out on our bucket.  Now that AA_0331
+      uses CATS2008-v2023 this blocks nothing current, but AA.txt/AA_0329.txt still name it, so
+      copy hf.CATS2008.v1.1 to hf.CATS2008.out if an older string is ever revived.
 
 ## Packaging (for the DPS build)
 [ X ] pyproject.toml: request the cloud extra -- "pointCollection[cloud] @ git+..."
@@ -140,10 +312,24 @@ There is no chaining/DAG mechanism -- jobs are independent and couple only throu
         - CATS2008 staged to s3://maap-ops-workspace/ben_smith/tide_models/CATS2008/
           (grid_CATS2008, hf.CATS2008.out); default_args/MAAP.txt points --tide_directory
           at the ADE mount for that prefix
-    [ ] Gr1km-v2 tide model -- NOT staged, and default_args/GL_0331.txt asks for it
-        (--tide_model=Gr1km-v2), so a Greenland run has nothing to read.  The only other
-        object under tide_models/ is a stray .ipynb_checkpoints/deltat-checkpoint.iers;
-        the real deltat.iers is missing too.
+    [ X ] Gr1km-v2 tide model IS staged -- CONFIRMED against pyTMD's own database
+        (pyTMD v3.0.9).  pyTMD resolves Gr1km-v2 to greenlandTMD_v2/h_Greenland8.v2 and
+        greenlandTMD_v2/grid_Greenland8.v2, and both are on the bucket.  The model NAME and
+        the DIRECTORY name differ, which is why run.sh's staging step falls back to copying
+        the whole tide_models prefix when <prefix>/<model> is absent.  Greenland is ready.
+    [ ] CATS2008 IS BROKEN, and this blocks every AA tide correction.  pyTMD resolves it to
+        CATS2008/hf.CATS2008.out; the bucket holds hf.CATS2008.old and hf.CATS2008.v1.1 and
+        NO hf.CATS2008.out, so the read fails on a missing file.  ANSWERED: hf.CATS2008.v1.1 is
+        BYTE-IDENTICAL to the canonical file on the public pyTMD bucket (same 269539196 bytes,
+        same md5 over the first and last 4 MiB) while hf.CATS2008.old differs in the tail --
+        so copy .v1.1 to hf.CATS2008.out.  See the tide section below.
+        Nothing about the cloud work changes this -- it fails identically on local disk.
+        - z-only file sizes, which bound any staging or conversion:
+          CATS2008     grid 25.8 MiB + hf 257.1 MiB = 283 MiB   (uv.CATS2008.out, 514 MiB,
+                       and the duplicate hf.*.old, 257 MiB, are not needed for elevations)
+          Gr1km-v2     grid 59.0 MiB + h  471.8 MiB = 531 MiB   (u_Greenland8_rot.v2, 944 MiB,
+                       is not needed for elevations)
+        - the real deltat.iers is still missing.
     [ X ] Greenland tide mask
         - masks/Arctic/BedMachineGreenland-v6_shelf_edited.tif, 1.6 MiB, staged 2026-09-03;
           that is what GL_0331.txt names as --tide_mask_file
@@ -187,8 +373,13 @@ There is no chaining/DAG mechanism -- jobs are independent and couple only throu
           Antarctic/ATL11_0314_tide_adj_scale_200m.h5 pointer.  Delete when you are confident
           in the v4.1 run; the .h5 pointer in particular is a trap, since it has the name the
           old args expected but no content.
-    [ ] masks/EGM2008_geoid_h.nc -- rel_006_0331.txt passes --geoid_file for it, it is not in
-        the repo (only named in .gitattributes) and nothing matching it is on the bucket.
+    [ X ] masks/EGM2008_geoid_h.nc -- IS on the bucket, at
+        s3://maap-ops-workspace/ben_smith/ATL1415/masks/EGM2008_geoid_h.nc, 81.7 MiB, a real
+        netCDF (dims lon=8641, lat=4321; vars lat, lon, geoid_h, geoid_free2mean) and not an
+        lfs pointer.  The earlier "nothing matching it is on the bucket" note was wrong.
+        Because it sits directly under masks/, --mask_dir joins the bare --geoid_file name
+        onto it correctly, and it was read over s3 successfully (see Cloud paths below).
+        NOTE its coordinates are lon/lat, not x/y, so whatever reads it must say so.
 [ X ] Set up a location fromfile for MAAP (ADE)
     - default_args/MAAP.txt written: --mask_dir, --tide_directory, --ATL14_root, all on the
       ~/my-private-bucket mount.
@@ -196,9 +387,17 @@ There is no chaining/DAG mechanism -- jobs are independent and couple only throu
       make_ATL11_index.py / setup_ATL11_xover.py, which are local-filesystem-only.
     - it does NOT yet name the staged index; a cloud run also needs
       --ATL11_earthaccess and --ATL11_index=<my-private-bucket>/ATL11_index/
-[ ] MAAP_dps.txt: default_args/MAAP.txt is ADE-only.  DPS workers have no
-    /home/jovyan/my-private-bucket, so a variant with s3:// URIs is needed for anything
-    submitted to DPS -- and see the abspath/open() caveat under Software.
+[ X ] MAAP_dps.txt: WRITTEN (2026-09-04).  default_args/MAAP.txt stays the ADE variant;
+    default_args/MAAP_dps.txt is the one to compose with for anything submitted to DPS.
+    Use it INSTEAD OF MAAP.txt, not alongside it.  It sets:
+      --mask_dir=s3://maap-ops-workspace/ben_smith/ATL1415/masks/   (read over /vsis3 + s3fs)
+      --ATL11_earthaccess and --ATL11_index=s3://maap-ops-workspace/ben_smith/ATL11_index/
+      --tide_directory=/tmp/ATL1415_static/tide_models  -- LOCAL, staged by run.sh
+      --ATL14_root=/home/jovyan/ATL14_processing        -- ADE-side only, read by setup
+    It deliberately does NOT set --ATL11_xover_dir: setup no longer derives it in cloud mode
+    (that derivation assumes the local '<...>/index/GeoIndex.h5' layout) and
+    setup_ATL11_xover.py still cannot write a schema with a remote 'source', so there is no
+    cloud crossover tree to point at.  Crossovers are skipped in this mode.
 [ X ] Figure out how the MAAP algorithm definition handles python fromfiles
     - the @argsfile idiom survives unchanged.  Nothing in DPS parses your arguments;
       fromfile_prefix_chars is entirely client-side.  Register the args file as a `file` input;

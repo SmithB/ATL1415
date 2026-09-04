@@ -39,6 +39,8 @@ import sys
 import h5py
 import json
 from ATL1415.make_mask_from_vector import make_mask_from_vector
+from ATL1415.paths import path_or_uri
+from ATL1415.tides import tide_elevations
 from ATL1415.SMB_corr_from_grid import SMB_corr_from_grid
 from ATL1415.read_ATL11 import read_ATL11
 
@@ -130,21 +132,22 @@ def apply_tides(D, xy0, W,
     # extrapolate tide estimate beyond model bounds
     # extrapolation cutoff is in kilometers
     if np.any(is_els.ravel()):
-        D.tide_ocean = np.array(
-            pyTMD.compute.tide_elevations(
-                D.x, D.y, D.delta_time,
-                directory=tide_directory,
-                model=tide_model,
-                infer_minor=True,
-                chunks=chunks,
-                crs=crs,
-                type="drift",
-                epoch=(2018, 1, 1, 0, 0, 0),
-                standard="GPS",
-                method="linear",
-                extrapolate=extrapolate,
-                cutoff=cutoff,
-            )
+        # ATL1415.tides dispatches on tide_directory: a local directory goes to
+        # pyTMD.compute.tide_elevations exactly as before, an s3:// prefix reads
+        # the zarr store pyTMD publishes for the model.
+        D.tide_ocean = tide_elevations(
+            D.x, D.y, D.delta_time,
+            tide_directory=tide_directory,
+            tide_model=tide_model,
+            infer_minor=True,
+            chunks=chunks,
+            crs=crs,
+            type="drift",
+            epoch=(2018, 1, 1, 0, 0, 0),
+            standard="GPS",
+            method="linear",
+            extrapolate=extrapolate,
+            cutoff=cutoff,
         )
     # use a flexure mask to adjust estimated tidal values
     if np.any(is_els.ravel()) and tide_adjustment:
@@ -882,7 +885,7 @@ def parse_args(argv=None):
         description="function to fit ICESat-2 data with a smooth elevation-change model", \
         fromfile_prefix_chars="@")
     parser.add_argument('--xy0', type=float, nargs=2, help="fit center location")
-    parser.add_argument('--ATL11_index', type=lambda p: os.path.abspath(os.path.expanduser(p)), required=True,
+    parser.add_argument('--ATL11_index', type=path_or_uri, required=True,
         help="ATL11 index: a local geoIndex file (from pointCollection.geoIndex) covering the "
              "archive, or -- if --ATL11_earthaccess is set -- the root directory of per-granule "
              "geoIndex files, one 'ATL11_index_<cycles>_<release>_<version>/<granule>.h5' subtree "
@@ -902,7 +905,7 @@ def parse_args(argv=None):
     parser.add_argument('--matched', action="store_true")
     parser.add_argument('--prior_edge_include', type=float, help='include prior constraints over this width at the edge of each tile')
     parser.add_argument('--prior_sigma_scale', type=float, default=1, help='scale prior error estimates by this value')
-    parser.add_argument('--ATL14_reference_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='if specified, subtract the ATL14 heights from this file')
+    parser.add_argument('--ATL14_reference_file', type=path_or_uri, help='if specified, subtract the ATL14 heights from this file')
     parser.add_argument('--tile_spacing', type=float, default=60000.)
     parser.add_argument('--sigma_extra_bin_spacing', type=float, default=None, help='width over which data are collected to calculate the extra error estimates')
     parser.add_argument('--sigma_extra_max', type=float, default=None, help='maximum value for sigma_extra,')
@@ -910,7 +913,7 @@ def parse_args(argv=None):
     parser.add_argument('--E_d2zdt2', type=float, default=5000)
     parser.add_argument('--E_d2z0dx2', type=float, default=0.02)
     parser.add_argument('--E_d3zdx2dt', type=float, default=0.0003)
-    parser.add_argument('--E_d2z0dx2_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='file from which to read the expected d2z0dx2 values')
+    parser.add_argument('--E_d2z0dx2_file', type=path_or_uri, help='file from which to read the expected d2z0dx2 values')
     parser.add_argument('--E_d3zdx2dt_scale_file', type=str, help='grid file containing scaling values for the E_d3zdx2dt parameter')
     parser.add_argument('--data_gap_scale', type=float,  default=2500)
     parser.add_argument('--sigma_geo', type=float,  default=6.5)
@@ -920,18 +923,22 @@ def parse_args(argv=None):
     parser.add_argument('--N_subset', type=int, default=None, help="number of pieces into which to divide the domain for (cheap) editing iterations.")
     parser.add_argument('--max_iterations', type=int, default=6, help="maximum number of iterations used to edit the data.")
     parser.add_argument('--map_dir','-m', type=lambda p: os.path.abspath(os.path.expanduser(p)))
-    parser.add_argument('--DEM_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='DEM file to use with the DEM_tol parameter')
+    parser.add_argument('--DEM_file', type=path_or_uri, help='DEM file to use with the DEM_tol parameter')
     parser.add_argument('--DEM_tol', type=float, default=50, help='points different from the DEM by more than this value will be edited in the first iteration')
     parser.add_argument('--geoid_tol', type=float, help='points closer than this to the geoid will be rejected')
     parser.add_argument('--sigma_tol', type=float, help='points with sigma greater than this value will be edited')
-    parser.add_argument('--mask_file', type=lambda p: os.path.abspath(os.path.expanduser(p)))
-    parser.add_argument('--rock_mask_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='mask indicating exposed rock')
+    parser.add_argument('--mask_file', type=path_or_uri)
+    parser.add_argument('--rock_mask_file', type=path_or_uri, help='mask indicating exposed rock')
     parser.add_argument('--rock_mask_reject_value', type=float, default=1, help='value within the rock mask file that indicates rock')
-    parser.add_argument('--geoid_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help="file containing geoid information")
-    parser.add_argument('--tide_mask_file', type=lambda p: os.path.abspath(os.path.expanduser(p)))
-    parser.add_argument('--tide_directory', type=lambda p: os.path.abspath(os.path.expanduser(p)))
+    parser.add_argument('--geoid_file', type=path_or_uri, help="file containing geoid information")
+    parser.add_argument('--tide_mask_file', type=path_or_uri)
+    parser.add_argument('--tide_directory', type=path_or_uri,
+        help='where to find the tide model: either a local directory of model files, read '
+             'through pyTMD as before, or an s3:// prefix holding the <model>.zarr stores '
+             'pyTMD publishes (e.g. s3://pytmd), which is read by range request and needs '
+             'nothing staged locally')
     parser.add_argument('--tide_adjustment', action="store_true", help="Adjust tides for ice shelf flexure")
-    parser.add_argument('--tide_adjustment_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help="File for adjusting tide and dac values for ice shelf flexure")
+    parser.add_argument('--tide_adjustment_file', type=path_or_uri, help="File for adjusting tide and dac values for ice shelf flexure")
     parser.add_argument('--tide_adjustment_format', type=str, choices=('geotif','h5','nc'), default='h5', help="File format of the scaling factor grid")
     parser.add_argument('--tide_model', type=str)
     parser.add_argument('--firn_directory', type=str, help='directory containing firn model')
@@ -940,14 +947,14 @@ def parse_args(argv=None):
     parser.add_argument('--firn_grid_file', type=str, help='gridded firn model file that can be interpolated directly.')
     parser.add_argument('--reference_epoch', type=int, help="Reference epoch number, for which dz=0")
     parser.add_argument('--reference_time', type=float, help="time value that will be used to choose the reference epoch if it is not specified")
-    parser.add_argument('--data_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='read data from this file alone')
+    parser.add_argument('--data_file', type=path_or_uri, help='read data from this file alone')
     parser.add_argument('--restart_edit', action='store_true')
-    parser.add_argument('--calc_error_file','-c', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='file containing data for which errors will be calculated')
+    parser.add_argument('--calc_error_file','-c', type=path_or_uri, help='file containing data for which errors will be calculated')
     parser.add_argument('--calc_error_for_xy', action='store_true', help='calculate the errors for the file specified by the x0, y0 arguments')
     parser.add_argument('--error_res_scale','-s', type=str, default="5,2", help='if the errors are being calculated (see calc_error_file), scale the grid resolution in x and y to be coarser.  2-element comma-separated list')
     parser.add_argument('--bias_params', type=str, default="rgt,cycle", help='one bias parameter will be assigned for each unique combination of these ATL11 parameters (comma-separated list with no spaces)')
     parser.add_argument('--region', type=str, help='region for which calculation is being performed')
-    parser.add_argument('--previous_product', type=lambda p: os.path.abspath(os.path.expanduser(p)), action='append', default=None, help='directory containing ATL14/ATL15 .nc files from a previous run; may be repeated for multiple sector directories (e.g. Antarctic A1-A4)')
+    parser.add_argument('--previous_product', type=path_or_uri, action='append', default=None, help='directory containing ATL14/ATL15 .nc files from a previous run; may be repeated for multiple sector directories (e.g. Antarctic A1-A4)')
     parser.add_argument('--previous_product_sigma', type=float, default=0.2, help='minimum sigma_extra (m) when pre-filtering against the previous product (default 0.2)')
     parser.add_argument('--verbose','-v', action="store_true")
     parser.add_argument('--write_data_only', action='store_true', help='save data without processing')

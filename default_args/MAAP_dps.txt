@@ -1,0 +1,49 @@
+# Location defaults for a run whose tiles are solved on a MAAP DPS worker.
+#
+# Read by setup_ATL1415_region.py in the ADE.  Every value here is baked into
+# the composed input_args_<REGION>.txt that the worker receives as its `file`
+# input, so with one exception these paths must resolve ON THE WORKER, not in
+# the ADE.  Use this INSTEAD OF MAAP.txt, not alongside it: MAAP.txt names the
+# ~/my-private-bucket mount, which a DPS worker does not have.
+#
+# The exception is --ATL14_root, which only setup_ATL1415_region.py itself
+# reads: it is where the region directories and the composed args file are
+# built, in the ADE.
+
+# ADE-side only: where setup builds rel<Release>/<hemi>/<region>/ and writes
+# input_args_<REGION>.txt.
+--ATL14_root=/home/jovyan/ATL14_processing
+
+# Read straight from the bucket.  --mask_dir is joined onto the relative
+# --mask_file / --tide_mask_file / --geoid_file / --tide_adjustment_file names
+# that the region args files (AA_0331.txt, GL_0331.txt) give, so those files
+# need no MAAP-specific variant.  GDAL reads the geotiffs through /vsis3/ and
+# h5py/netCDF4 through s3fs; both use the worker's ordinary AWS credentials
+# (~/.aws is bind-mounted into the job), NOT an earthaccess session.
+--mask_dir=s3://maap-ops-workspace/ben_smith/ATL1415/masks/
+
+# ATL11 comes from NASA Earthdata Cloud rather than a local archive.  With
+# --ATL11_earthaccess set, --ATL11_index is reinterpreted as the ROOT of the
+# per-granule geoIndex tree -- it holds one
+# 'ATL11_index_<cycles>_<release>_<version>/' subdirectory -- rather than as a
+# single whole-archive GeoIndex.h5.  There is no local GeoIndex.h5 for this
+# release, so this is the only mode that works for it.
+--ATL11_earthaccess
+--ATL11_index=s3://maap-ops-workspace/ben_smith/ATL11_index/
+
+# Tide models come from the zarr stores pyTMD publishes, read by range request:
+# s3://pytmd/<model>.zarr, where <model> is --tide_model from the region args
+# file (CATS2008-v2023 for AA, Gr1km-v2 for GL).  Nothing is staged -- a 60 km
+# tile reads 1.6 MiB (AA) or 6.3 MiB (GL).
+#
+# NOTE this bucket is public but REJECTS SIGNED REQUESTS from other accounts, so
+# it is read anonymously; a worker's own AWS credentials would get AccessDenied.
+# ATL1415.tides does that by default (override with ATL1415_TIDE_ANON=0).
+--tide_directory=s3://pytmd
+
+# NOT SET: --ATL11_xover_dir.  In cloud mode setup_ATL1415_region.py no longer
+# derives it from the index location (that derivation assumes the local
+# '<...>/index/GeoIndex.h5' layout), and setup_ATL11_xover.py cannot yet write a
+# schema with a remote 'source', so there is no cloud crossover tree to point
+# at.  Crossovers are therefore skipped in this mode.  See
+# docs/Transition_to_maap.md.
