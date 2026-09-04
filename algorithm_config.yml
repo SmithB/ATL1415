@@ -1,0 +1,81 @@
+# MAAP DPS algorithm registration for the ATL14/15 per-tile solve.
+#
+# Register with:
+#   from maap.maap import MAAP
+#   MAAP(maap_host='api.maap-project.org').register_algorithm_from_yaml_file(
+#       'algorithm_config.yml')
+#
+# ONE algorithm, not one per stage: a MAAP algorithm has exactly one
+# run_command, and the conda+SuiteSparse build is the expensive part, so six
+# registrations would mean six builds of an identical environment.  run.sh
+# dispatches on the `step` positional instead.  Only the per-tile solve runs in
+# DPS -- setup, queue-build, mosaic, to-netcdf and browse stay in the ADE, which
+# is the only place the my-private-bucket mount exists.
+# See docs/Transition_to_maap.md.
+
+algorithm_name: ATL1415_tile_solve
+algorithm_description: >
+  Per-tile ATL14/15 surface-height fit (ATL11_to_ATL15).  Takes a tile center
+  and a processing step (prelim or matched) plus a composed argsfile, and
+  writes the fitted tile to output/.
+
+# DPS clones repository_url at this ref, so algorithm_version is the branch or
+# tag to build -- change it to main once the cloud-read work is merged.
+# The repository must be PUBLIC for the build to succeed.
+algorithm_version: on_s3
+repository_url: https://github.com/SmithB/ATL1415.git
+
+# build_command and run_command are resolved ONE LEVEL ABOVE the repo root: DPS
+# clones to /app/<repo>/ and calls /app/dps_wrapper.sh '/app/<repo>/run.sh'.
+build_command: ATL1415/build-env.sh
+run_command: ATL1415/run.sh
+
+# maap_base = debian:11 + git + Miniforge.  No MAAP base image ships SuiteSparse,
+# so the build must create its own conda env; this image is the one with conda
+# already present.  Matches $DOCKERIMAGE_PATH_DEFAULT in the ADE.
+docker_container_url: mas.maap-project.org/root/maap-workspaces/custom_images/maap_base:v6.0.0
+
+# TBD: public queues are throttled to ~10 jobs/hr, which makes a per-tile fan-out
+# of thousands of jobs infeasible -- an organizational queue has been requested
+# from the MAAP platform team.  Swap this for that queue name when it exists.
+# Sizing is a guess until the smoke test measures a real tile: the SLURM runs use
+# 4 tasks and a 4-hour walltime per tile.
+queue: maap-dps-worker-32gb
+disk_space: 20GB
+
+inputs:
+  # Positionals first; run.sh also tolerates the file input arriving ahead of
+  # them, since which group DPS emits first is unconfirmed until the smoke test.
+  positional:
+    - name: x0
+      description: tile center easting, meters (polar stereographic; may be negative)
+      default: ''
+      required: true
+    - name: y0
+      description: tile center northing, meters (polar stereographic; may be negative)
+      default: ''
+      required: true
+    - name: step
+      description: processing step -- prelim or matched
+      default: prelim
+      required: true
+
+  file:
+    # The ~90 argparse options never become DPS parameters: fromfile_prefix_chars
+    # ('@') is entirely client-side, so the composed args file that
+    # setup_ATL1415_region.py writes (input_args_<REGION>.txt) is localized into
+    # input/ and run.sh passes it as @<path>.
+    #
+    # CAVEAT: that args file still names LOCAL paths.  --ATL11_index is
+    # os.path.abspath'ed and the xover tiling-schema JSON is read with a plain
+    # open(), and a DPS worker has no my-private-bucket mount -- so a DPS run
+    # needs a MAAP_dps.txt variant whose paths are either additional `file`
+    # inputs or s3:// URIs the code has learned to read.  Both are open items in
+    # docs/Transition_to_maap.md.
+    - name: args_file
+      description: composed ATL11_to_ATL15 argsfile (input_args_<REGION>.txt)
+      default: ''
+      download: true
+      required: true
+
+  config: []

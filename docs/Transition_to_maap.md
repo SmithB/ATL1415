@@ -5,10 +5,15 @@
     Public queues are throttled to ~10 jobs/hr; this account reports status=inactive and
     organizations=[].  A per-tile fan-out of thousands of jobs is infeasible until this is
     resolved.  Do this first -- it has days of latency and it gates the shape of everything else.
-[ ] Smoke-test one sandbox DPS job to settle what the docs do not say:
+[ ] Smoke-test one sandbox DPS job to settle what the docs do not say.  The three build
+    files now exist (build-env.sh, run.sh, algorithm_config.yml -- see Packaging below), so
+    this is unblocked apart from the queue question.
     - does the build container reach github.com (for the git+ pip deps)?
+    - does sparseqr (PySPQR) actually compile against the conda suitesparse there?
     - is ~/.netrc really bind-mounted into the worker (earthaccess auth depends on it)?
     - will a `file` input accept an s3://maap-ops-workspace/ben_smith/... URL?
+    - does DPS pass `file` inputs before or after `positional` inputs?
+    - how long does one prelim tile take, and how much memory does it need?
 
 ## Software: 
 [ X ] Check build environment for suiteSparse
@@ -176,17 +181,63 @@ There is no chaining/DAG mechanism -- jobs are independent and couple only throu
       @${args_file}.  The ~90 argparse options never have to become DPS parameters.
       Only the per-job values need flattening: a tile job is (x0, y0, step, args_file),
       i.e. 3 positionals + 1 file input.
-[ ] define a build command based on maap example repository
-    - three files in the repo, plus a base image chosen by URL (no Dockerfile of your own):
-        build-env.sh  -- conda env update -f environment.yml ; conda run -n <env> pip install .
-        run.sh        -- mkdir -p output ; args_file=$(ls -d input/*) ; conda run -n <env> ...
-        algorithm_config.yml -- algorithm_name/_version, repository_url, build_command,
-                                run_command, docker_container_url, queue, disk_space, inputs
+[ X ] define a build command based on maap example repository
+    - WRITTEN: `build-env.sh`, `run.sh`, `algorithm_config.yml` at the repo root, modelled on
+      MAAP-Project/dps_tutorial (gdal_wrapper) and maap-documentation-examples/gedi-subset.
+      No Dockerfile of our own; the base image is chosen by URL.
     - build_command/run_command are paths ONE LEVEL ABOVE the repo root: ATL1415/run.sh
       (DPS clones to /app/<repo>/ and calls /app/dps_wrapper.sh '/app/<repo>/run.sh' args...)
     - output/ is relative to run.sh and is what gets uploaded; input/ is where file inputs land
-    - the algorithm repo must be PUBLIC
-    - model on MAAP-Project/dps_tutorial (gdal_wrapper) and maap-documentation-examples/gedi-subset
+    - the algorithm repo must be PUBLIC.  algorithm_version is the git ref DPS clones, and is
+      currently `on_s3` -- change it to main once this branch merges.
+    - docker_container_url = maap_base:v6.0.0, taken from $DOCKERIMAGE_PATH_DEFAULT in the ADE.
+      It is the image that already carries conda, which the build needs.
+
+    build-env.sh
+    - conda FIRST, pip second, in that order and for a reason: conda supplies suitesparse (the
+      dev headers PySPQR compiles its CFFI bindings against) and gdal.  conda-forge's gdal
+      installs the python bindings WITH a .dist-info, so pip treats LSsurf's bare `gdal`
+      requirement as already satisfied instead of building it against the wrong libgdal.
+    - exports CPATH/LIBRARY_PATH/LD_LIBRARY_PATH at the env prefix before pip runs, and hard
+      fails if SuiteSparseQR.hpp is not there afterwards -- otherwise the sparseqr failure
+      surfaces as an opaque CFFI error.
+    - ends with an import check (numpy scipy h5py osgeo.gdal pyproj sparseqr pointCollection
+      LSsurf ATL1415 earthaccess s3fs) so a broken env fails at BUILD time, once, rather than
+      on every one of thousands of tile jobs.
+    - SMBcorr is deliberately not installed; add the [firn] extra here if --firn_model is ever
+      brought back into use.
+
+    run.sh
+    - `run.sh <x0> <y0> <step>`, step in {prelim, matched}.  One registered algorithm; the stage
+      is dispatched here.
+    - finds the argsfile as input/*.txt (by extension, so a second file input cannot be picked
+      up by mistake) and passes it as @<path>.
+    - passes --THREADS=$(nproc) explicitly and BEFORE @argsfile.  This matters: ATL11_to_ATL15
+      scrapes THREADS out of sys.argv at IMPORT time to set MKL/OPENBLAS/NUMEXPR/OMP, and it
+      does not look inside the @argsfile -- so a --THREADS in the argsfile sets args.THREADS but
+      never the BLAS environment.  Before the argsfile so the argsfile can still override.
+    - prelim: --base_directory $PWD/output, so tiles land in output/prelim/ and get uploaded.
+      Runs the fit and then the --calc_error_for_xy companion, mirroring the single queue line
+      make_ATL1415_queue.py writes for SLURM.  It checks for the tile file in between and exits
+      0 if it is absent: a tile with too little data is a normal outcome (ATL11_to_ATL15 returns
+      0 without writing anything), but --calc_error_for_xy on a missing file exits 1, which at a
+      fan-out of thousands of tiles would mark those jobs failed and bury the real failures.
+    - matched: --base_directory $PWD/INPUT, not output.  --matched reads the tile's own prelim
+      fit and, through prior_edge_include, its NEIGHBOURS' -- so a matched job needs the
+      surrounding prelim tiles localized into input/prelim/ (the tile plus its 8 neighbours at
+      minimum), and only the result goes to output/.  It also passes --prior_edge_include 1000
+      the way the queue does, because ATL11_to_ATL15's own default is None, which silently drops
+      the prior-edge constraints.
+    - tolerates a leading non-numeric argument, so it reads x0 correctly whether DPS emits the
+      file input before or after the positionals -- see the smoke-test TBD.
+
+    Still unconfirmed, and only a real DPS job can settle them (all folded into the smoke test):
+    - whether DPS passes `file` inputs before or after `positional` ones (run.sh is defensive
+      about it either way);
+    - the queue: `maap-dps-worker-32gb` and disk_space 20GB are guesses.  The SLURM runs use 4
+      tasks and a 4-hour walltime per tile; nothing here has been measured.
+    - whether the build container reaches github.com, which the pointCollection/LSsurf git+ URLs
+      require, and whether sparseqr actually compiles there.
 [ X ] Figure out how submitted jobs see my_private_bucket and my_public_bucket in a MAAP account
     - THEY DO NOT.  Workspace mounts do not exist on a DPS worker.  Every read of the ATL11
       index, tide models and masks must become an S3 read.
