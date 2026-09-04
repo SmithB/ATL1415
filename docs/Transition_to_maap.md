@@ -1,10 +1,21 @@
 # Transition to MAAP
 
 ## TBDs: 
-[ ] Request an organizational DPS queue, and confirm account status, from the MAAP platform team.
-    Public queues are throttled to ~10 jobs/hr; this account reports status=inactive and
-    organizations=[].  A per-tile fan-out of thousands of jobs is infeasible until this is
-    resolved.  Do this first -- it has days of latency and it gates the shape of everything else.
+[ ] Request an organizational DPS queue from the MAAP platform team.
+    Public queues are throttled to ~10 jobs/hr, so a per-tile fan-out of thousands of jobs is
+    infeasible until this is resolved.  Days of latency -- ask early.
+    - queues visible to this account (getQueues(), 2026-09-04): maap-dps-sandbox,
+      maap-dps-worker-8gb, -16gb, -32gb, -64gb, maap-dps-worker-32vcpu-64gb.
+      algorithm_config.yml currently names -32gb; -32vcpu-64gb is probably the better
+      production target, but nothing has been measured.  Ask for cores/RAM/disk/walltime
+      per queue and for any max-in-flight-jobs limit.
+[ X ] Account status is NOT the blocker it looked like (checked 2026-09-04).
+    profile.account_info() still reports status=inactive, organizations=[] (username ben_smith,
+    id 1786, created 2026-07-01) -- but that does not stop the API:
+    - listAlgorithms() and listJobs() both return HTTP 200
+    - register_algorithm_from_yaml_file() returned HTTP 200 and started a real build
+    Still UNKNOWN: whether submitJob works on an inactive account with no organization.  That is
+    the next thing to find out, and maap-dps-sandbox is where to find it out.
 [ ] Smoke-test one sandbox DPS job to settle what the docs do not say.  The three build
     files now exist (build-env.sh, run.sh, algorithm_config.yml -- see Packaging below), so
     this is unblocked apart from the queue question.
@@ -14,6 +25,20 @@
     - will a `file` input accept an s3://maap-ops-workspace/ben_smith/... URL?
     - does DPS pass `file` inputs before or after `positional` inputs?
     - how long does one prelim tile take, and how much memory does it need?
+
+## Registration log
+2026-09-04: ATL1415_tile_solve:on_s3 registered from algorithm_config.yml.
+  register_algorithm_from_yaml_file() -> HTTP 200, commit 9a9988fd in
+  repo.maap-project.org/root/register-job-hysds-v4, build pipeline 20059, job 21091.
+  Build log: https://repo.maap-project.org/root/register-job-hysds-v4/-/jobs/21091/raw
+  -- that URL needs an OIDC login, so it is readable from a browser but not from a script.
+  THAT LOG IS THE ANSWER to two open questions: does the build container reach github.com for
+  the git+ pointCollection/LSsurf/PySPQR deps, and does sparseqr compile against the conda
+  suitesparse.  build-env.sh fails explicitly at a SuiteSparseQR.hpp check if the headers are
+  missing, so look for that message before assuming a generic CFFI failure.
+  As of end of day the algorithm had NOT yet appeared in listAlgorithms(); describeAlgorithm()
+  returns HTTP 500 ('NoneType' object has no attribute 'get') while a build is still pending,
+  which is just "not registered yet" surfacing badly -- not a failure signal in itself.
 
 ## Software: 
 [ X ] Check build environment for suiteSparse

@@ -44,6 +44,27 @@ if [ ! -f "${env_prefix}/include/suitesparse/SuiteSparseQR.hpp" ] \
     exit 1
 fi
 
+# 2a. Same for the compilers.  The base image has no toolchain at all, so the
+#     c-compiler/cxx-compiler entries in environment.yml are the only source of
+#     one; without them pip gets all the way to the compile step and then dies
+#     with "No such file or directory: 'gcc'" on LSsurf, sparseqr and cartopy,
+#     which is exactly how the first DPS build failed.
+#
+#     Nothing needs to set CC/CXX.  These packages ship no activate.d scripts,
+#     but they do put plain gcc/g++ in the env's bin, and `conda run` puts that
+#     bin on PATH -- so distutils resolves the bare 'gcc' from its own sysconfig
+#     against the conda toolchain, keeping the -B python_compiler_compat flag
+#     that the conda interpreter expects.  Overriding CC would drop it.
+for tool in gcc g++; do
+    if [ ! -x "${env_prefix}/bin/${tool}" ]; then
+        echo "ERROR: ${tool} not found at ${env_prefix}/bin/${tool}." >&2
+        echo "       LSsurf (Cython) and sparseqr (CFFI) cannot compile; check the" >&2
+        echo "       c-compiler / cxx-compiler entries in environment.yml." >&2
+        exit 1
+    fi
+done
+echo "=== toolchain: $(${env_prefix}/bin/gcc --version | head -1) ==="
+
 # 3. pip, inside the conda env.  This pulls pointCollection[cloud] (earthaccess,
 #    s3fs, fsspec -- required by the ATL11 cloud read path) and LSsurf, both as
 #    git+ URLs, so the build container must be able to reach github.com.

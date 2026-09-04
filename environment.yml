@@ -3,12 +3,30 @@ channels:
   - conda-forge
   - defaults
 dependencies:
+  # Pin python to match the ADE.  Left unpinned, the solver takes the newest it
+  # can (3.14.7 on the first DPS build), which has no cartopy wheels on PyPI --
+  # pip then falls back to the sdist and needs a C++ compiler -- and drags in a
+  # numpy/scipy/pandas stack well ahead of anything this code has run against.
+  - python=3.13
+  # maap_base is debian:11 + git + Miniforge and ships no toolchain, but LSsurf
+  # compiles a Cython extension and sparseqr (PySPQR) compiles CFFI bindings, so
+  # the env has to supply the compilers itself.  Without these, pip dies with
+  # "No such file or directory: 'gcc'" after conda has already succeeded.
+  - c-compiler
+  - cxx-compiler
   - suitesparse
+  # From conda so pip never tries to build cartopy's trace.cpp from source.
+  - cartopy
   - pip
   - scipy
-  - numpy
+  # Pinned to the ADE minor: 2.5 arrived with python 3.13 in the solve and is
+  # ahead of anything this code has been exercised against.
+  - numpy=2.4
   - h5py
-  - matplotlib
+  # -base: the full matplotlib metapackage adds qt6-main/pyside6/libclang
+  # (~140 MB) for a GUI backend that a headless tile solve never opens.  It
+  # still provides the `matplotlib` dist-info that pip resolves against.
+  - matplotlib-base
   - gdal
   - ipykernel
   - cython
