@@ -19,7 +19,10 @@ def make_mask_from_vector(mask_file, W, ctr, spacing, srs_proj4=None):
     mask_ds=pc.grid.data().from_dict({'x':x,'y':y,'z':z}).to_gdal(srs_proj4=srs_proj4)
     
     #with ogr.Open(mask_file) as vector_mask:
-    vector_mask=ogr.Open(mask_file, 0) # readonly
+    # ogr cannot open an s3:// URI, but it reads the same object through
+    # /vsis3/ on the ordinary AWS credential chain.  as_gdal_path() leaves
+    # local paths alone, so the arctic RGI .db masks work either way.
+    vector_mask=ogr.Open(pc.io_utils.as_gdal_path(mask_file), 0) # readonly
     mask_layer=vector_mask.GetLayer()
     gdal.RasterizeLayer(mask_ds, [1], mask_layer, burn_values=[1])
     #vector_mask=None  # this statement crashes the python kernel, at least in debug mode.  Perhaps we don't need it.  ??
