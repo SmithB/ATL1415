@@ -1,3 +1,6 @@
+# DISCOVER/SLURM variant.  The MAAP/DPS counterpart is docs/howto_MAAP_arctic.sh.
+# This file remains the production path; the MAAP one is still tentative.
+
 # test:
 # N.B.  reinstall ATL1415 to make sure run_arctic* is up to date
 run_arctic_prelim.sh default_args/latest_release.txt default_args/discover.txt  default_args/quarterly.txt IS
