@@ -35,17 +35,23 @@ run_command: ATL1415/run.sh
 # already present.  Matches $DOCKERIMAGE_PATH_DEFAULT in the ADE.
 docker_container_url: mas.maap-project.org/root/maap-workspaces/custom_images/maap_base:v6.0.0
 
+# This is only the DEFAULT queue.  Registration turns it into a `queue_name` input
+# on the algorithm, so a submitJob can send an individual tile somewhere else --
+# a bigger queue for the expensive near-pole tiles, say -- without re-registering.
+#
 # TBD: public queues are throttled to ~10 jobs/hr, which makes a per-tile fan-out
 # of thousands of jobs infeasible -- an organizational queue has been requested
 # from the MAAP platform team.  Swap this for that queue name when it exists.
-# Sizing is a guess until the smoke test measures a real tile: the SLURM runs use
-# 4 tasks and a 4-hour walltime per tile.
+# Sizing is still a guess: no tile has been solved on DPS yet, and the SLURM runs
+# use 4 tasks and a 4-hour walltime per tile.
 queue: maap-dps-worker-32gb
 disk_space: 20GB
 
 inputs:
-  # Positionals first; run.sh also tolerates the file input arriving ahead of
-  # them, since which group DPS emits first is unconfirmed until the smoke test.
+  # Declaration order survives registration: describeAlgorithm() reports the
+  # signature as (x0, y0, step, args_file, queue_name), i.e. positionals then
+  # file.  run.sh still skips a leading non-numeric argument defensively, since
+  # what the wrapper builds for argv has not yet been seen in a real job.
   positional:
     - name: x0
       description: tile center easting, meters (polar stereographic; may be negative)
@@ -66,12 +72,12 @@ inputs:
     # setup_ATL1415_region.py writes (input_args_<REGION>.txt) is localized into
     # input/ and run.sh passes it as @<path>.
     #
-    # CAVEAT: that args file still names LOCAL paths.  --ATL11_index is
-    # os.path.abspath'ed and the xover tiling-schema JSON is read with a plain
-    # open(), and a DPS worker has no my-private-bucket mount -- so a DPS run
-    # needs a MAAP_dps.txt variant whose paths are either additional `file`
-    # inputs or s3:// URIs the code has learned to read.  Both are open items in
-    # docs/Transition_to_maap.md.
+    # COMPOSE IT WITH default_args/MAAP_dps.txt, not MAAP.txt.  A DPS worker has
+    # no ~/my-private-bucket mount, so every static input the args file names has
+    # to be an s3:// URI -- masks, ancillary grids and the ATL11 geoIndex are read
+    # from the bucket on the worker's own AWS credentials, and tide models come
+    # from pyTMD's public zarr stores.  MAAP.txt names the ADE mount and would
+    # produce an args file whose paths do not exist on the worker.
     - name: args_file
       description: composed ATL11_to_ATL15 argsfile (input_args_<REGION>.txt)
       default: ''
