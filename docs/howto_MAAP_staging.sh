@@ -29,7 +29,7 @@
 
 
 # ===========================================================================
-# S1. [OK]  Build the ATL1415 conda env in the ADE.        (Q5)
+# S1. [DONE 2026-09-06]  Build the ATL1415 conda env in the ADE.   (Q5)
 # ===========================================================================
 # The ADE notebook env cannot `import pointCollection` or `LSsurf`, so every
 # ADE-side stage below and in the region howtos is blocked until this exists.
@@ -38,6 +38,20 @@
 bash build-env.sh
 conda activate ATL14
 python -c "import pointCollection, LSsurf, sparseqr; print('env ok')"
+#
+# RUN 2026-09-06: succeeded, /srv/conda/envs/ATL14, python 3.13.  Every import
+# the DPS build checks resolves -- numpy scipy h5py osgeo.gdal pyproj sparseqr
+# pointCollection LSsurf ATL1415 earthaccess s3fs -- and sparseqr and LSsurf
+# both compiled against the conda toolchain here, as they do on DPS.
+# This also unblocks the Q4 measurement, which was waiting on nothing else.
+#
+# ONE MORE PER-ACCOUNT THING, found the same day: setup_ATL1415_region.py makes
+# rel<Release>/<hemi>/<region>/ with os.mkdir, one level at a time, but it does
+# NOT make --ATL14_root itself.  On a fresh account that root is absent and the
+# first setup call dies with FileNotFoundError on .../ATL14_processing/rel006.
+# The guard is deliberate enough to keep -- a typo'd --ATL14_root should fail
+# loudly rather than silently build a junk tree -- so make the root by hand:
+mkdir -p /home/jovyan/ATL14_processing      # = --ATL14_root in MAAP_dps.txt
 
 
 # ===========================================================================

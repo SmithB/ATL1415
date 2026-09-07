@@ -19,6 +19,13 @@
 #
 # Prerequisite: docs/howto_MAAP_staging.sh S1-S6; step 6 is gated on S7.
 #
+# READ THIS BEFORE DEBUGGING ANY 403 ON A MASK: pyTMD v3.0.9 set
+# AWS_NO_SIGN_REQUEST=YES process-wide at import, which made GDAL read every
+# /vsis3 object anonymously, so every mask read from s3://maap-ops-workspace
+# came back HTTP 403.  Fixed 2026-09-06 in ATL1415/__init__.py.  Verified on
+# the GL geotiff masks in both directions; full account in howto_MAAP_arctic.sh
+# step 2 and in Transition_to_maap.md, "The pyTMD AWS_NO_SIGN_REQUEST bug".
+#
 # WHAT MAKES AA DIFFERENT, in one place:
 #   a. it is submitted as TWO HALVES on a 400 km line, and stays that way on
 #      DPS (Q7).  The halves differ in tile geometry, not just in extent.
@@ -69,7 +76,8 @@ aws s3 cp $region_dir/input_args_AA.txt $s3_run/
 # ===========================================================================
 # 4. [ADE] [NEEDS CODE: make_ATL1415_queue.py --xy_out]  North-half centers.
 # ===========================================================================
-# Same four blockers as GL step 4, plus the 1 km mask (Q6/Q16) -- and for AA
+# Same four blockers as GL step 4, plus the 1 km grid mask -- Q6/Q16 are
+# ANSWERED, so what is missing there is the code, not a decision.  For AA
 # the mask problem is worse: AntarcticIceMask_..._240m_v4.1.tif has neither
 # '100m' nor '125m' in its name, so make_ATL1415_queue.py raises ValueError
 # outright rather than merely failing to find a sibling.

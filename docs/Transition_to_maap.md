@@ -6,9 +6,9 @@ workflows to MAAP" at the end of this file for the plan these questions come out
 Each item has a recommendation; answer on the `A:` line and the plan follows from it.
 
 STILL OPEN as of the 2026-09-05 pass, and only this one:
-  Q4  -- A: is still "TBD", but it is NOT waiting on you: Q18 turned it into a measurement,
-        and that measurement is blocked on building the ATL1415 env in the ADE (Q5).  It
-        resolves itself as soon as that env exists and one z0 field group can be timed.
+  Q4  -- A: is still "TBD", but it is NOT waiting on you: Q18 turned it into a measurement.
+        As of 2026-09-06 it is no longer blocked either -- the ADE env was built that day
+        (staging S1), so all that remains is to time one z0 field group.
 Everything else (Q1-Q3, Q5-Q27) is answered.  What remains in this file is work items, not
 questions.
 
@@ -427,6 +427,43 @@ Q26. NOT A MAAP QUESTION, AND PROBABLY THE MOST IMPORTANT THING IN THIS FILE: TH
      A: The only data present in cycles 1 and 2 is crossover data.  ATL11 along-track begins in cycle 3.  
      That is why only cycles 1 and 2 are read from the crossovers.  There are no plans to include crossover 
      data from later cycles.
+
+## The pyTMD AWS_NO_SIGN_REQUEST bug
+FOUND AND FIXED 2026-09-06, while running arctic step 2 in the ADE.  It would have broken
+every DPS tile job in every region, so it is recorded here rather than only in the arctic
+howto where it happened to surface.
+
+FINDING.  pyTMD v3.0.9 does this at the bottom of pyTMD/io/__init__.py:
+    # set environmental variable for anonymous s3 access
+    os.environ["AWS_NO_SIGN_REQUEST"] = "YES"
+so that its own reads of the public s3://pytmd stores are unsigned.  The variable is
+PROCESS-WIDE, and GDAL honours it for every /vsis3 read.  ATL11_to_ATL15.py:47 imports pyTMD
+at module level, and ATL1415/__init__.py's first line imports ATL11_to_ATL15, so `import
+ATL1415` alone was enough to set it.
+
+MEASUREMENTS (ADE, 2026-09-06, env /srv/conda/envs/ATL14):
+  - `import ATL1415` then ogr.Open('/vsis3/maap-ops-workspace/.../06_rgi60_Iceland_reduced.db')
+    -> HTTP 403, returns None, three times out of three.  The same open in a process that has
+    not imported ATL1415 succeeds (AssumeRoleWithWebIdentity, HTTP 206, seen under CPL_DEBUG).
+  - NOT arctic-specific, and NOT specific to ogr: with the variable restored by hand,
+    pc.grid.data().from_geotif() on Arctic/BedMachineGreenland-v6_shelf_edited.tif fails the
+    same way ("ERROR 14: AccessDenied"), surfacing as an object with no .z attribute.  With it
+    cleared, both that and GreenlandIceMask_2018.1_2026.0_100m_v4.1.tif read fine.
+  - the ADE authenticates by IRSA web identity (AWS_ROLE_ARN + AWS_WEB_IDENTITY_TOKEN_FILE),
+    which GDAL 3.13 handles on its own; there is no ~/.aws/credentials here and none is needed.
+  - GDAL caches the anonymous decision, so clearing the variable AFTER a failed read is not
+    enough on its own -- gdal.VSICurlClearCache() is then needed too.
+
+FIX (in this repo).  ATL1415/__init__.py pops AWS_NO_SIGN_REQUEST after its own first line has
+already pulled pyTMD in, so the pop is the last word and no cache clear is needed.  The tide
+path does not need the variable: ATL1415/tides.py builds s3fs.S3FileSystem(anon=...) itself,
+and s3fs ignores it.
+
+WORK ITEMS.
+  [ ] REPORT UPSTREAM to pyTMD: writing a process-wide os.environ key at import time is a side
+      effect on every other library in the process, and GDAL is the one that notices.
+  [ ] The fix is unverified on a DPS worker.  The worker authenticates differently from the
+      ADE, so the 403 could have a second cause there; the smoke test (S7) is what settles it.
 
 ## TBDs: 
 [ ] Request an organizational DPS queue from the MAAP platform team.
@@ -1109,8 +1146,11 @@ Listed in the order they block the sequence above.
     over /vsis3 -- but ATL1415/make_mask_from_vector.py called ogr.Open(mask_file, 0) directly
     instead of through pc.io_utils.as_gdal_path(), so a raw s3:// URI raised "No such file or
     directory".  DONE 2026-09-05: that call now goes through as_gdal_path().  No format change,
-    no re-staging.  Not yet exercised against the bucket -- the five regions Q21 wants to test
-    on are the check.
+    no re-staging.  EXERCISED AGAINST THE BUCKET 2026-09-06 and it PASSES: the Iceland smoke
+    tile (1260, -2620 km) rasterizes to 601x601 with 72638 ice cells, 20.1% -- a real edge
+    tile.  See howto_MAAP_arctic.sh step 2.  But it only passed after a SECOND bug, which was
+    not arctic-specific and is the more important of the two -- see "The pyTMD
+    AWS_NO_SIGN_REQUEST bug", earlier in this file.
 
 [ ] Cloud crossovers (Q19: yes, include them).  REVISED after Q24: setup_ATL11_xover.py is
     NOT needed on MAAP at all, and neither is a schema file or --ATL11_xover_dir.  The work is
@@ -1142,7 +1182,13 @@ items below, rather than trailing them.  Item 0 is done.
   1. Smoke-test one sandbox DPS job (staging S7).  It settles five things that no amount
      of reading can, including whether submitJob works on this account at all, and it is
      what sizes the production queue.        -> unblocks GL step 5, AA 6, arctic 6
-  2. make_ATL1415_queue.py cloud fixes + --xy_out, and settle the 1 km mask (Q6/Q16).
+  2. make_ATL1415_queue.py cloud fixes + --xy_out, and IMPLEMENT the 1 km mask recipe
+     that Q6/Q16 already answer (nothing there is open).  The cloud fixes now have a
+     named bug: os.path.isfile() at lines 109 (--tide_mask_file) and 214 (the arctic
+     _40km.tif) is False for an s3:// URI, so the arctic branch raises OSError on a
+     file that is on the bucket.  Both want pc.io_utils.path_exists().  The 1 km work
+     is GL/AA ONLY -- the arctic .db branch reads _40km.tif, already staged and already
+     rasterized all-touched, which is the Q16 (b) rule.
                                              -> GL step 4, AA 4-5, arctic 5
   3. submit_MAAP_jobs.py + check_MAAP_jobs.py.  The biggest new piece.
                                              -> GL steps 5-6, AA 6-7, arctic 6-7
@@ -1150,7 +1196,9 @@ items below, rather than trailing them.  Item 0 is done.
      one problem: matched cannot fan out until a job can name its neighbours by key.
                                              -> GL steps 7 and 9
   5. run_queue_local.sh.                     -> GL steps 10-11, AA 10/12/13, arctic 10
-  6. The arctic .db mask check (Q12) and the previous-product items (Q27 W1/W3/W4).
+  6. [ARCTIC HALF DONE 2026-09-06] The arctic .db mask check (Q12) passes; what it turned up
+     was the pyTMD AWS_NO_SIGN_REQUEST bug, now fixed.  Still open: the previous-product
+     items (Q27 W1/W3/W4).
      W1 is a silent-failure bug and should not wait for a production run to surface it.
 
 The howtos are now the thing to revise as each of these lands, rather than the thing to

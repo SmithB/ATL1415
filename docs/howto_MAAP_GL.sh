@@ -22,6 +22,13 @@
 # the ADE has an ATL1415 env (S1) and the masks and ATL11 index are on the
 # bucket (S2, S3).  Step 5 is gated on the smoke test, S7.
 #
+# READ THIS BEFORE DEBUGGING ANY 403 ON A MASK: pyTMD v3.0.9 set
+# AWS_NO_SIGN_REQUEST=YES process-wide at import, which made GDAL read every
+# /vsis3 object anonymously, so every mask read from s3://maap-ops-workspace
+# came back HTTP 403.  Fixed 2026-09-06 in ATL1415/__init__.py.  Verified on
+# the GL geotiff masks in both directions; full account in howto_MAAP_arctic.sh
+# step 2 and in Transition_to_maap.md, "The pyTMD AWS_NO_SIGN_REQUEST bug".
+#
 # THE TWO STRUCTURAL DIFFERENCES from howto_GL.sh:
 #   - the location layer is default_args/MAAP_dps.txt, not discover.txt.  Use
 #     it INSTEAD OF MAAP.txt: MAAP.txt names the ~/my-private-bucket mount,
@@ -79,8 +86,9 @@ aws s3 cp $region_dir/input_args_GL.txt $s3_run/
 #     (--ATL11_earthaccess, --tide_adjustment), already fixed in
 #     setup_ATL1415_region.py but still live here
 #   - --xy_out itself
-# ALSO GATED ON THE 1 km MASK (Q6/Q16): the v4.1 masks have no 1 km version,
-# and the tile grid is derived from one.  Settled shape: an explicit
+# ALSO GATED ON THE 1 km MASK: the v4.1 masks have no 1 km version, and the
+# tile grid is derived from one.  Q6/Q16 ANSWER THIS COMPLETELY -- nothing is
+# open, only unwritten.  Settled shape: an explicit
 # --grid_mask_file, a tile list frozen per release in region_files/, and a 1 km
 # decimation built on the fly with gdal_translate using MAX resampling, cached
 # back to the bucket.
