@@ -125,9 +125,13 @@ setup_ATL1415_region.py default_args/MAAP_dps.txt default_args/latest_release.tx
 
 
 # ===========================================================================
-# 4. [ADE] [UNTESTED]  Publish the args file.        (as GL step 3)
+# 4. [ADE] [OK 2026-09-06]  Publish the args file.   (as GL step 3)
 # ===========================================================================
 aws s3 cp $region_dir/input_args_$reg.txt $s3_run/
+# RUN 2026-09-06 for IS: the prefix did not exist beforehand and `aws s3 cp`
+# made it.  1093 bytes at
+# s3://maap-ops-workspace/ben_smith/ATL1415/run_args/rel006/north/IS/input_args_IS.txt
+# -- which is the args_file the smoke test submits (staging S7).
 
 
 # ===========================================================================
