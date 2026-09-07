@@ -47,3 +47,15 @@
 # schema with a remote 'source', so there is no cloud crossover tree to point
 # at.  Crossovers are therefore skipped in this mode.  See
 # docs/Transition_to_maap.md.
+
+# --previous_product_earthaccess reinterprets --previous_product as the release
+# and cycle range to search for in NASA Earthdata Cloud ('<release>_<cycles>'),
+# the way --ATL11_earthaccess reinterprets --ATL11_index.  setup_ATL1415_region.py
+# derives the value from --previous_product_top's name (rel005_0329 -> 005_0329)
+# and drops --previous_product_top itself, which names a discover tree.
+#
+# THE PUBLISHED PRODUCT IS THE PREVIOUS PRODUCT: ATL14/ATL15 v005 on CMR are the
+# same 0329 files rel005_0329/ holds, so nothing is staged, and a bounding-box
+# search returns only the sectors a tile actually touches -- one ATL14 granule
+# for an Iceland or a single-sector Antarctic tile.  See Transition_to_maap.md Q27.
+--previous_product_earthaccess

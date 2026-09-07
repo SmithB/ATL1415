@@ -148,9 +148,39 @@ def main(argv=None):
         lags = ATL1415.infer_dzdt_lags(t_res, time_span)
         defaults['--dzdt_lags'] = ','.join(map(str, lags))
 
-    # resolve previous-product directories if a top-level path was given
+    # --previous_product_earthaccess reinterprets --previous_product as the
+    # release and cycle range to search CMR for, the way --ATL11_earthaccess
+    # reinterprets --ATL11_index (Q27, THE QUESTION).  The local resolution
+    # below cannot run in the cloud at all: it globs <top>/south/A? and tests
+    # os.path.isdir, which find nothing in the ADE and would emit discover
+    # paths that do not exist on a worker -- the three-sigma pre-edit would
+    # then be skipped on every tile (Q27 W4, and W1 for what that costs).
+    cloud_previous = '--previous_product_earthaccess' in defaults
+
     pp_dirs = []
-    if '--previous_product_top' in defaults: 
+    pp_release = None
+    if cloud_previous:
+        # the release and cycles come from --previous_product_top's own name,
+        # rel<release>_<cycles>, so the one per-release knob keeps working and
+        # there is nothing new to maintain: rel005_0329 -> 005_0329.
+        if '--previous_product' in defaults:
+            pp_release = defaults.pop('--previous_product')
+        elif '--previous_product_top' in defaults:
+            top = defaults['--previous_product_top'].rstrip('/')
+            m = re.match(r'^rel(?P<release>\d{3})_(?P<cycles>\d{4})$',
+                         os.path.basename(top))
+            if m is None:
+                raise(ValueError(
+                    f"cannot read a release and cycle range out of --previous_product_top="
+                    f"{defaults['--previous_product_top']}: with --previous_product_earthaccess "
+                    "set, either its last path element must be named rel<release>_<cycles> "
+                    "(e.g. rel005_0329) or --previous_product must be given as "
+                    "'<release>_<cycles>' directly"))
+            pp_release = f"{m['release']}_{m['cycles']}"
+        # the discover tree it names is not reachable from a worker, and
+        # ATL11_to_ATL15 does not read this argument, so do not write it out
+        defaults.pop('--previous_product_top', None)
+    elif '--previous_product_top' in defaults:
         if hemisphere_base == 'north':
             pp_dirs = [os.path.join(defaults['--previous_product_top'], 'north', defaults['--region'])]
         else:
@@ -170,6 +200,8 @@ def main(argv=None):
                 fh.write(f'{key}={val}\n')
         for pp_dir in pp_dirs:
             fh.write(f'--previous_product={pp_dir}\n')
+        if pp_release is not None:
+            fh.write(f'--previous_product={pp_release}\n')
         fh.write(f"-b={region_dir}\n")
 
     print("setup_ATL1415_region.py: wrote defaults to:")

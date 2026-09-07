@@ -111,17 +111,18 @@ setup_ATL1415_region.py default_args/MAAP_dps.txt default_args/latest_release.tx
 # RUN 2026-09-06: writes /home/jovyan/ATL14_processing/rel006/north/IS/
 # input_args_IS.txt.  It needs --ATL14_root to exist first -- see staging S1.
 #
-# EVERY CLOUD INPUT IN THE COMPOSED FILE IS AN s3:// URI, as intended:
-# --ATL11_index, --tide_directory, --geoid_file, and --mask_file (the Iceland
-# .db).  TWO LINES ARE STILL DISCOVER PATHS, and they are Q27's work items, not
-# new ones:
-#   --previous_product_top=/discover/nobackup/.../rel005_0329/      (W4)
-#   --previous_product=/discover/nobackup/.../rel005_0329/north/IS  (W1)
-# Neither exists on a worker.  Per W1 the read SILENTLY SKIPS rather than
-# failing, so the smoke test will run without a previous product and will not
-# say so -- expect that, and do not read it as the previous-product path
-# working.  -b is the third local path, but run.sh overrides it after the args
-# file on purpose, so it is not a problem.
+# EVERY CLOUD INPUT IN THE COMPOSED FILE IS AN s3:// URI OR A CMR SEARCH, as
+# intended: --ATL11_index, --tide_directory, --geoid_file, --mask_file (the
+# Iceland .db), and -- since 2026-09-06 -- the previous product, which is now
+#   --previous_product_earthaccess
+#   --previous_product=005_0329
+# in place of the two /discover/... paths this file used to warn about (Q27
+# W1/W4 are fixed; --previous_product_top is dropped in cloud mode).  The
+# previous product WILL therefore be read on the smoke test, not silently
+# skipped: expect the log to name ATL14_IS_0329_100m_005_02.nc and
+# ATL15_IS_0329_01km_005_02.nc, found by a bounding-box CMR search.
+# -b is the one local path left, and run.sh overrides it after the args file on
+# purpose, so it is not a problem.
 
 
 # ===========================================================================

@@ -329,6 +329,8 @@ Q25. OPTION A NEEDS RELEASE/VERSION TO REACH THE SOLVE, and there is a free way 
 Q27. WHERE DO THE PREVIOUS ATL14/15 PRODUCTS COME FROM?  (your question, 2026-09-04)
      SHORT ANSWER: yes, CMR + S3 works, nothing has to be staged, and the numbers are good --
      but there are five code changes, one of which is a silent-failure bug.
+     ALL FIVE ARE DONE as of 2026-09-06 (W2 upstream on 09-05); see the work items below.
+     What has NOT happened is a DPS run: everything here was exercised in the ADE.
 
      HOW TO READ THIS ENTRY.  Most of it is findings, not questions.  FINDINGS and
      MEASUREMENTS are verified statements, with how each was verified.  WORK ITEMS are
@@ -371,7 +373,7 @@ Q27. WHERE DO THE PREVIOUS ATL14/15 PRODUCTS COME FROM?  (your question, 2026-09
      than the data.
 
      ---- WORK ITEMS (consequences, with status; not questions) ----
-     W1 [OPEN -- THE ONE THAT MATTERS MOST].  THE SILENT-SKIP BUG.
+     W1 [DONE 2026-09-06].  THE SILENT-SKIP BUG.
         set_three_sigma_edit_from_previous_product finds its files with
         glob.glob(os.path.join(directory,'ATL14_*.nc')).  glob over an s3:// URI returns [],
         so the function finds no coverage, prints "no previous-product coverage for tile,
@@ -380,6 +382,13 @@ Q27. WHERE DO THE PREVIOUS ATL14/15 PRODUCTS COME FROM?  (your question, 2026-09
         like a normal edge-of-domain outcome.  --previous_product is already typed
         path_or_uri, so nothing stops someone doing exactly that.
         RECOMMEND: it should fail loudly.
+        FIXED: discovery moved to ATL1415/previous_product.py, which rejects a URI in local
+        mode with a message naming the flag to set, and raises when a search finds no files
+        AT ALL.  A tile merely outside the previous product's domain still skips quietly --
+        the two are now distinguishable, and the skip message says how many files were
+        searched.  Verified 2026-09-06 in the ADE: a URI raises ValueError, an empty
+        directory raises RuntimeError, a nonexistent release raises RuntimeError, and a tile
+        at the pole skips and returns normally.
      W2 [DONE UPSTREAM 2026-09-05].  THE READ PATH.  pointCollection PR #53 (fa66500, merged
         as 96ea0c3).  from_nc() on a URI used to read the WHOLE OBJECT into memory, so a
         single AA tile job would have pulled ~20 GiB.  It now opens the granule through h5py
@@ -392,17 +401,42 @@ Q27. WHERE DO THE PREVIOUS ATL14/15 PRODUCTS COME FROM?  (your question, 2026-09
         main unpinned, so the next DPS build picks it up.  One thing to know: netCDF4 silently
         applies scale_factor/add_offset and h5py does not, so the adapter replicates that
         arithmetic.
-     W3 [OPEN].  DISCOVERY.  The current code globs A1-A4 and mosaics them by filling NaN
+     W3 [DONE 2026-09-06].  DISCOVERY.  The current code globs A1-A4 and mosaics them by filling NaN
         left-to-right.  RECOMMEND replacing the glob with an earthaccess search by bounding
         box, filtered per F2 to the right cycles/version.  That is a simplification as well as
         a cloud fix: a spatial search returns only the sectors that actually intersect the tile.
-     W4 [OPEN].  THE SETUP SIDE.  setup_ATL1415_region.py resolves --previous_product_top by
+        DONE, and measured on the smoke tile: the search returns exactly
+        ATL14_IS_0329_100m_005_02.nc and ATL15_IS_0329_01km_005_02.nc, and for an Antarctic
+        tile at (-500, 500) km exactly ATL14_A2 -- one sector, not four.  Granules are
+        filtered on cycles AND release per F2, and reduced to the highest revision per
+        (product, region, resolution) so an 005_01 cannot fill holes in an 005_02.
+        ONE THING THE PLAN MISSED: the granules are in NSIDC's PROTECTED bucket, so the read
+        needs the DAAC's temporary credentials -- pc.io_utils.get_s3fs(daac='NSIDC'), the
+        same filesystem read_ATL11_at builds.  Without it every read raises
+        "PermissionError: Forbidden".  Block size is left at io_utils' 256 KiB default,
+        which is the value the measurements above settled on.
+        End to end on the smoke tile: 7.5 s including the CMR search and the login.
+     W4 [DONE 2026-09-06].  THE SETUP SIDE.  setup_ATL1415_region.py resolves --previous_product_top by
         local glob (glob.glob(<top>/south/A?) plus os.path.isdir), which finds nothing in the
         ADE.  RECOMMEND: in cloud mode emit a cloud marker plus the release/version to search
         for, rather than a list of directories that do not exist.
-     W5 [OPEN, NOT ON THE QUARTERLY CRITICAL PATH].  --ATL14_reference_file has the SAME shape
-        of problem by a different route: line 682 calls glob.glob(ATL14_reference_file).  It is
-        used only for monthly runs, but it needs the same treatment as W1/W3.
+        DONE: --previous_product_earthaccess (set in default_args/MAAP_dps.txt) makes
+        setup_ATL1415_region.py skip the local resolution entirely and emit
+        --previous_product=<release>_<cycles>, derived from --previous_product_top's own
+        name (rel005_0329 -> 005_0329), so the one per-release knob still drives it.
+        --previous_product_top is dropped from the composed file in that mode: it names a
+        discover tree, and ATL11_to_ATL15 does not read it.  The local path is untouched --
+        north still emits <top>/north/<REGION>, south still globs A?.
+        --previous_product also needed its own argparse type: it was typed path_or_uri, which
+        turned '005_0329' into '<cwd>/005_0329'.
+     W5 [DONE 2026-09-06].  --ATL14_reference_file had the SAME shape of problem by a
+        different route: glob.glob(ATL14_reference_file), whose [] became an empty reference
+        DEM that would edit out every data point.  It now goes through
+        _expand_reference_files(), which passes a single URI straight through (from_nc reads
+        one directly since W2), raises on a URI containing a wildcard -- a URI cannot be
+        listed here -- and raises when a local pattern matches nothing.  Cloud DISCOVERY for
+        it is deliberately NOT implemented: a monthly run names its reference granules, and
+        inventing a second search interface for the one caller would be guesswork.
 
 Q26. NOT A MAAP QUESTION, AND PROBABLY THE MOST IMPORTANT THING IN THIS FILE: THE CROSSOVER
      READ COVERS 2 CYCLES OUT OF 31, ON DISCOVER AS WELL AS ON MAAP.
@@ -1196,10 +1230,10 @@ items below, rather than trailing them.  Item 0 is done.
      one problem: matched cannot fan out until a job can name its neighbours by key.
                                              -> GL steps 7 and 9
   5. run_queue_local.sh.                     -> GL steps 10-11, AA 10/12/13, arctic 10
-  6. [ARCTIC HALF DONE 2026-09-06] The arctic .db mask check (Q12) passes; what it turned up
-     was the pyTMD AWS_NO_SIGN_REQUEST bug, now fixed.  Still open: the previous-product
-     items (Q27 W1/W3/W4).
-     W1 is a silent-failure bug and should not wait for a production run to surface it.
+  6. [DONE 2026-09-06] The arctic .db mask check (Q12) passes; what it turned up was the
+     pyTMD AWS_NO_SIGN_REQUEST bug, now fixed.  The previous-product items (Q27 W1/W3/W4 and
+     W5) are done too -- W1 was a silent-failure bug, and it did not wait for a production
+     run to surface it.
 
 The howtos are now the thing to revise as each of these lands, rather than the thing to
 write at the end.

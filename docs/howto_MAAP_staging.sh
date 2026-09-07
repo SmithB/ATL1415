@@ -52,6 +52,14 @@ python -c "import pointCollection, LSsurf, sparseqr; print('env ok')"
 # The guard is deliberate enough to keep -- a typo'd --ATL14_root should fail
 # loudly rather than silently build a junk tree -- so make the root by hand:
 mkdir -p /home/jovyan/ATL14_processing      # = --ATL14_root in MAAP_dps.txt
+#
+# AND ONE TRAP, hit on 2026-09-06: build-env.sh runs `pip install .`, which
+# COPIES the code into the env.  The console scripts (setup_ATL1415_region.py,
+# make_ATL1415_queue.py, ATL11_to_ATL15.py) then run that copy, while
+# `python -c "import ATL1415"` from the repo directory runs the repo -- so an
+# edit can appear to work and be silently absent from the composed args file.
+# For ADE work, reinstall editable after S1, and re-run it after pulling:
+conda run -n ATL14 python -m pip install -e . --no-deps --no-build-isolation
 
 
 # ===========================================================================
