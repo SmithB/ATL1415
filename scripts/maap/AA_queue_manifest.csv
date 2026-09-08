@@ -1,0 +1,17 @@
+x0,y0,lat,r_km,ice_frac,tide_frac,group,purpose
+-580000,-980000,-79.55,1139,1.0,0.318,tide,grounding line: partial tide correction
+-420000,-1140000,-78.85,1215,1.0,0.999,tide,floating ice: full tide correction
+-1340000,420000,-77.13,1404,1.0,1.0,tide,floating ice: full tide correction
+-1420000,340000,-76.62,1460,1.0,0.674,tide,grounding line: partial tide correction
+1740000,740000,-72.72,1891,0.993,0.442,tide,grounding line: partial tide correction
+2060000,740000,-70.05,2189,1.0,1.0,tide,floating ice: full tide correction
+100000,20000,-89.06,102,0.0,0.0,transect,inside ICESat-2 pole hole: expect a clean empty skip
+220000,20000,-87.97,221,0.573,0.0,transect,pole-hole edge: peak track convergence
+300000,20000,-87.23,301,1.0,0.0,transect,"grounded interior, r=301 km"
+420000,20000,-86.13,420,1.0,0.0,transect,"grounded interior, r=420 km"
+620000,20000,-84.3,620,1.0,0.0,transect,"grounded interior, r=620 km"
+900000,20000,-81.73,900,1.0,0.0,transect,"grounded interior, r=900 km"
+1220000,20000,-78.8,1220,1.0,0.0,transect,"grounded interior, r=1220 km"
+1620000,20000,-75.17,1620,1.0,0.0,transect,"grounded interior, r=1620 km"
+2020000,20000,-71.56,2020,1.0,0.0,transect,coastal margin: lowest track density
+2420000,20000,-67.99,2420,1.0,0.0,transect,coastal margin: lowest track density

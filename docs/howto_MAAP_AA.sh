@@ -142,6 +142,55 @@ aws s3 cp $region_dir/input_args_AA.txt $s3_run/
 
 
 # ===========================================================================
+# 3b. [ADE+DPS] [READY, BLOCKED ON STEP 3]  The cost-characterisation transect.
+# ===========================================================================
+# WHY, and it is not part of the production workflow: the Iceland smoke tile
+# (staging S7) took 26.6 minutes for 239613 ATL11 points, and it is close to
+# the FLOOR of the cost range -- a small, low-latitude, grounded, tide-free
+# tile.  Nothing yet says what the expensive end looks like, and the S6 queue
+# request cannot be written without it.  This runs a spread of Antarctic tiles
+# and records time, peak memory and input size for each.
+#
+# 16 tiles, in scripts/maap/AA_queue_xy.txt, chosen against the real masks and
+# documented one row each in scripts/maap/AA_queue_manifest.csv:
+#
+#   10 along azimuth 90 deg through East Antarctica, from the pole outward.
+#      One sits INSIDE the ICESat-2 pole hole (ice_frac 0.00, r=100 km): the
+#      mask encodes the hole exactly, no ATL11 data exists there, and the tile
+#      is a free production test of the empty-tile fix -- it should skip
+#      cleanly rather than raise.  One sits on the hole's EDGE at 88 S, where
+#      track convergence peaks.  The rest run out to the coastal margin at
+#      2420 km, where track density is lowest.
+#
+#    6 that exercise the TIDE CORRECTION, which no DPS job has touched: three
+#      fully floating (Ross, Ronne, Amery: tide_frac 1.00) and three straddling
+#      a grounding line (tide_frac 0.32/0.44/0.67).  The grounding-line tiles
+#      are the interesting ones -- a tile that is partly floating is where the
+#      tide mask boundary actually has to be right.  These also exercise the
+#      ANONYMOUS s3://pytmd read, the one credential path of the three that no
+#      job has used yet: AA sets --tide_model=CATS2008-v2023 and
+#      --tide_adjustment, and IS does not.
+#
+# Run it (needs the args file from step 3):
+scripts/maap/submit_AA_queue.py scripts/maap/AA_queue_xy.txt \
+    $s3_run/input_args_AA.txt maap-dps-worker-32gb AA_queue_jobs.csv
+scripts/maap/collect_AA_queue.py AA_queue_jobs.csv
+#
+# The collector joins each job's status to the peak RSS and elapsed time the
+# job reports about ITSELF (scripts/run_with_rusage.py, one line per fit /
+# error / matched step), plus N_ATL11 and N_fit parsed from its log.  It does
+# not rely on getJobMetrics, which returned an empty dict for the one job that
+# has succeeded so far.
+#
+# EXPECT SOME TO FAIL, and that is a result too: a tile that OOMs on
+# maap-dps-worker-32gb has told us that its class needs a bigger queue, which
+# is exactly what S6 has to ask for.  Re-run those on maap-dps-worker-64gb.
+#
+# Regenerate the queue with scripts/maap/make_AA_queue.py (which recomputes
+# ice_frac and tide_frac from the staged masks) if the tile geometry changes.
+
+
+# ===========================================================================
 # 4. [ADE] [NEEDS CODE: make_ATL1415_queue.py --xy_out]  North-half centers.
 # ===========================================================================
 # Same four blockers as GL step 4, plus the 1 km grid mask -- Q6/Q16 are
