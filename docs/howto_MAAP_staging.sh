@@ -329,6 +329,12 @@ EOF
 #      input/prelim/ tree the --matched step will localize.
 #   4. do the s3:// reads in the composed args file work on the worker's own
 #      AWS credentials (masks via /vsis3/, index via s3fs, tides anonymously)?
+#      ANSWERED 2026-09-08: YES.  Job 08ee68ea got through the Iceland .db
+#      mask, the geoid and the ATL11 index on s3://maap-ops-workspace using
+#      the worker's own identity, and through the ATL11 granules themselves on
+#      MAAP-brokered NSIDC credentials, into three QR iterations of the solve.
+#      A 403 on any of them would have stopped it in seconds.  All three
+#      credential paths in one job are now exercised.
 #      STILL OPEN, but no longer preempted: read_ATL11 is called from
 #      ATL11_to_ATL15.py:635, before any mask or geoid read, so until Q2 was
 #      fixed the netrc failure hid this question entirely.  The first run on the
@@ -339,6 +345,12 @@ EOF
 #      get_s3fs(daac=None), and the tide stores are read anonymously.
 #   5. how long does one prelim tile take, and how much memory does it need?
 #      -> this is what sizes the production queue in S6.
+#      PARTIAL, 2026-09-08, job 08ee68ea on maap-dps-sandbox: the Iceland tile
+#      read 239613 ATL11 points, decimated to 239613, put 43773 into the fit,
+#      and ran QR iterations at ~145 s each on 2 threads (--max_iterations=3).
+#      It was killed at 600 s -- see the sandbox limit below -- so the total is
+#      still unmeasured.  Use getJobMetrics(), which returns max_mem_usage and
+#      job_duration_seconds directly, rather than timing it by hand.
 #
 # WHAT THE SECOND RUN (1f356303, 2026-09-08) ESTABLISHED BESIDES Q2.  The -L fix
 # works: run.sh found the localized args file, printed its banner, and handed
@@ -356,7 +368,23 @@ EOF
 # per-tile queue override that algorithm_config.yml describes therefore needs
 # `queue=`; treat queue_name as decorative until something proves otherwise.
 #
-# 4 AND 5 ARE STILL OPEN, behind Q2.
+# 5 IS STILL OPEN.  1, 2, 3 and 4 are answered.
+#
+# THE SANDBOX QUEUE HAS A 600-SECOND SOFT TIME LIMIT, and nothing in the MAAP
+# docs says so -- dps_queues.html says public worker queues have UNLIMITED
+# walltime, which is evidently about the worker queues and not about
+# maap-dps-sandbox.  Job 08ee68ea died at 600 s with
+#   Soft time limit (600s) exceeded for job-ATL1415_tile_solve...
+# after ten entirely healthy minutes.  So THE SANDBOX CANNOT COMPLETE A REAL
+# TILE: use it to prove a job starts, and move to a worker queue to time one.
+#
+# AND NOTE THE EXIT CODE: 143.  The docs' one-row error table says 143 means a
+# spot interruption, "re-run the job(s) later".  Here it was a walltime kill.
+# The two are indistinguishable by exit code alone, which matters for
+# check_MAAP_jobs.py: requeueing a job that exceeded its walltime just burns
+# the queue again, forever.  Distinguish them on the log -- a walltime kill
+# says "Soft time limit (Ns) exceeded" -- or on elapsed time against the
+# queue's limit, not on 143 by itself.
 #
 # WHERE THE LOGS ARE -- and they are NOT browser-only, unlike the BUILD logs.
 # A failed job triages itself onto the bucket, readable from the ADE with
