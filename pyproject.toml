@@ -42,16 +42,8 @@ dependencies = [
     # [cloud] pulls earthaccess/s3fs/fsspec, without which the ATL11 cloud read
     # path fails at import.  The extra is purely additive, so this one install
     # also satisfies the plain pointCollection that LSsurf resolves to.
-    #
-    # PINNED TO A BRANCH, temporarily.  maap_s3_credentials teaches
-    # get_s3fs(daac=...) to get the DAAC's credentials from MAAP's broker, which
-    # is the only way a DPS worker can read the NSIDC-protected ATL11 granules:
-    # it has no ~/.netrc and no Earthdata credentials at all.  See
-    # docs/howto_MAAP_staging.sh S7 q2.  MERGE IT TO main AND DROP THE @ref --
-    # unpinned, this line tracks the default branch, so the fix flows in with no
-    # version bump once merged, and until then an unpinned build silently would
-    # NOT contain it.
-    "pointCollection[cloud] @ git+https://github.com/SmithB/pointCollection.git@maap_s3_credentials",
+
+    "pointCollection[cloud] @ git+https://github.com/SmithB/pointCollection.git",
     "LSsurf @ git+https://github.com/smithb/LSsurf.git"
     # SMBcorr is NOT required: it is needed only for the --firn_model correction,
     # which is imported lazily.  See the [firn] extra below.
