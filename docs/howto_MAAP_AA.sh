@@ -57,14 +57,31 @@ s3_out_44=s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/south/AA_44k
 # on the bucket that separation has to be made explicitly, or the halves
 # overwrite each other.
 #
-# THEY DO OVERLAP, so this is not hypothetical.  Step 4 filters with
-# --min_xy 360000 (keep if max|xy| >= 360 km) and step 5 with --max_xy 440000
-# (keep if every |xy| <= 440 km), so any tile whose max|xy| falls in
-# 360000..440000 is queued by BOTH -- same center, same filename, two widths.
-# OPEN QUESTION for Ben: is that overlap band deliberate (a blend zone between
-# the two tile sizes) or an off-by-one in the two limits?  Nothing here
-# changes it, because narrowing either limit changes which tiles get solved at
-# which resolution, which is a science decision and not a cleanup.
+# THEY DELIBERATELY OVERLAP -- confirmed by Ben 2026-09-08.  Step 4 filters
+# with --min_xy 360000 (keep if max|xy| >= 360 km) and step 5 with
+# --max_xy 440000 (keep if every |xy| <= 440 km), so any tile whose max|xy|
+# falls in 360000..440000 is queued by BOTH halves: same center, same
+# 'E%d_N%d.h5' filename, two different widths.  DO NOT "FIX" THE LIMITS.
+#
+# That makes the two prefixes above load-bearing rather than tidy: in the
+# overlap band a tile center legitimately has TWO valid solutions, and any
+# namespace that holds only one of them silently keeps whichever was written
+# last.  Two consequences for code that is not written yet:
+#
+#   Q9, the deterministic output prefix.  The key CANNOT be the tile center
+#   alone.  It has to carry the half (or the width) as well, or the 44 km and
+#   60 km solutions of an overlap tile collide wherever they meet -- on the
+#   bucket, in a job ledger, or in a requeue check that asks "does the output
+#   for this center already exist?"  The answer to that question is only
+#   well-posed per half.
+#
+#   Q8, the matched neighbourhood.  A matched job localizes its tile's prelim
+#   output plus its 8 neighbours BY NAME.  For a tile in the overlap band,
+#   "the prelim tile at this center" is ambiguous, and a neighbourhood
+#   assembled across the two halves would mix 44 km and 60 km fits.  Each
+#   half's matched pass must draw only on its own prelim tree -- which is what
+#   the discover workflow gets for free from $region_dir vs $region_dir_44,
+#   and what step 9 below has to reproduce explicitly.
 
 
 # ===========================================================================
@@ -203,8 +220,14 @@ make_ATL1415_queue.py matched $region_dir/input_args_AA.txt --min_xy 360000 \
     --xy_out AA_north_matched_xy.txt
 make_ATL1415_queue.py matched $region_dir_44/input_args_AA_44km.txt --max_xy 440000 \
     --xy_out AA_south_matched_xy.txt
-# ... then two submit_MAAP_jobs.py calls with --step matched and
-# --prelim_prefix $s3_out/prelim, exactly as in GL step 9.
+# ... then two submit_MAAP_jobs.py calls with --step matched, EACH POINTED AT
+# ITS OWN HALF'S PRELIM TREE -- north at --prelim_prefix $s3_out/prelim, south
+# at --prelim_prefix $s3_out_44/prelim.  NOT one shared prefix, and this is the
+# step where getting it wrong is least visible: a matched job localizes its
+# tile's own prelim output plus its 8 neighbours by name, so in the deliberate
+# 360-440 km overlap band a shared prefix would hand it a neighbourhood mixing
+# 44 km and 60 km fits at identical filenames.  The result would be a solved
+# tile, not an error.  See the note at the top of this file.
 aws s3 sync $s3_out/matched/    $region_dir/matched/
 aws s3 sync $s3_out_44/matched/ $region_dir_44/matched/
 
