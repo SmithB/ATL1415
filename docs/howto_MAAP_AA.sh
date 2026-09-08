@@ -139,6 +139,12 @@ grep -E '^--previous_product' $region_dir/input_args_AA.txt
 # 3. [ADE] [UNTESTED]  Publish the args file.        (as GL step 3)
 # ===========================================================================
 aws s3 cp $region_dir/input_args_AA.txt $s3_run/
+# ...and the south half's, composed with the overrides file (see step 5):
+setup_ATL1415_region.py default_args/MAAP_dps.txt default_args/latest_release.txt \
+    default_args/AA_latest.txt default_args/quarterly.txt default_args/AA_44km.txt \
+    --Hemisphere=-1
+aws s3 cp $region_dir_44/input_args_AA_44km.txt $s3_run/
+# RUN 2026-09-08: 1375 and 1385 bytes, both under $s3_run.
 
 
 # ===========================================================================
@@ -203,27 +209,25 @@ make_ATL1415_queue.py prelim $region_dir/input_args_AA.txt --min_xy 360000 \
 
 
 # ===========================================================================
-# 5. [ADE] [NEEDS CODE, as step 4] [NEEDS INPUT: how is the 44 km args file made?]
-#     South-half centers, different geometry.
+# 5. [ADE] [NEEDS CODE, as step 4]  South-half centers, different geometry.
 # ===========================================================================
 # The south half is a SEPARATE REGION DIRECTORY with a different tile size:
 # W=44000, spacing 40000, against the 60 km / 40 km of the north half.  That
 # is why it cannot simply be a --max_xy filter on the same queue.
 #
-# GAP, FOUND 2026-09-08: NOTHING COMPOSES input_args_AA_44km.txt.  It is used
-# here, at step 6, and at step 9, but step 2 composes only input_args_AA.txt
-# and step 3 publishes only that one.  This is not a MAAP omission -- the
-# discover howto (docs/howto_AA.sh:23) has the identical gap, using the file
-# without ever making it -- and there is no default_args entry, no --region
-# AA_44km, and no script in ATL1415/scripts that emits it.  So the recipe
-# exists only in Ben's head or in shell history.
-#
-# BEN: what makes input_args_AA_44km.txt?  Presumably setup_ATL1415_region.py
-# with -W 44000 and its own region directory, but guessing at the arguments
-# would produce a plausible-looking args file with the wrong geometry, which
-# is exactly the kind of thing that only shows up as a bad mosaic much later.
-# Once it is known, add it to step 2 and publish it in step 3:
-#   aws s3 cp $region_dir_44/input_args_AA_44km.txt $s3_run/
+# THE 44 km ARGS FILE, which nothing used to compose.  It is used here, at step
+# 6 and at step 9, but step 2 composed only input_args_AA.txt -- and the
+# discover howto (docs/howto_AA.sh:23) has the identical gap.  Resolved
+# 2026-09-08 with default_args/AA_44km.txt, an overrides file carrying just
+#   --region=AA_44km
+#   -W=44000
+# layered AFTER AA_latest.txt and the release file, which set --region=AA and
+# -W=60000.  It has to be a FILE: setup_ATL1415_region.py takes only
+# defaults_files, --ATL14_reference_file and --Hemisphere on the command line,
+# so neither --region nor -W can be overridden there.  --region drives both the
+# directory and the args-file name, so this lands exactly where steps 5/6/9
+# expect it.  Both files were composed and published 2026-09-08; they differ in
+# three lines -- --region, -W and -b -- and in nothing else.
 make_ATL1415_queue.py prelim $region_dir_44/input_args_AA_44km.txt --max_xy 440000 \
     --xy_out AA_south_prelim_xy.txt
 

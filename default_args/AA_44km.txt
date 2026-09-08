@@ -1,0 +1,22 @@
+# Antarctic SOUTH half -- the near-pole tiles, solved on a smaller footprint.
+#
+# Layer this AFTER AA_latest.txt and the release file, which set --region=AA and
+# -W=60000; the later file wins.  setup_ATL1415_region.py takes no --region or
+# -W on the command line (only defaults_files, --ATL14_reference_file and
+# --Hemisphere), so a separate geometry has to arrive as a defaults file:
+#
+#   setup_ATL1415_region.py default_args/MAAP_dps.txt default_args/latest_release.txt \
+#       default_args/AA_latest.txt default_args/quarterly.txt default_args/AA_44km.txt \
+#       --Hemisphere=-1
+#
+# --region drives BOTH the directory and the args-file name (region_dir =
+# <hemi>/<region>, and input_args_<region>.txt), so this writes
+# rel006/south/AA_44km/input_args_AA_44km.txt -- the file docs/howto_MAAP_AA.sh
+# and docs/howto_AA.sh both USE but neither showed how to make.
+#
+# The tile SPACING stays at 40 km; only the width changes, so the south half's
+# tiles overlap more.  The two halves deliberately overlap in max|xy| 360-440 km
+# (Ben, 2026-09-08), so a tile center in that band is solved at BOTH widths and
+# the two must be kept in separate output prefixes.
+--region=AA_44km
+-W=44000
