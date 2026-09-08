@@ -235,12 +235,28 @@ EOF
 #
 # Compose and publish the IS args file first -- arctic steps 3 and 4.
 #
-#   job = maap.submitJob(algo_id='ATL1415_tile_solve', version='on_s3',
+#   job = maap.submitJob(identifier='ATL1415_smoke',
+#                        algo_id='ATL1415_tile_solve', version='on_s3',
+#                        queue='maap-dps-sandbox',
 #                        x0=1260000, y0=-2620000, step='prelim',
 #                        args_file='s3://maap-ops-workspace/ben_smith/ATL1415/run_args/'
 #                                  'rel006/north/IS/input_args_IS.txt',
-#                        queue_name='maap-dps-sandbox',
-#                        username='ben_smith', identifier='ATL1415_smoke')
+#                        queue_name='maap-dps-sandbox')
+#
+# THE ARGUMENT IS `queue`, NOT `queue_name`.  Corrected 2026-09-08 by reading
+# maap-py 4.2.0: submitJob(identifier, algo_id, version, queue, ...) takes queue
+# as a REQUIRED parameter, and everything else in **kwargs is forwarded as a WPS
+# algorithm input (DpsHelper._skit, DpsHelper.py:29-46).  The earlier form here
+# passed only queue_name, so it would have raised
+#   TypeError: submitJob() missing 1 required positional argument: 'queue'
+# before sending anything.  Both are passed above, set to the SAME queue, so it
+# cannot matter which one the server honours -- registration turns the yaml's
+# `queue:` into a queue_name INPUT, while `queue` is maap-py's own job-queue
+# field, and which takes precedence is not documented.  A later run that wants a
+# per-tile override should set both together, or settle the precedence first.
+#
+# DO NOT pass username: submitJob overwrites it from profile.account_info()
+# (maap.py:345-346), so it is 'ben_smith' whatever is passed.
 #
 # ALREADY ANSWERED by the successful build -- do not re-ask:
 #   - the build container reaches github.com (the git+ deps installed)
