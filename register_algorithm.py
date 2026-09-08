@@ -71,9 +71,12 @@ def import_maap():
         print(f"ERROR: 'maap' is not importable under {sys.executable}", file=sys.stderr)
         print(f"       ({type(exc).__name__}: {exc})", file=sys.stderr)
         print(file=sys.stderr)
-        print('maap-py is installed only in the ADE notebook env, and'
-              ' `conda activate ATL14`', file=sys.stderr)
-        print('is what shadows it.  Re-run with that interpreter:', file=sys.stderr)
+        print('maap-py is in the ADE notebook env, and -- since 2026-09-08 --'
+              ' in any ATL14', file=sys.stderr)
+        print('env rebuilt from environment.yml.  An ATL14 env built before'
+              ' that predates it,', file=sys.stderr)
+        print('which is the usual cause.  The notebook env always has it:',
+              file=sys.stderr)
         print(file=sys.stderr)
         script = os.path.relpath(os.path.realpath(__file__))
         if os.path.exists(ADE_PYTHON):

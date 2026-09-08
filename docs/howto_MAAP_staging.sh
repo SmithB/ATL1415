@@ -139,10 +139,12 @@ EOF
 #   /srv/conda/envs/notebook/bin/python register_algorithm.py
 #   /srv/conda/envs/notebook/bin/python register_algorithm.py --dry-run   # checks only
 #
-# NOT `./register_algorithm.py` from a howto shell.  Every region howto starts
-# with `conda activate ATL14`, and maap-py IS NOT INSTALLED IN THAT ENV -- it
-# lives only in the ADE's notebook env (/srv/conda/envs/notebook, maap-py 4.2.0),
-# which is also the default interpreter in a fresh ADE terminal.  The script
+# The notebook env is the one that always has maap-py (/srv/conda/envs/notebook,
+# maap-py 4.2.0), and it is the default interpreter in a fresh ADE terminal.  An
+# ATL14 env built BEFORE 2026-09-08 does not have it, so `conda activate ATL14`
+# -- which every region howto starts with -- shadowed it and broke the script;
+# environment.yml now installs maap-py==4.2.0, so an ATL14 env rebuilt since
+# then works too.  The path above is the one that works either way.  The script
 # says so and exits 1 rather than tracebacking.  A notebook is NOT required:
 # MAAP_API_HOST and MAAP_PGT are set in the ADE environment, so MAAP()
 # authenticates from env with no ~/.maap-py.ini, and a plain python session
