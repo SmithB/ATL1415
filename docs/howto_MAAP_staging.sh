@@ -280,6 +280,24 @@ EOF
 #      not a problem on this account.
 #   2. is ~/.netrc really bind-mounted into the worker?  earthaccess auth, and
 #      therefore every ATL11 read, depends on it.
+#      ANSWERED 2026-09-08: NO, AND IT IS THE BLOCKER.  Job
+#      1f356303-426f-42aa-9c12-de0f35aeb9ae got all the way into the solve and
+#      died on the first ATL11 read:
+#        pointCollection/scripts/query_ATL11_cloud.py:52
+#            earthaccess.login(strategy='netrc')
+#        LoginStrategyUnavailable: ('No .netrc found at /root/.netrc',)
+#      The worker runs as uid 0 with HOME=/root, and _docker_params.json lists
+#      every mount it gets -- /data/work/{jobs,tasks,workers,cache}, /tmp, the
+#      docker socket, and ONE credential-shaped file:
+#        /data/work/etc/maap-dps.env -> /home/ops/.maap-dps.env:ro
+#      No .netrc anywhere.  NOTE the strategy is HARD-CODED to 'netrc' in
+#      pointCollection, so EARTHDATA_USERNAME/PASSWORD in the environment would
+#      not help either as the code stands -- earthaccess.login()'s default
+#      strategy tries environment first, that call refuses to.
+#      WHAT .maap-dps.env CONTAINS IS UNKNOWN and is the next thing to find out:
+#      it is MAAP's own per-worker env file, mounted into every DPS container,
+#      and if it carries Earthdata credentials it is the sanctioned channel.
+#      Reading it needs one diagnostic job, since it exists only on the worker.
 #   3. will a `file` input accept an s3://maap-ops-workspace/... URL?
 #      ANSWERED 2026-09-08: YES, and note HOW.  DPS does not copy the file into
 #      input/ -- it SYMLINKS it into a shared cache:
@@ -292,12 +310,29 @@ EOF
 #      input/prelim/ tree the --matched step will localize.
 #   4. do the s3:// reads in the composed args file work on the worker's own
 #      AWS credentials (masks via /vsis3/, index via s3fs, tides anonymously)?
+#      STILL OPEN: read_ATL11 is called from ATL11_to_ATL15.py:635, before any
+#      mask or geoid read, so the netrc failure preempts this every time.  Q2
+#      has to be fixed before Q4 can even be attempted.
 #   5. how long does one prelim tile take, and how much memory does it need?
 #      -> this is what sizes the production queue in S6.
 #
-# 2 AND 4 ARE STILL OPEN, and 5 with them: the first attempt died in run.sh's
-# args-file guard before it read anything, so it reached neither earthaccess nor
-# any s3:// read.  The first run to get past the guard is what settles them.
+# WHAT THE SECOND RUN (1f356303, 2026-09-08) ESTABLISHED BESIDES Q2.  The -L fix
+# works: run.sh found the localized args file, printed its banner, and handed
+# ATL11_to_ATL15 a valid @argsfile from the cache path.  Every one of the ~35
+# composed arguments is echoed in _stdout.txt, which makes that log the easiest
+# check that a composed args file is what you think it is.
+#
+# THE SANDBOX WORKER HAS 2 CORES (run.sh's `threads : 2`, from nproc).  That is
+# a data point for Q5 and S6: whatever a tile costs, the sandbox is not where
+# its production timing gets measured.
+#
+# `queue` IS THE ROUTING FIELD, not queue_name.  _context.json's params list
+# holds exactly x0, y0, step (positional) and args_file (localize) -- queue_name
+# does not appear at all, while `queue` put the job on maap-dps-sandbox.  The
+# per-tile queue override that algorithm_config.yml describes therefore needs
+# `queue=`; treat queue_name as decorative until something proves otherwise.
+#
+# 4 AND 5 ARE STILL OPEN, behind Q2.
 #
 # WHERE THE LOGS ARE -- and they are NOT browser-only, unlike the BUILD logs.
 # A failed job triages itself onto the bucket, readable from the ADE with
