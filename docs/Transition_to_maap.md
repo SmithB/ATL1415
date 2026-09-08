@@ -508,13 +508,24 @@ WORK ITEMS.
       algorithm_config.yml currently names -32gb; -32vcpu-64gb is probably the better
       production target, but nothing has been measured.  Ask for cores/RAM/disk/walltime
       per queue and for any max-in-flight-jobs limit.
-[ X ] Account status is NOT the blocker it looked like (checked 2026-09-04).
-    profile.account_info() still reports status=inactive, organizations=[] (username ben_smith,
-    id 1786, created 2026-07-01) -- but that does not stop the API:
+    - RECHECKED 2026-09-08, and joining an organization did NOT produce a queue: the account
+      is now a member of icesat-2 (id 32), but getQueues() returns the same six queues with
+      no icesat-2 among them.  The queue is a separate request; there is now an org to
+      attach one to.  Make the request in parallel with the smoke test -- the smoke test
+      measures what to ask for, but produces no queue itself.
+[ X ] Account status is NOT the blocker it looked like (checked 2026-09-04), and as of
+    2026-09-08 THE PREMISE IS GONE ENTIRELY.
+    2026-09-04: profile.account_info() reported status=inactive, organizations=[] (username
+    ben_smith, id 1786, created 2026-07-01) -- but that did not stop the API:
     - listAlgorithms() and listJobs() both return HTTP 200
     - register_algorithm_from_yaml_file() returned HTTP 200 and started a real build
-    Still UNKNOWN: whether submitJob works on an inactive account with no organization.  That is
-    the next thing to find out, and maap-dps-sandbox is where to find it out.
+    2026-09-08: the same call now reports status=active and organizations=[{'id': 32,
+    'name': 'icesat-2'}].  Nothing was done to this repo to cause that; the account was
+    changed on the MAAP side.  So "does submitJob work on an inactive account with no
+    organization" no longer describes anything.  submitJob is STILL UNTESTED and is still
+    the next thing to find out on maap-dps-sandbox -- but there is no longer a named reason
+    to expect it to fail, and no reason to read a submit failure as an account problem
+    before looking at the job itself.
 [ ] Smoke-test one sandbox DPS job.  THE BUILD IS NO LONGER THE OPEN PART -- the algorithm
     is registered and describeAlgorithm answers 200 (see Registration log).  What remains is
     purely a run-time question, and listJobs() is still empty.

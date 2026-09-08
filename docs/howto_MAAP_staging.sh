@@ -201,6 +201,15 @@ EOF
 # 2026-09-04): maap-dps-sandbox, maap-dps-worker-8gb, -16gb, -32gb, -64gb,
 # maap-dps-worker-32vcpu-64gb.
 #
+# STILL OPEN AS OF 2026-09-08, and the account change did NOT close it.  The
+# ben_smith account is now status 'active' and a member of organization
+# icesat-2 (id 32) -- see S7 question 1 -- but getQueues() returns THE SAME SIX
+# QUEUES, with no icesat-2 queue among them.  Org membership does not carry an
+# organizational queue with it; the queue is a separate request to the platform
+# team, and there is now an org to attach one to.  Make that request in
+# parallel with S7 rather than after it: S7 measures what to ask FOR (cores,
+# RAM, walltime per tile), but nothing about S7 produces the queue itself.
+#
 # Ask for: cores / RAM / disk / walltime per queue, and any max-in-flight limit.
 # algorithm_config.yml names -32gb as its default; -32vcpu-64gb is probably the
 # better production target, but NOTHING HAS BEEN MEASURED -- S7 is what measures it.
@@ -239,9 +248,17 @@ EOF
 #   - input order is positionals then file
 #
 # WHAT THIS RUN IS FOR -- only a real job settles these:
-#   1. does submitJob work at all on an account whose status is 'inactive' with
-#      no organization?  (listAlgorithms/listJobs/register all return 200, so
-#      inactive is NOT the blocker it looked like -- but submit is untested.)
+#   1. does submitJob work at all?  ASKED ORIGINALLY AS "on an account whose
+#      status is 'inactive' with no organization" -- THAT PREMISE IS GONE.
+#      Checked 2026-09-08: profile.account_info() reports status 'active' and
+#      organizations [{'id': 32, 'name': 'icesat-2'}], where it reported
+#      inactive and none when this file was written on 2026-09-05.  So the
+#      specific fear -- that the account itself would refuse a job -- has no
+#      basis now, and it never explained much anyway: listAlgorithms, listJobs
+#      and register all returned 200 while it was still inactive.  Submit is
+#      nonetheless UNTESTED, so it stays on this list; it is just no longer the
+#      question with a named reason to fail.  (account_info() also confirms
+#      username 'ben_smith', which is what the submitJob call below passes.)
 #   2. is ~/.netrc really bind-mounted into the worker?  earthaccess auth, and
 #      therefore every ATL11 read, depends on it.
 #   3. will a `file` input accept an s3://maap-ops-workspace/... URL?
