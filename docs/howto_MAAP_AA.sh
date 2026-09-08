@@ -49,6 +49,23 @@ s3_out=s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/south/AA
 
 
 # ===========================================================================
+# 0. [ADE] [UNTESTED]  Rebuild the DPS image if any code has changed.
+# ===========================================================================
+# DPS DOES NOT RUN THIS WORKING COPY.  It clones repository_url at
+# algorithm_version (on_s3) FROM GITHUB at build time and bakes the result into
+# a container, so anything uncommitted, unpushed, or committed since the last
+# build is simply not on the worker -- and nothing in a job log says so.  A
+# stale image fails as a wrong-looking runtime error, not as a version error.
+#
+#   git -C ~/git_repos/ATL1415 status --short                     # nothing uncommitted
+#   git -C ~/git_repos/ATL1415 log --oneline origin/on_s3..on_s3  # empty
+#
+# If either is non-empty, push, then re-register and wait for the build to go
+# green before submitting anything -- staging S5, which carries the rule and
+# the record of the one rebuild this has already forced.
+
+
+# ===========================================================================
 # 1. [ADE] [OK]  Point the release symlinks at this release.
 # ===========================================================================
 ln -sf rel_006_0331.txt default_args/latest_release.txt
@@ -65,6 +82,21 @@ setup_ATL1415_region.py default_args/MAAP_dps.txt default_args/latest_release.tx
 # silently dropped by the greedy defaults regex until that was fixed in
 # setup_ATL1415_region.py (Q15).  Confirm it survived into the composed file:
 grep -E '^(--tide_adjustment|--tide_model|--mask_dir)' $region_dir/input_args_AA.txt
+#
+# THE PREVIOUS PRODUCT IS NOW A CMR SEARCH, not a discover path (Q27 W3/W4,
+# b293807).  MAAP_dps.txt carries --previous_product_earthaccess, so setup
+# rewrites --previous_product_top into --previous_product=<release>_<cycles>
+# and drops the /discover/... tree.  The composed file should therefore contain
+#   --previous_product_earthaccess
+#   --previous_product=005_0329
+# and NO --previous_product_top.  EXPECTATION, from MAAP_dps.txt and the IS run
+# of 2026-09-06 -- not yet observed for this region.
+grep -E '^--previous_product' $region_dir/input_args_AA.txt
+#
+# AA IS THE REGION WHERE W3's SIMPLIFICATION SHOWS.  The discover workflow
+# globs A1-A4 and reads up to ~20 GiB of previous product; the bounding-box CMR
+# search returns only the sectors a tile actually touches, which on the tested
+# Antarctic tile was exactly one ATL14_A2 granule.
 
 
 # ===========================================================================
@@ -197,7 +229,16 @@ bash scripts/maap/run_antarctic_tonc.sh default_args/latest_release.txt \
 # Same 13 steps with monthly.txt, an --ATL14_reference_file, south_monthly in
 # every path (Q17), and setup_AA_sectors.py --near_pole_radius 0.
 #
-# --ATL14_reference_file has the glob-over-a-URI problem of Q27 W5; on AA the
-# discover workflow passes it a GLOB PATTERN across sectors
-# ("rel005_0329/south/A*/ATL14_*_0329_100m_005_02.nc"), which makes it a
-# harder case than GL's single file.  Not on the quarterly critical path.
+# --ATL14_reference_file: W5 (b293807) FIXED THE SILENT FAILURE HERE BUT NOT
+# THE USE CASE.  The discover workflow passes a GLOB PATTERN across sectors
+# ("rel005_0329/south/A*/ATL14_*_0329_100m_005_02.nc"), and a URI containing a
+# wildcard now RAISES ValueError instead of quietly yielding an empty reference
+# DEM -- correct, and better than before, but AA monthly still has no cloud
+# path.  GL's single-file case works; AA's does not.  Not on the quarterly
+# critical path, so this is where it stops for now.
+#
+# OPEN, and it is a small one: the ValueError says "Name the granules
+# explicitly, one --ATL14_reference_file each", but the argument is a plain
+# type=path_or_uri with no action='append' (ATL11_to_ATL15.py:987), so a second
+# occurrence overwrites the first.  Either the message or the argument is
+# wrong.  Decide which when AA monthly is picked up.

@@ -46,6 +46,23 @@ s3_out=s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/north/GL
 
 
 # ===========================================================================
+# 0. [ADE] [UNTESTED]  Rebuild the DPS image if any code has changed.
+# ===========================================================================
+# DPS DOES NOT RUN THIS WORKING COPY.  It clones repository_url at
+# algorithm_version (on_s3) FROM GITHUB at build time and bakes the result into
+# a container, so anything uncommitted, unpushed, or committed since the last
+# build is simply not on the worker -- and nothing in a job log says so.  A
+# stale image fails as a wrong-looking runtime error, not as a version error.
+#
+#   git -C ~/git_repos/ATL1415 status --short                     # nothing uncommitted
+#   git -C ~/git_repos/ATL1415 log --oneline origin/on_s3..on_s3  # empty
+#
+# If either is non-empty, push, then re-register and wait for the build to go
+# green before submitting anything -- staging S5, which carries the rule and
+# the record of the one rebuild this has already forced.
+
+
+# ===========================================================================
 # 1. [ADE] [OK]  Point the release symlinks at this release.
 # ===========================================================================
 # Same as the discover workflow: each is a symlink to the release-specific file.
@@ -63,7 +80,17 @@ setup_ATL1415_region.py default_args/MAAP_dps.txt default_args/latest_release.tx
 
 # CHECK BEFORE GOING ON: no path in the composed file should be local except
 # --ATL14_root, which only setup itself reads.
-grep -E '^(--mask_dir|--ATL11_index|--tide_directory|--ATL14_root)' $region_dir/input_args_GL.txt
+#
+# THE PREVIOUS PRODUCT IS NOW A CMR SEARCH, not a discover path (Q27 W3/W4,
+# b293807).  MAAP_dps.txt carries --previous_product_earthaccess, so setup
+# rewrites --previous_product_top into --previous_product=<release>_<cycles>
+# and drops the /discover/... tree.  The composed file should therefore contain
+#   --previous_product_earthaccess
+#   --previous_product=005_0329
+# and NO --previous_product_top.  EXPECTATION, from MAAP_dps.txt and the IS run
+# of 2026-09-06 -- not yet observed for this region.
+grep -E '^(--mask_dir|--ATL11_index|--tide_directory|--ATL14_root|--previous_product)' \
+    $region_dir/input_args_GL.txt
 
 
 # ===========================================================================
@@ -201,11 +228,16 @@ ATL15_browse_plots.py @$region_dir/input_args_GL.txt
 # --ATL14_reference_file, and north_monthly in every path (Q17: the monthly
 # specifier reuses the hemi suffix).
 #
-# NOTE --ATL14_reference_file has the SAME glob-over-a-URI problem as
-# --previous_product (Q27 W5): ATL11_to_ATL15.py line 682 calls
-# glob.glob(ATL14_reference_file), which returns [] for an s3:// URI.  It is
-# monthly-only, so it is not on the quarterly critical path -- but this step
-# does not work until it is fixed.
+# --ATL14_reference_file WORKS HERE AS OF 2026-09-07 (Q27 W5 fixed in b293807).
+# It used to be glob.glob()'d, which returned [] for an s3:// URI and left an
+# empty reference DEM that edited out every point.  _expand_reference_files()
+# now passes a single URI through unglobbed -- from_nc() reads one directly
+# since pointCollection PR #53 -- and raises on a local pattern that matches
+# nothing.  GL names ONE granule, so it takes the pass-through path.
+#
+# Cloud DISCOVERY of the reference file is deliberately not implemented: a
+# monthly run names its granules.  Give the s3:// URI of the granule itself,
+# not a directory or a pattern.  (AA is the harder case -- see AA step 14.)
 region_dir_m=/home/jovyan/ATL14_processing/rel006/north_monthly/GL
 setup_ATL1415_region.py default_args/MAAP_dps.txt default_args/latest_release.txt \
     default_args/GL_latest.txt default_args/monthly.txt --Hemisphere=1 \

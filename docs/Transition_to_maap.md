@@ -1210,7 +1210,21 @@ Listed in the order they block the sequence above.
 ### Suggested order
 DECIDED 2026-09-05: WRITE THE HOWTOS FIRST, marked tentative -- "you have to have a plan
 before you can change it".  They are the spec and the acceptance criteria for the code
-items below, rather than trailing them.  Item 0 is done.
+items below, rather than trailing them.  Item 0 is done.  
+
+NOTE: A prerequisite to rerunning any step after making a code change is to push the changes
+to github and restage the algorithm:
+
+    git push origin on_s3
+    /srv/conda/envs/notebook/bin/python register_algorithm.py
+
+DPS clones repository_url at algorithm_version FROM GITHUB at build time and bakes the result
+into a container, so anything uncommitted, unpushed, or committed since the last build is not
+on the worker -- and no job log says so.  register_algorithm.py refuses to register in that
+state and prints the build URL when it does; maap-py is only in the ADE notebook env, not in
+ATL14.  This is step 0 of each region howto and the rebuild rule in staging S5.  It has
+already bitten once: the 2026-09-04 build predated 0d77630, 1023306 and b293807.
+
 
   0. [DONE 2026-09-05] Write the four howtos, tentative and numbered.
   1. Smoke-test one sandbox DPS job (staging S7).  It settles five things that no amount

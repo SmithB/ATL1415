@@ -131,13 +131,31 @@ EOF
 
 
 # ===========================================================================
-# S5. [DONE]  Register the DPS algorithm.
+# S5. [DONE]  Register the DPS algorithm -- and RE-register after every code change.
 # ===========================================================================
-# From a MAAP notebook (the ADE), not the shell:
+# Use the script, which does the four REPL lines plus the push checks below and
+# prints the build URL:
+#
+#   /srv/conda/envs/notebook/bin/python register_algorithm.py
+#   /srv/conda/envs/notebook/bin/python register_algorithm.py --dry-run   # checks only
+#
+# NOT `./register_algorithm.py` from a howto shell.  Every region howto starts
+# with `conda activate ATL14`, and maap-py IS NOT INSTALLED IN THAT ENV -- it
+# lives only in the ADE's notebook env (/srv/conda/envs/notebook, maap-py 4.2.0),
+# which is also the default interpreter in a fresh ADE terminal.  The script
+# says so and exits 1 rather than tracebacking.  A notebook is NOT required:
+# MAAP_API_HOST and MAAP_PGT are set in the ADE environment, so MAAP()
+# authenticates from env with no ~/.maap-py.ini, and a plain python session
+# works.  What the script runs is still just:
 #
 #   from maap.maap import MAAP
 #   maap = MAAP(maap_host='api.maap-project.org')
-#   maap.register_algorithm_from_yaml_file('algorithm_config.yml')
+#   response = maap.register_algorithm_from_yaml_file('algorithm_config.yml')
+#   response.json()['message']['job_web_url']     # <-- where the build URL is
+#
+# That last line is the one worth having written down: register_algorithm_from_
+# yaml_file() returns a raw requests.Response, and job_web_url is nowhere in
+# maap-py -- it is in the server's JSON, one level down under 'message'.
 #
 # 2026-09-04: ATL1415_tile_solve:on_s3 registered, HTTP 200, build pipeline
 # 20059 / job 21091, and describeAlgorithm() answers 200.  Re-register after
@@ -148,6 +166,30 @@ EOF
 #
 # Build logs are BROWSER-ONLY; they are not on this filesystem.  Read them at
 # the URL register_algorithm_from_yaml_file() returns.
+#
+# THE REBUILD RULE, which every region howto's step 0 points here for:
+# DPS does not run the ADE working copy.  It clones repository_url at
+# algorithm_version (on_s3) FROM GITHUB at build time and bakes the result into
+# a container.  Anything uncommitted, unpushed, or committed since the last
+# build is NOT on the worker, and no job log will say so -- a stale image
+# surfaces as whatever the missing fix was meant to prevent.  So before any
+# submission, check both:
+#
+#   git -C ~/git_repos/ATL1415 status --short                     # nothing uncommitted
+#   git -C ~/git_repos/ATL1415 log --oneline origin/on_s3..on_s3  # empty
+#
+# and if either is non-empty, push and re-register before submitting.
+#
+# 2026-09-08: THIS HAS ALREADY BITTEN ONCE, before a single job was submitted.
+# The 2026-09-04 build predated three commits of fixes that every region needs:
+#   0d77630  as_gdal_path, without which the arctic .db masks do not open
+#   1023306  pyTMD AWS_NO_SIGN_REQUEST, without which EVERY /vsis3 read on the
+#            worker -- mask, geoid, tide mask, in every region -- returns 403
+#   b293807  Q27 W1/W3/W4/W5, the previous-product fixes
+# on_s3 was pushed to b293807 and re-registration submitted 2026-09-08 by Ben;
+# THE BUILD RESULT HAS NOT BEEN SEEN YET, so S7 is still gated on it going
+# green.  Had the smoke test gone against the old image it would have failed on
+# the Iceland mask read and looked exactly like a credentials problem.
 
 
 # ===========================================================================
@@ -169,6 +211,11 @@ EOF
 # ===========================================================================
 # Steps 5-7 of every region howto are unwritable in final form until this has
 # been done once.
+#
+# GATED ON S5's REBUILD.  Submit only against an image built from b293807 or
+# later; against the 2026-09-04 image this test measures a container that has
+# neither the pyTMD nor the previous-product fixes, and every answer below
+# would be wrong.  Confirm the build is green first.
 #
 # THE SMOKE-TEST TILE, chosen by Ben 2026-09-05: ICELAND, x0,y0 = 1260, -2620 km.
 # 43K points -- a medium-sized dataset, likely on the edge of the ice sheet, so

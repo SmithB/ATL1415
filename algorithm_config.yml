@@ -1,9 +1,10 @@
 # MAAP DPS algorithm registration for the ATL14/15 per-tile solve.
 #
 # Register with:
-#   from maap.maap import MAAP
-#   MAAP(maap_host='api.maap-project.org').register_algorithm_from_yaml_file(
-#       'algorithm_config.yml')
+#   /srv/conda/envs/notebook/bin/python register_algorithm.py
+# which wraps register_algorithm_from_yaml_file(), refuses to register when the
+# build would not contain the local work (see below), and prints the build URL.
+# maap-py is only in the ADE notebook env, not in ATL14.
 #
 # ONE algorithm, not one per stage: a MAAP algorithm has exactly one
 # run_command, and the conda+SuiteSparse build is the expensive part, so six

@@ -50,6 +50,23 @@ s3_out=s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/north/$reg
 
 
 # ===========================================================================
+# 0. [ADE] [UNTESTED]  Rebuild the DPS image if any code has changed.
+# ===========================================================================
+# DPS DOES NOT RUN THIS WORKING COPY.  It clones repository_url at
+# algorithm_version (on_s3) FROM GITHUB at build time and bakes the result into
+# a container, so anything uncommitted, unpushed, or committed since the last
+# build is simply not on the worker -- and nothing in a job log says so.  A
+# stale image fails as a wrong-looking runtime error, not as a version error.
+#
+#   git -C ~/git_repos/ATL1415 status --short                     # nothing uncommitted
+#   git -C ~/git_repos/ATL1415 log --oneline origin/on_s3..on_s3  # empty
+#
+# If either is non-empty, push, then re-register and wait for the build to go
+# green before submitting anything -- staging S5, which carries the rule and
+# the record of the one rebuild this has already forced.
+
+
+# ===========================================================================
 # 1. [ADE] [OK]  Point the release symlink at this release.
 # ===========================================================================
 ln -sf rel_006_0331.txt default_args/latest_release.txt
@@ -104,16 +121,22 @@ EOF
 
 
 # ===========================================================================
-# 3. [ADE] [OK 2026-09-06]  Compose the args file.   (as GL step 2)
+# 3. [ADE] [OK 2026-09-07]  Compose the args file.   (as GL step 2)
 # ===========================================================================
 setup_ATL1415_region.py default_args/MAAP_dps.txt default_args/latest_release.txt \
     default_args/$reg.txt default_args/quarterly.txt --Hemisphere=1
-# RUN 2026-09-06: writes /home/jovyan/ATL14_processing/rel006/north/IS/
-# input_args_IS.txt.  It needs --ATL14_root to exist first -- see staging S1.
+# RUN 2026-09-06, and RECOMPOSED 2026-09-07 after the Q27 W1/W3/W4 fixes
+# (b293807) changed what setup emits: writes
+# /home/jovyan/ATL14_processing/rel006/north/IS/input_args_IS.txt, now 970
+# bytes rather than the 1093 of the first composition -- shorter because the
+# two /discover/... previous-product paths are gone.  It needs --ATL14_root to
+# exist first -- see staging S1.  RECOMPOSE AFTER ANY CHANGE TO MAAP_dps.txt OR
+# TO setup_ATL1415_region.py, and republish (step 4): the bucket copy is what
+# DPS reads, and nothing reconciles the two.
 #
 # EVERY CLOUD INPUT IN THE COMPOSED FILE IS AN s3:// URI OR A CMR SEARCH, as
 # intended: --ATL11_index, --tide_directory, --geoid_file, --mask_file (the
-# Iceland .db), and -- since 2026-09-06 -- the previous product, which is now
+# Iceland .db), and -- since 2026-09-07 -- the previous product, which is now
 #   --previous_product_earthaccess
 #   --previous_product=005_0329
 # in place of the two /discover/... paths this file used to warn about (Q27
@@ -121,18 +144,26 @@ setup_ATL1415_region.py default_args/MAAP_dps.txt default_args/latest_release.tx
 # previous product WILL therefore be read on the smoke test, not silently
 # skipped: expect the log to name ATL14_IS_0329_100m_005_02.nc and
 # ATL15_IS_0329_01km_005_02.nc, found by a bounding-box CMR search.
+#
+# THAT EXPECTATION HOLDS ONLY IF THE IMAGE CARRIES b293807 -- step 0.  Against
+# the 2026-09-04 build the run does not get that far: without 1023306 the
+# Iceland .db read 403s first.  If a smoke-test log shows the old silent
+# "no previous product" skip, the image is stale, not the code.
 # -b is the one local path left, and run.sh overrides it after the args file on
 # purpose, so it is not a problem.
 
 
 # ===========================================================================
-# 4. [ADE] [OK 2026-09-06]  Publish the args file.   (as GL step 3)
+# 4. [ADE] [OK 2026-09-07]  Publish the args file.   (as GL step 3)
 # ===========================================================================
 aws s3 cp $region_dir/input_args_$reg.txt $s3_run/
 # RUN 2026-09-06 for IS: the prefix did not exist beforehand and `aws s3 cp`
-# made it.  1093 bytes at
+# made it.  REPUBLISHED 2026-09-07 03:58 UTC with the recomposed file, and
+# CONFIRMED ON THE BUCKET 2026-09-08 -- 970 bytes at
 # s3://maap-ops-workspace/ben_smith/ATL1415/run_args/rel006/north/IS/input_args_IS.txt
-# -- which is the args_file the smoke test submits (staging S7).
+# -- which is the args_file the smoke test submits (staging S7).  Check the
+# size, not just the presence: a 1093-byte object there is the superseded
+# composition that still names the discover tree.
 
 
 # ===========================================================================
