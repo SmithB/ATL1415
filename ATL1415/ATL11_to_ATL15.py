@@ -439,6 +439,7 @@ def set_three_sigma_edit_from_previous_product(data, xy0, Wxy,
 
 def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
             ATL11_earthaccess=False,\
+            ATL11_release=None,\
             ATL11_xover_dir=None,\
             E_RMS={}, \
             t_span=[2019.25, 2020.5], \
@@ -502,6 +503,13 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
             of per-granule geoIndex files, and ATL11 granules are found by
             searching NASA Earthdata Cloud (via earthaccess) for the tile's
             bounding box and read directly from S3.
+        ATL11_release: (str) the ATL11 generation to read, e.g.
+            '007_cycle_03_31_v04'.  Restricts the earthaccess search to the
+            generation whose per-granule index is staged under ATL11_index.
+            NOTE this is NOT the crossover generation: --ATL11xo_version is
+            normally a different cycle range and version (rel_006_0331 pairs
+            0331_007_04 with 0330_007_03), so the two must never share one
+            value.
         ATL11_earthaccess: (bool) if True, read ATL11 granules from NASA
             Earthdata Cloud via earthaccess instead of a single local index
             file; see ATL11_index.
@@ -635,7 +643,8 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
         data, file_list = read_ATL11(xy0, Wxy, ATL11_index, SRS_proj4,
                                      sigma_geo=sigma_geo, sigma_radial=sigma_radial,
                                      xover_tile_root=ATL11_xover_dir, hemisphere=hemisphere,
-                                     earthaccess=ATL11_earthaccess)
+                                     earthaccess=ATL11_earthaccess,
+                                     ATL11_release=ATL11_release)
         if sigma_tol is not None and data is not None:
             data.index(data.sigma < sigma_tol)
         if data is not None:
@@ -973,6 +982,12 @@ def parse_args(argv=None):
         help="read ATL11 granules from NASA Earthdata Cloud (S3) via earthaccess instead of a "
              "single local index file -- granules are found by searching earthaccess for the "
              "tile's bounding box, then --ATL11_index is used as the per-granule geoIndex root")
+    parser.add_argument('--ATL11_release', type=str, default=None,
+        help="ATL11 generation to read, e.g. 007_cycle_03_31_v04.  With --ATL11_earthaccess "
+             "this filters the Earthdata search to the generation whose per-granule index is "
+             "staged under --ATL11_index; without it, setup_ATL1415_region.py consumes it to "
+             "build the local index path.  It is NOT --ATL11xo_version, which names a "
+             "different cycle range and version for the crossovers.")
     parser.add_argument('--ATL11_xover_dir', type=str, help="ATL11 crossover directory.  Tiles should be in cycle_xx subdirectories")
     parser.add_argument('--Width','-W',  type=float, help="Width of grid")
     parser.add_argument('--time_span','-t', type=str, help="time span, first year,last year AD (comma separated, no spaces)")
@@ -1169,6 +1184,7 @@ def resolve_run_config(args):
 def build_fit_kwargs(args, cfg):
     return dict(ATL11_index=args.ATL11_index,\
            ATL11_earthaccess=args.ATL11_earthaccess,\
+           ATL11_release=args.ATL11_release,\
            ATL11_xover_dir=args.ATL11_xover_dir,\
            Wxy=args.Width, E_RMS=cfg['E_RMS'], t_span=args.time_span, spacing=cfg['spacing'], \
            E_d3zdx2dt_scale_file=args.E_d3zdx2dt_scale_file,\

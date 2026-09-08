@@ -46,6 +46,25 @@ region_dir=/home/jovyan/ATL14_processing/rel006/south/AA
 region_dir_44=/home/jovyan/ATL14_processing/rel006/south/AA_44km
 s3_run=s3://maap-ops-workspace/ben_smith/ATL1415/run_args/rel006/south/AA
 s3_out=s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/south/AA
+s3_out_44=s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/south/AA_44km
+
+# TWO OUTPUT PREFIXES, ONE PER HALF, and they must stay separate.  The two
+# halves solve DIFFERENT TILE SIZES -- 60 km / 40 km spacing for the north
+# half, 44 km / 40 km for the south -- but a tile is named for its CENTER
+# alone, 'E%d_N%d.h5' (make_ATL1415_queue.py:257), with nothing in the name to
+# say which width produced it.  The discover workflow keeps them apart by
+# giving each half its own region directory ($region_dir vs $region_dir_44);
+# on the bucket that separation has to be made explicitly, or the halves
+# overwrite each other.
+#
+# THEY DO OVERLAP, so this is not hypothetical.  Step 4 filters with
+# --min_xy 360000 (keep if max|xy| >= 360 km) and step 5 with --max_xy 440000
+# (keep if every |xy| <= 440 km), so any tile whose max|xy| falls in
+# 360000..440000 is queued by BOTH -- same center, same filename, two widths.
+# OPEN QUESTION for Ben: is that overlap band deliberate (a blend zone between
+# the two tile sizes) or an off-by-one in the two limits?  Nothing here
+# changes it, because narrowing either limit changes which tiles get solved at
+# which resolution, which is a science decision and not a cleanup.
 
 
 # ===========================================================================
@@ -118,11 +137,27 @@ make_ATL1415_queue.py prelim $region_dir/input_args_AA.txt --min_xy 360000 \
 
 
 # ===========================================================================
-# 5. [ADE] [NEEDS CODE, as step 4]  South-half centers, different geometry.
+# 5. [ADE] [NEEDS CODE, as step 4] [NEEDS INPUT: how is the 44 km args file made?]
+#     South-half centers, different geometry.
 # ===========================================================================
 # The south half is a SEPARATE REGION DIRECTORY with a different tile size:
 # W=44000, spacing 40000, against the 60 km / 40 km of the north half.  That
 # is why it cannot simply be a --max_xy filter on the same queue.
+#
+# GAP, FOUND 2026-09-08: NOTHING COMPOSES input_args_AA_44km.txt.  It is used
+# here, at step 6, and at step 9, but step 2 composes only input_args_AA.txt
+# and step 3 publishes only that one.  This is not a MAAP omission -- the
+# discover howto (docs/howto_AA.sh:23) has the identical gap, using the file
+# without ever making it -- and there is no default_args entry, no --region
+# AA_44km, and no script in ATL1415/scripts that emits it.  So the recipe
+# exists only in Ben's head or in shell history.
+#
+# BEN: what makes input_args_AA_44km.txt?  Presumably setup_ATL1415_region.py
+# with -W 44000 and its own region directory, but guessing at the arguments
+# would produce a plausible-looking args file with the wrong geometry, which
+# is exactly the kind of thing that only shows up as a bad mosaic much later.
+# Once it is known, add it to step 2 and publish it in step 3:
+#   aws s3 cp $region_dir_44/input_args_AA_44km.txt $s3_run/
 make_ATL1415_queue.py prelim $region_dir_44/input_args_AA_44km.txt --max_xy 440000 \
     --xy_out AA_south_prelim_xy.txt
 
@@ -139,7 +174,7 @@ submit_MAAP_jobs.py --xy_file AA_north_prelim_xy.txt --step prelim \
     --tag AA_rel006_prelim_north --ledger AA_north_prelim_jobs.csv
 
 submit_MAAP_jobs.py --xy_file AA_south_prelim_xy.txt --step prelim \
-    --args_url $s3_run/input_args_AA_44km.txt --out_prefix $s3_out/prelim \
+    --args_url $s3_run/input_args_AA_44km.txt --out_prefix $s3_out_44/prelim \
     --queue maap-dps-worker-32vcpu-64gb \
     --tag AA_rel006_prelim_south --ledger AA_south_prelim_jobs.csv
 
@@ -155,7 +190,8 @@ done
 # ===========================================================================
 # 8. [ADE] [NEEDS CODE: deterministic output prefix]  Collect.  (as GL step 7)
 # ===========================================================================
-aws s3 sync $s3_out/prelim/ $region_dir/prelim/
+aws s3 sync $s3_out/prelim/    $region_dir/prelim/
+aws s3 sync $s3_out_44/prelim/ $region_dir_44/prelim/
 
 
 # ===========================================================================
@@ -169,7 +205,8 @@ make_ATL1415_queue.py matched $region_dir_44/input_args_AA_44km.txt --max_xy 440
     --xy_out AA_south_matched_xy.txt
 # ... then two submit_MAAP_jobs.py calls with --step matched and
 # --prelim_prefix $s3_out/prelim, exactly as in GL step 9.
-aws s3 sync $s3_out/matched/ $region_dir/matched/
+aws s3 sync $s3_out/matched/    $region_dir/matched/
+aws s3 sync $s3_out_44/matched/ $region_dir_44/matched/
 
 
 # ===========================================================================

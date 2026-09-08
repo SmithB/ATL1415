@@ -101,16 +101,26 @@ def _search_cloud(short_name, release, cycles, bbox, resolution=None):
     bbox=None searches the whole collection, which is how a misconfigured
     release is told apart from a tile that is simply outside coverage.
     '''
-    # find_ATL11_granules is the same earthaccess.login(strategy='netrc') +
-    # search_data() path read_ATL11_at uses; short_name is a parameter, so it
-    # is not ATL11-specific despite the name.  It always passes bounding_box
-    # through, so the unfiltered search calls earthaccess itself.
+    # find_ATL11_granules is the same login + search_data() path read_ATL11_at
+    # uses; short_name is a parameter, so it is not ATL11-specific despite the
+    # name.  It always passes bounding_box through, so the unfiltered search
+    # below has to call earthaccess itself -- but through the SAME best-effort
+    # login helper, not a second hard-coded strategy.
+    #
+    # This branch used to call earthaccess.login(strategy='netrc') directly,
+    # which is the one strategy a MAAP DPS worker cannot satisfy (no ~/.netrc,
+    # running as root).  It is reached on the bbox-is-None path, i.e. exactly
+    # the "is this a misconfigured release or a tile outside coverage?" check,
+    # so on MAAP it turned that diagnostic into a LoginStrategyUnavailable and
+    # inverted the Q27 W1 distinction it exists to draw.  A CMR search needs no
+    # credentials at all.
     if bbox is not None:
         from pointCollection.scripts.query_ATL11_cloud import find_ATL11_granules
         granules = find_ATL11_granules(bbox, short_name=short_name, version=release)
     else:
         import earthaccess
-        earthaccess.login(strategy='netrc')
+        from pointCollection.scripts.query_ATL11_cloud import _try_earthaccess_login
+        _try_earthaccess_login()
         granules = earthaccess.search_data(short_name=short_name, version=release)
 
     urls = []

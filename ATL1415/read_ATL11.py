@@ -84,7 +84,8 @@ def select_best_xover_index(D):
 
 def read_ATL11(xy0, Wxy, index_file, SRS_proj4, xover_tile_root=None,
                sigma_geo=6.5, sigma_radial=0.03, xover_cycles=[1,2],
-               verbose=False, hemisphere=None, fs=None, earthaccess=False):
+               verbose=False, hemisphere=None, fs=None, earthaccess=False,
+               ATL11_release=None):
 
 
     bounds = [xy0[0]+np.array([-Wxy/2, Wxy/2]), xy0[1]+np.array([-Wxy/2, Wxy/2])]
@@ -92,7 +93,8 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, xover_tile_root=None,
     D_at, ATL11_file_list = read_ATL11_at(bounds, index_file, SRS_proj4,
                   sigma_geo=sigma_geo,
                   sigma_radial=sigma_radial,
-                  earthaccess=earthaccess, fs=fs, verbose=verbose)
+                  earthaccess=earthaccess, fs=fs, verbose=verbose,
+                  ATL11_release=ATL11_release)
 
     # exit if no data returned
     if D_at is None:
@@ -112,7 +114,7 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, xover_tile_root=None,
 
 def read_ATL11_at(bounds, index_file, SRS_proj4,
                sigma_geo=6.5, sigma_radial=0.03,
-               earthaccess=False, fs=None, verbose=False):
+               earthaccess=False, fs=None, verbose=False, ATL11_release=None):
     '''
     read ATL11 data from an index file, or from NASA Earthdata Cloud
 
@@ -153,13 +155,27 @@ def read_ATL11_at(bounds, index_file, SRS_proj4,
             find_ATL11_granules, index_path_for_granule, read_ATL11_granule_cloud_items)
 
         bbox = _lonlat_bounding_box(bounds, SRS_proj4)
-        granules = find_ATL11_granules(bbox)
-        if fs is None:
-            fs = pc.io_utils.get_s3fs(daac='NSIDC')
+        # Filter to the generation whose per-granule index is staged: index_file
+        # is the ROOT, holding one ATL11_index_<cycles>_<release>_<version>/
+        # subtree per generation, and an unfiltered search returns every
+        # generation CMR holds -- so a second staged subtree would make this
+        # tile read both and double-count its data.  ATL11_release is the ATL11
+        # generation ONLY; the crossovers have their own (--ATL11xo_version).
+        granules = find_ATL11_granules(bbox, granule_release=ATL11_release)
+        # Do NOT hoist the filesystem out of the loop when we own it.  The
+        # brokered NSIDC credentials expire (roughly four hours), and get_s3fs()
+        # re-derives when a cached session is close to that; asking it per
+        # granule is a dict lookup in the normal case and is what lets the
+        # refresh happen at all.  A near-pole Antarctic tile, whose bounding box
+        # spans all longitudes, reads enough granules to get there.  A caller
+        # that passed its own fs keeps it -- that is the caller's to manage.
+        caller_supplied_fs = fs is not None
         if verbose:
             print(f'read_ATL11_at: found {len(granules)} candidate granules')
         D11_list = []
         for granule in granules:
+            if not caller_supplied_fs:
+                fs = pc.io_utils.get_s3fs(daac='NSIDC')
             s3_url = granule.data_links(access='direct')[0]
             idx_file = index_path_for_granule(os.path.basename(s3_url), index_file)
             items = read_ATL11_granule_cloud_items(s3_url, idx_file, bounds[0], bounds[1],
@@ -177,6 +193,18 @@ def read_ATL11_at(bounds, index_file, SRS_proj4,
     if D11_list is None:
         return None, []
     D_list=[]
+
+    if len(D11_list) == 0:
+        # NO DATA HERE, which is a normal outcome on the outer ring of the
+        # dilated tile grid, not an error.  This has to return None the way the
+        # local branch's `except ValueError` above does: pc.data().from_list([])
+        # returns a LIVE object with fields==[] rather than None (it returns
+        # early only for D_list is None), so the caller's `if data is not None`
+        # test at ATL11_to_ATL15.py:639 passes and data.sigma then raises
+        # AttributeError.  Returning None instead lets ATL11_to_ATL15 take the
+        # insufficient-data path it already has, which is what run.sh's
+        # "no fit written ... skipping error calculation" guard expects.
+        return None, []
 
     D11_files=[]
     for D11 in D11_list:
@@ -218,6 +246,11 @@ def read_ATL11_at(bounds, index_file, SRS_proj4,
            'n_slope':D11.n_slope,
            'e_slope':D11.e_slope,
            'along_track':np.ones_like(D11.x, dtype=bool)})]
+
+    if len(D_list) == 0:
+        # Granules intersected the bounding box, but no point survived the
+        # in-bounds filter above -- same conclusion, same reason.
+        return None, D11_files
 
     return pc.data().from_list(D_list), D11_files
 
