@@ -296,10 +296,27 @@ EOF
 #      pointCollection, so EARTHDATA_USERNAME/PASSWORD in the environment would
 #      not help either as the code stands -- earthaccess.login()'s default
 #      strategy tries environment first, that call refuses to.
-#      WHAT .maap-dps.env CONTAINS IS UNKNOWN and is the next thing to find out:
-#      it is MAAP's own per-worker env file, mounted into every DPS container,
-#      and if it carries Earthdata credentials it is the sanctioned channel.
-#      Reading it needs one diagnostic job, since it exists only on the worker.
+#      RESOLVED 2026-09-08, and NO .netrc IS NEEDED ANYWHERE.  A probe job
+#      (b2f411f4-70e1-4c9f-8b2a-848b6810c16a) reported what the worker has:
+#        /root/.netrc                 absent
+#        /home/ops/.maap-dps.env      present; keys DPS_MACHINE_TOKEN, MAAP_API_HOST
+#        set in the container         MAAP_API_HOST, MAAP_PGT
+#      MAAP_PGT is the one that matters: it is MAAP's own auth, and
+#      maap.aws.earthdata_s3_credentials('https://data.nsidc.earthdatacloud.
+#      nasa.gov/s3credentials') exchanges it for NSIDC's short-lived read
+#      credentials.  The probe made that call ON THE WORKER and got back
+#      accessKeyId/secretAccessKey/sessionToken -- so the DAAC reads need no
+#      Earthdata credential of ours at all, and nothing of ours is at rest in
+#      the bucket or the DPS cache.  (MAAP docs: science/NISAR/NISAR_access.html
+#      cell [2].)  The probe has been removed from run.sh now that it has
+#      answered; a broker failure warns from pointCollection instead.
+#      THE FIX is in pointCollection, branch maap_s3_credentials, pinned from
+#      pyproject.toml until it is merged to main:
+#        - get_s3fs(daac=) tries MAAP's broker, falls back to earthaccess
+#        - find_ATL11_granules drops login(strategy='netrc'); a CMR search
+#          needs no auth, and that call was failing before reaching CMR
+#      Verified from the ADE before building: a real read of
+#      ATL11_000103_0331_007_04.h5 out of nsidc-cumulus-prod-protected.
 #   3. will a `file` input accept an s3://maap-ops-workspace/... URL?
 #      ANSWERED 2026-09-08: YES, and note HOW.  DPS does not copy the file into
 #      input/ -- it SYMLINKS it into a shared cache:
@@ -312,9 +329,14 @@ EOF
 #      input/prelim/ tree the --matched step will localize.
 #   4. do the s3:// reads in the composed args file work on the worker's own
 #      AWS credentials (masks via /vsis3/, index via s3fs, tides anonymously)?
-#      STILL OPEN: read_ATL11 is called from ATL11_to_ATL15.py:635, before any
-#      mask or geoid read, so the netrc failure preempts this every time.  Q2
-#      has to be fixed before Q4 can even be attempted.
+#      STILL OPEN, but no longer preempted: read_ATL11 is called from
+#      ATL11_to_ATL15.py:635, before any mask or geoid read, so until Q2 was
+#      fixed the netrc failure hid this question entirely.  The first run on the
+#      maap_s3_credentials build is the one that finally tests it.  NOTE the two
+#      are different credentials and must not be confused: the DAAC reads use
+#      MAAP-brokered NSIDC credentials, while the masks, geoid and ATL11 index
+#      on s3://maap-ops-workspace use the WORKER'S OWN AWS identity via
+#      get_s3fs(daac=None), and the tide stores are read anonymously.
 #   5. how long does one prelim tile take, and how much memory does it need?
 #      -> this is what sizes the production queue in S6.
 #

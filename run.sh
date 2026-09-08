@@ -90,63 +90,6 @@ echo "=========================================================="
 grep -v '^[[:space:]]*$' "$args_file" | sed 's/^/  arg: /'
 echo "=========================================================="
 
-# ===========================================================================
-# TEMPORARY DIAGNOSTIC -- docs/howto_MAAP_staging.sh S7 question 2.
-# DELETE THIS BLOCK once worker Earthdata auth is settled.
-# ===========================================================================
-# Job 1f356303 died on earthaccess.login(strategy='netrc') with no /root/.netrc,
-# and _docker_params.json shows the worker gets no .netrc mount -- only MAAP's
-# own /home/ops/.maap-dps.env (read-only).  MAAP's supported route (docs:
-# science/NISAR/NISAR_access.html, cell [2]) is maap.aws.earthdata_s3_credentials(),
-# which brokers the DAAC's temporary S3 credentials using MAAP's OWN auth --
-# no Earthdata credentials of ours anywhere.  That call needs config.maap_token
-# and/or $MAAP_PGT, both of which the ADE has and the worker MAY NOT.
-#
-# This block reports what the worker actually has, then TRIES the call.  It
-# prints KEY NAMES ONLY, never values, and never fails the job: a probe that
-# aborts the run tells us less than one that lets the run fail where it would
-# have anyway.
-echo "=== credential probe (temporary; S7 q2) ==="
-for f in /root/.netrc "${HOME:-/root}/.netrc" /home/ops/.maap-dps.env; do
-    if [ -e "$f" ]; then echo "  present : $f"; else echo "  absent  : $f"; fi
-done
-if [ -r /home/ops/.maap-dps.env ]; then
-    echo "  keys in /home/ops/.maap-dps.env (names only):"
-    sed -n 's/^[[:space:]]*\(export[[:space:]]\+\)\?\([A-Za-z_][A-Za-z0-9_]*\)=.*/    \2/p' \
-        /home/ops/.maap-dps.env | sort -u
-fi
-echo "  MAAP-ish variables set in this container:"
-env | sed -n 's/^\(MAAP[A-Z_]*\|EARTHDATA[A-Z_]*\|URS[A-Z_]*\|EDL[A-Z_]*\)=.*/    \1 (set)/p' | sort -u
-echo "  (none listed above means none are set)"
-
-conda run --no-capture-output -n "$env_name" python - <<'PROBE' || echo "  probe script exited nonzero (continuing)"
-import os, sys
-NSIDC = 'https://data.nsidc.earthdatacloud.nasa.gov/s3credentials'
-try:
-    from maap.maap import MAAP
-except Exception as exc:
-    print(f'  maap-py NOT importable: {type(exc).__name__}: {exc}')
-    sys.exit(0)
-print('  maap-py importable')
-try:
-    m = MAAP(maap_host=os.environ.get('MAAP_API_HOST', 'api.maap-project.org'))
-except Exception as exc:
-    print(f'  MAAP() failed: {type(exc).__name__}: {exc}')
-    sys.exit(0)
-hdr = m._get_api_header()
-print('  api header fields present:',
-      sorted(k for k, v in hdr.items() if v) or '(none)')
-try:
-    creds = m.aws.earthdata_s3_credentials(NSIDC)
-except Exception as exc:
-    print(f'  earthdata_s3_credentials FAILED: {type(exc).__name__}: {exc}')
-    sys.exit(0)
-print('  earthdata_s3_credentials OK; keys:', sorted(creds))
-missing = [k for k in ('accessKeyId', 'secretAccessKey', 'sessionToken') if k not in creds]
-print('  usable for s3fs:', 'YES' if not missing else f'NO, missing {missing}')
-PROBE
-echo "=== end credential probe ==="
-
 run_solve () {
     conda run --no-capture-output -n "$env_name" ATL11_to_ATL15.py "$@"
 }
