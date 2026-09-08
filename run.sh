@@ -90,8 +90,15 @@ echo "=========================================================="
 grep -v '^[[:space:]]*$' "$args_file" | sed 's/^/  arg: /'
 echo "=========================================================="
 
+# Every solve is wrapped so the job reports its own peak memory.  DPS will not
+# tell us: getJobMetrics() returns max_mem_usage for a FAILED job but came back
+# an empty dict for the first tile that succeeded (fdc4d767, 2026-09-08), and
+# retrieve_attributes() populated only `status`.  Sizing the production queue
+# needs peak RSS per tile, so the job measures itself.  The wrapper is
+# transparent -- it exits with the solver's own status -- and costs nothing.
 run_solve () {
-    conda run --no-capture-output -n "$env_name" ATL11_to_ATL15.py "$@"
+    "${repo_dir}/scripts/run_with_rusage.py" "$1" \
+        conda run --no-capture-output -n "$env_name" ATL11_to_ATL15.py "${@:2}"
 }
 
 if [ "$step" = "prelim" ]; then
@@ -106,7 +113,7 @@ if [ "$step" = "prelim" ]; then
     # (the same dest as --base_directory) as the final line of the composed args
     # file.  Passed before the args file it would be overridden by that ADE path,
     # which does not exist on a worker.
-    run_solve --THREADS="${threads}" --xy0 "$x0" "$y0" --prelim \
+    run_solve fit --THREADS="${threads}" --xy0 "$x0" "$y0" --prelim \
               "@${args_file}" --base_directory "$base_directory"
 
     # A tile with too little data is a normal outcome: ATL11_to_ATL15 returns 0
@@ -118,7 +125,7 @@ if [ "$step" = "prelim" ]; then
         exit 0
     fi
 
-    run_solve --THREADS="${threads}" --xy0 "$x0" "$y0" --prelim \
+    run_solve error --THREADS="${threads}" --xy0 "$x0" "$y0" --prelim \
               "@${args_file}" --base_directory "$base_directory" --calc_error_for_xy
 else
     # --matched reads the tile's own prelim fit AND its neighbours', through
@@ -149,7 +156,7 @@ else
     # an args file that sets it still wins.
     prior_edge_include=${ATL1415_PRIOR_EDGE_INCLUDE:-1000}
 
-    run_solve --THREADS="${threads}" --matched \
+    run_solve matched --THREADS="${threads}" --matched \
               --prior_edge_include "$prior_edge_include" \
               --data_file "$prelim_file" \
               "@${args_file}" \

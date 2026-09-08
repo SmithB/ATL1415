@@ -345,6 +345,39 @@ EOF
 #      get_s3fs(daac=None), and the tide stores are read anonymously.
 #   5. how long does one prelim tile take, and how much memory does it need?
 #      -> this is what sizes the production queue in S6.
+#      TIME ANSWERED 2026-09-08, MEMORY NOT.  Job fdc4d767 on
+#      maap-dps-worker-32gb is THE FIRST ATL1415 TILE EVER SOLVED ON DPS:
+#      Iceland (1260, -2620), 26.6 minutes wall clock, exit 0, and it wrote
+#      prelim/E1260_N-2620.h5 (19.7 MB) plus its field-size report.
+#
+#      WHERE THE TIME GOES, and it is not where the plan assumed:
+#        read + setup            ~5 min
+#        fit, 3 QR iterations    ~5 min   (95 s each)
+#        UNCERTAINTY PROPAGATION 944 s    <-- 59% of the job
+#      "Uncertainty propagation took 944.42 seconds" is one line in the log and
+#      the single biggest cost in the tile.  Anything that tunes tile cost
+#      should look there first, not at the fit.
+#
+#      THE QUEUE HAS 8 CORES, NOT 4.  run.sh reported `threads : 8` from nproc
+#      on maap-dps-worker-32gb; the MAAP docs' queue table calls that queue an
+#      r5.xlarge, which is 4 vCPU.  The table is wrong, or the queue was
+#      re-provisioned.  The effect is visible: the same tile ran its QR
+#      iterations in 95 s on this queue against 145 s on the 2-core sandbox.
+#      TRUST nproc IN THE LOG, NOT THE TABLE.
+#
+#      MEMORY IS STILL UNMEASURED, and the platform will not supply it:
+#      getJobMetrics() returns max_mem_usage for a FAILED job, but for this
+#      SUCCEEDED one it returned an empty dict, and
+#      getJob().retrieve_attributes() populated only `status`.  So the job now
+#      measures itself -- run.sh wraps every solve in
+#      scripts/run_with_rusage.py, which reports peak RSS (RUSAGE_CHILDREN) and
+#      elapsed per step and exits with the solver's own status.  The next build
+#      onward, every job log carries a line like
+#        === rusage [fit]: elapsed 300.2 s, peak RSS 6.41 GiB ...
+#
+#      THE ICELAND TILE IS THE FLOOR, NOT THE TYPICAL CASE: 239613 ATL11 points
+#      in, 43773 into the fit.  An Antarctic transect is what establishes the
+#      range -- see the AA transect note in howto_MAAP_AA.sh.
 #      PARTIAL, 2026-09-08, job 08ee68ea on maap-dps-sandbox: the Iceland tile
 #      read 239613 ATL11 points, decimated to 239613, put 43773 into the fit,
 #      and ran QR iterations at ~145 s each on 2 threads (--max_iterations=3).
@@ -368,7 +401,20 @@ EOF
 # per-tile queue override that algorithm_config.yml describes therefore needs
 # `queue=`; treat queue_name as decorative until something proves otherwise.
 #
-# 5 IS STILL OPEN.  1, 2, 3 and 4 are answered.
+# ALL FIVE ARE NOW ANSWERED, 5 only partly: time yes, memory not until the
+# next build carries the rusage wrapper.
+#
+# THE OUTPUT PREFIX IS CONFIRMED UN-ADDRESSABLE, which settles Q9.  The
+# successful job wrote to
+#   s3://maap-ops-workspace/ben_smith/dps_output/ATL1415_tile_solve/on_s3/
+#       2026/09/08/22/41/24/998032/
+# i.e. dps_output/<algo>/<version>/YYYY/MM/DD/HH/MM/SS/<microseconds>/ -- the
+# SUBMISSION time, with nothing in it derived from the tile.  There is no way
+# to compute a tile's output location from its coordinates, so the collection
+# step cannot address outputs directly and the self-written deterministic key
+# (Q9) is required, not merely convenient.  Note the outputs land under
+# ben_smith/dps_output/..., NOT in the triaged_job tree, which is where FAILED
+# jobs go.
 #
 # THE SANDBOX QUEUE HAS A 600-SECOND SOFT TIME LIMIT, and nothing in the MAAP
 # docs says so -- dps_queues.html says public worker queues have UNLIMITED
