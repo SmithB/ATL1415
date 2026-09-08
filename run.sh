@@ -51,7 +51,19 @@ mkdir -p output
 # `file` input and DPS localizes it into input/.  Select it by extension so a
 # second file input (the prelim tile set, for --matched) cannot be picked up
 # by mistake.
-args_file=$(find input -maxdepth 1 -type f -name '*.txt' | sort | head -1)
+#
+# -L IS LOAD-BEARING.  DPS does not copy a localized input into input/ -- it
+# SYMLINKS it into a shared cache, e.g.
+#   input_args_IS.txt -> /data/work/cache/5/e/4/b/<md5>/input_args_IS.txt
+# and `find -type f` tests the LINK, which is -type l, so without -L this
+# matches nothing and the job dies in the guard below on a file that localized
+# perfectly.  That is exactly how the first smoke test failed (job
+# 61589c00-7a67-4881-93af-b96d0f0e8c4b, 2026-09-08): the ls in that guard
+# printed the symlink it had just refused to find.  -L follows the link, so a
+# symlink to a regular file tests as -type f, and a dangling one is correctly
+# still skipped.  The [ -f ] / [ -d ] tests further down need no such change --
+# POSIX test follows symlinks already.
+args_file=$(find -L input -maxdepth 1 -type f -name '*.txt' | sort | head -1)
 if [ -z "${args_file:-}" ]; then
     echo "ERROR: no *.txt args file found in input/ -- register the composed" >&2
     echo "       input_args_<REGION>.txt as a DPS 'file' input." >&2

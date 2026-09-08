@@ -275,10 +275,40 @@ EOF
 #      nonetheless UNTESTED, so it stays on this list; it is just no longer the
 #      question with a named reason to fail.  (account_info() also confirms
 #      username 'ben_smith', which is what the submitJob call below passes.)
+#      ANSWERED 2026-09-08: YES.  Job 61589c00-7a67-4881-93af-b96d0f0e8c4b was
+#      accepted (HTTP 200), queued, and ran on maap-dps-sandbox.  Submission is
+#      not a problem on this account.
 #   2. is ~/.netrc really bind-mounted into the worker?  earthaccess auth, and
 #      therefore every ATL11 read, depends on it.
 #   3. will a `file` input accept an s3://maap-ops-workspace/... URL?
+#      ANSWERED 2026-09-08: YES, and note HOW.  DPS does not copy the file into
+#      input/ -- it SYMLINKS it into a shared cache:
+#        input_args_IS.txt -> /data/work/cache/5/e/4/b/<md5>/input_args_IS.txt
+#      That difference is what failed the first smoke test: run.sh selected the
+#      args file with `find -type f`, which tests the link (-type l) and matched
+#      nothing, so the job exited 2 in its own guard while the ls in that guard
+#      printed the symlink it had just refused to find.  Fixed by `find -L`.
+#      A LOCALIZED INPUT IS A SYMLINK -- assume it everywhere, including the
+#      input/prelim/ tree the --matched step will localize.
 #   4. do the s3:// reads in the composed args file work on the worker's own
 #      AWS credentials (masks via /vsis3/, index via s3fs, tides anonymously)?
 #   5. how long does one prelim tile take, and how much memory does it need?
 #      -> this is what sizes the production queue in S6.
+#
+# 2 AND 4 ARE STILL OPEN, and 5 with them: the first attempt died in run.sh's
+# args-file guard before it read anything, so it reached neither earthaccess nor
+# any s3:// read.  The first run to get past the guard is what settles them.
+#
+# WHERE THE LOGS ARE -- and they are NOT browser-only, unlike the BUILD logs.
+# A failed job triages itself onto the bucket, readable from the ADE with
+# ordinary aws s3:
+#
+#   aws s3 ls s3://maap-ops-workspace/dataset/triaged_job/v1.4.0/ | tail
+#   aws s3 cp s3://maap-ops-workspace/dataset/triaged_job/v1.4.0/<job dir>/_stderr.txt -
+#
+# The directory is named triaged_job-job-<algo>__<version>-<timestamp>_task-<uuid>
+# and holds _stdout.txt, _stderr.txt, _exit_code, _run.sh (the exact command the
+# worker ran), _context.json and _docker_params.json (what DPS was told to
+# localize).  maap.getJobResult(<job_id>) returns those URLs plus the tail of
+# stderr inline, which is usually enough on its own.  Reach for these before the
+# browser: _stdout.txt is what showed the symlink in question 3.
