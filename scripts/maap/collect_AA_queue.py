@@ -6,6 +6,23 @@ from maap.maap import MAAP
 LEDGER = sys.argv[1] if len(sys.argv) > 1 else 'AA_transect_jobs.csv'
 m = MAAP(maap_host='api.maap-project.org')
 
+def normalize_s3(uri):
+    """
+    Turn the endpoint-style URI DPS hands back into a plain bucket URI.
+
+    getJobResult returns the output prefix three ways, and the s3: one is
+    s3://s3-us-west-2.amazonaws.com:80/maap-ops-workspace/ben_smith/...
+    -- host:port first, bucket second.  The AWS CLI reads the first element
+    after the scheme as the bucket, so it looks for a bucket literally named
+    "s3-us-west-2.amazonaws.com:80" and fails.  Drop the endpoint element.
+    """
+    rest = uri[len('s3://'):]
+    head, _, tail = rest.partition('/')
+    if 'amazonaws.com' in head:
+        rest = tail
+    return 's3://' + rest.rstrip('/')
+
+
 def stdout_for(job_id):
     """Fetch a job's _stdout.txt from whichever prefix DPS put it in."""
     try:
@@ -14,7 +31,7 @@ def stdout_for(job_id):
         return ''
     for item in (res if isinstance(res, list) else [res]):
         if isinstance(item, str) and item.startswith('s3://'):
-            base = item.rstrip('/')
+            base = normalize_s3(item)
             for name in ('_stdout.txt',):
                 p = subprocess.run(['aws', 's3', 'cp', f'{base}/{name}', '-'],
                                    capture_output=True, text=True, timeout=120)
