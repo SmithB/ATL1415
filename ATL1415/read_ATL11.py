@@ -8,6 +8,7 @@ Created on Thu Sep  4 09:14:51 2025
 import pointCollection as pc
 import numpy as np
 import os
+import re
 
 
 def _lonlat_bounding_box(bounds, SRS_proj4):
@@ -82,10 +83,84 @@ def select_best_xover_index(D):
     return ii
 
 
+# The ATL11 crossover generation string, e.g. '007_cycle_03_30_v03'.  The two
+# captured groups are the release (007) and the version (03), which is how they
+# appear in an ATL11XO granule name; the cycle range in the middle is part of
+# the generation's name but not of any granule's.
+XOVER_VERSION_RE = re.compile(r'(\d\d\d)_cycle_\d\d_\d\d_v(\d\d)')
+
+
+def parse_ATL11xo_version(ATL11xo_version):
+    """
+    split an ATL11 crossover generation into its release and version
+
+    Shared with scripts/setup_ATL11_xover.py, which writes the local schema
+    files: the two must agree character for character, because the strings
+    this produces end up in granule names that are matched exactly against
+    CMR (cloud) or against files on disk (discover).
+
+    input:
+        ATL11xo_version: str, e.g. '007_cycle_03_30_v03'
+    output:
+        (release, version), e.g. ('007', '03')
+    """
+    try:
+        return XOVER_VERSION_RE.search(ATL11xo_version).groups()
+    except AttributeError:
+        raise AttributeError('ATL11xo version did not match pattern '
+                             '(rrr)_cycle_(cc)_(cc)_v(vv)')
+
+
+def xover_tiling_schema(x_cycle, hemi, xover_tile_dir=None, ATL11xo_version=None):
+    """
+    get the tiling schema for one crossover cycle
+
+    Local mode (xover_tile_dir given) reads the schema file that
+    setup_ATL11_xover.py wrote next to the tiles.  Cloud mode builds the
+    identical schema in memory and gives it an EarthAccess source, so that
+    resolve_files_for_box() turns the same tile names into ATL11XO granule
+    URLs via CMR instead of looking for them on a filesystem.  Nothing is
+    staged for the cloud case -- that is the point: there is no crossover
+    tree on the MAAP bucket and no schema file to write one next to.
+
+    inputs:
+        x_cycle: int, crossover cycle number
+        hemi: str, 'AA' or 'AR'
+        xover_tile_dir: str, optional. Local tile directory holding
+            cycle_xx/200km_tiling_<hemi>.json.  If None, a cloud schema is
+            built and ATL11xo_version is required.
+        ATL11xo_version: str, optional. Crossover generation, e.g.
+            '007_cycle_03_30_v03'.  Required in cloud mode.
+    output:
+        pc.tilingSchema
+    """
+    if xover_tile_dir is not None:
+        schema_file = os.path.join(xover_tile_dir,
+                                   f'cycle_{x_cycle:02d}',
+                                   f'200km_tiling_{hemi}.json')
+        return pc.tilingSchema().from_file(schema_file)
+
+    if ATL11xo_version is None:
+        raise ValueError('xover_tiling_schema: ATL11xo_version is required when '
+                         'no xover_tile_dir is given')
+    release, version = parse_ATL11xo_version(ATL11xo_version)
+    # These values mirror scripts/setup_ATL11_xover.py exactly.  Tiles are
+    # labelled by their CENTERS, hence mapping_function_name='round', and the
+    # labels are in km, hence scale=1000.
+    return pc.tilingSchema(
+        tile_spacing=200e3,
+        mapping_function_name='round',
+        format_str=f'ATL11XO_{hemi}_E%d_N%d_c{x_cycle:02d}_{release}_{version}',
+        scale=1000,
+        extension='.h5',
+        directory=None,
+        source={'type': 'EarthAccess', 'short_name': 'ATL11XO', 'daac': 'NSIDC'})
+
+
 def read_ATL11(xy0, Wxy, index_file, SRS_proj4, xover_tile_root=None,
                sigma_geo=6.5, sigma_radial=0.03, xover_cycles=[1,2],
                verbose=False, hemisphere=None, fs=None, earthaccess=False,
-               ATL11_release=None):
+               ATL11_release=None, ATL11xo_version=None):
 
 
     bounds = [xy0[0]+np.array([-Wxy/2, Wxy/2]), xy0[1]+np.array([-Wxy/2, Wxy/2])]
@@ -100,12 +175,19 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, xover_tile_root=None,
     if D_at is None:
         return None, []
 
-    if xover_tile_root is None:
+    # Two ways to get crossovers, and each mode has exactly one switch:
+    # locally, xover_tile_root names the tile tree setup_ATL11_xover.py built;
+    # in the cloud there is no tree to name, so ATL11xo_version turns them on
+    # and the tiles are resolved from CMR.  Neither given means no crossovers,
+    # which is a legitimate configuration -- but it used to be the ONLY cloud
+    # outcome, silently, because xover_tile_root cannot be set in that mode.
+    if xover_tile_root is None and not (earthaccess and ATL11xo_version is not None):
         return D_at, ATL11_file_list
 
     # Otherwise, read the crossover tiles
     D_xo, xover_file_list = read_ATL11_xovers(bounds, SRS_proj4,
                                               xover_tile_dir = xover_tile_root,
+                                              ATL11xo_version = ATL11xo_version,
                                               xover_cycles = xover_cycles,
                                               verbose=verbose, hemisphere=hemisphere,
                                               fs=fs)
@@ -254,7 +336,8 @@ def read_ATL11_at(bounds, index_file, SRS_proj4,
 
     return pc.data().from_list(D_list), D11_files
 
-def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2], hemisphere=None, verbose=True, fs=None):
+def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, ATL11xo_version=None,
+                      xover_cycles=[1,2], hemisphere=None, verbose=True, fs=None):
     '''
     read crossover data from tiles
 
@@ -265,9 +348,16 @@ def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2]
     SRS_proj4 : str
         proj4 string for the spatial reference system to be used.
     xover_tile_dir : str, optional
-        tile directory to be read. The default is None.
+        local tile directory to be read. The default is None, which selects
+        cloud mode and requires ATL11xo_version.
+    ATL11xo_version : str, optional
+        crossover generation, e.g. '007_cycle_03_30_v03'. Used in cloud mode
+        to build the ATL11XO granule names; ignored when xover_tile_dir is
+        given, since the schema file there already carries them.
     xover_cycles : iterble of ints, optional
-        crossover cycles to be read. The default is [1,2].
+        crossover cycles to be read. The default is [1,2]. Reading only the
+        first two cycles is a deliberate, longstanding design choice, not a
+        truncation to be widened later.
     verbose : bool, optional
         if True, report status
     fs : s3fs.S3FileSystem, optional
@@ -295,10 +385,9 @@ def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, xover_cycles=[1,2]
     D_r=[]
     xover_files_used = []
     for x_cycle in xover_cycles:
-        schema_file = os.path.join(xover_tile_dir,
-                                   f'cycle_{x_cycle:02d}',
-                                   f'200km_tiling_{hemi}.json')
-        schema = pc.tilingSchema().from_file(schema_file)
+        schema = xover_tiling_schema(x_cycle, hemi,
+                                     xover_tile_dir=xover_tile_dir,
+                                     ATL11xo_version=ATL11xo_version)
         resolved, fs = schema.resolve_files_for_box(bounds, fs=fs, verbose=verbose)
         for tile_name, xover_file in resolved.items():
             with pc.io_utils.open_h5(xover_file, fs=fs) as h5f:

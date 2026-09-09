@@ -441,6 +441,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
             ATL11_earthaccess=False,\
             ATL11_release=None,\
             ATL11_xover_dir=None,\
+            ATL11xo_version=None,\
             E_RMS={}, \
             t_span=[2019.25, 2020.5], \
             spacing={'z0':2.5e2, 'dz':5.e2, 'dt':0.25},  \
@@ -513,6 +514,11 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
         ATL11_earthaccess: (bool) if True, read ATL11 granules from NASA
             Earthdata Cloud via earthaccess instead of a single local index
             file; see ATL11_index.
+        ATL11xo_version: (str) the ATL11 crossover generation, e.g.
+            '007_cycle_03_30_v03'.  With ATL11_earthaccess this turns cloud
+            crossovers on and supplies the release and version in the ATL11XO
+            granule names; in local mode ATL11_xover_dir is the switch and this
+            is unused.  NOT the same value as ATL11_release, see above.
         E_RMS: (dict) dictionary specifying constraints on derivatives of the ice-sheet surface.
         t_span: (2-element list of floats) starting and ending times for the output grids (in years CE)
         spacing: (dict) dictionary specifying the grid spacing for z0, dz, and dt
@@ -661,7 +667,9 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
                                      sigma_geo=sigma_geo, sigma_radial=sigma_radial,
                                      xover_tile_root=ATL11_xover_dir, hemisphere=hemisphere,
                                      earthaccess=ATL11_earthaccess,
-                                     ATL11_release=ATL11_release)
+                                     ATL11_release=ATL11_release,
+                                     ATL11xo_version=ATL11xo_version,
+                                     verbose=verbose)
         if sigma_tol is not None and data is not None:
             data.index(data.sigma < sigma_tol)
         if data is not None:
@@ -1006,6 +1014,13 @@ def parse_args(argv=None):
              "build the local index path.  It is NOT --ATL11xo_version, which names a "
              "different cycle range and version for the crossovers.")
     parser.add_argument('--ATL11_xover_dir', type=str, help="ATL11 crossover directory.  Tiles should be in cycle_xx subdirectories")
+    parser.add_argument('--ATL11xo_version', type=str, default=None,
+        help="ATL11 crossover generation, e.g. 007_cycle_03_30_v03.  Names the release and "
+             "version of the ATL11XO tiles: with --ATL11_earthaccess this is what turns "
+             "cloud crossovers on, since --ATL11_xover_dir is the local-mode switch and has "
+             "nothing to point at in the cloud.  It is NOT --ATL11_release, which is the "
+             "along-track generation and is normally a different cycle range and version "
+             "(rel_006_0331 pairs 0331_007_04 with 0330_007_03)")
     parser.add_argument('--Width','-W',  type=float, help="Width of grid")
     parser.add_argument('--time_span','-t', type=str, help="time span, first year,last year AD (comma separated, no spaces)")
     parser.add_argument('--grid_spacing','-g', type=str, help='grid spacing:DEM (meters),dh maps xy (meters),dh_maps time (years): comma-separated, no spaces', default='250.,4000.,1.')
@@ -1075,6 +1090,16 @@ def parse_args(argv=None):
     parser.add_argument('--write_data_only', action='store_true', help='save data without processing')
     parser.add_argument('--THREADS', type=int, default=1, help='number of threads to use in suitesparse calculations')
     args, unknown=parser.parse_known_args(argv[1:])
+    if len(unknown) > 0:
+        # Report, do not raise: the args files are shared between entry points,
+        # so they legitimately carry switches this parser does not define
+        # (--ATL14_root by the queue builders, --cycles/--Release/--version by
+        # ATL14_write2nc.py and ATL15_write2nc.py).  But a
+        # switch that is silently dropped is invisible for a long time --
+        # --ATL11xo_version sat in every composed args file being discarded
+        # here, which is why cloud crossovers were never read.
+        print('ATL11_to_ATL15.parse_args: ignoring unrecognized arguments: '
+              + ' '.join(unknown))
     if args.THREADS == 1 and int(N_THREADS) > 1:
         args.THREADS = int(N_THREADS)
     return args
@@ -1203,6 +1228,7 @@ def build_fit_kwargs(args, cfg):
            ATL11_earthaccess=args.ATL11_earthaccess,\
            ATL11_release=args.ATL11_release,\
            ATL11_xover_dir=args.ATL11_xover_dir,\
+           ATL11xo_version=args.ATL11xo_version,\
            Wxy=args.Width, E_RMS=cfg['E_RMS'], t_span=args.time_span, spacing=cfg['spacing'], \
            E_d3zdx2dt_scale_file=args.E_d3zdx2dt_scale_file,\
            bias_params=args.bias_params,\

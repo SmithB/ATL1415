@@ -4,19 +4,17 @@ HEMI_NAME = {'north':'Arctic','south':'Antarctic'}
 import os
 import glob
 import pointCollection as pc
-import re
+from ATL1415.read_ATL11 import parse_ATL11xo_version
 def setup_ATL11_xover(dst_dir, ATL11xo_top=None, ATL11xo_version=None, hemi=None, cycles=['01','02']):
     print(f"\tsetup_ATL11xo: \n\t\tdst_dir={dst_dir},\n\t\themi={hemi}")
     xover_src = os.path.join(ATL11xo_top, HEMI_NAME[hemi]+'_'+ATL11xo_version)
     xover_dst = os.path.join(dst_dir, 'xover_tiles')
 
 
-    try:
-        release, version = re.compile('(\d\d\d)_cycle_\d\d_\d\d_v(\d\d)')\
-                        .search(ATL11xo_version)\
-                        .groups()
-    except AttributeError:
-        raise AttributeError('ATL11xo version did not match pattern (rrr)_cycle_(cc)_(cc)_v(vv)')
+    # Shared with read_ATL11.xover_tiling_schema(), which builds the same
+    # schema in memory for cloud runs: the release and version end up in
+    # granule names that are matched exactly, so the two must not drift.
+    release, version = parse_ATL11xo_version(ATL11xo_version)
 
     for cycle in cycles:
         cycle_src = os.path.join(xover_src, 'xover_tiles', 'cycle_'+cycle)
