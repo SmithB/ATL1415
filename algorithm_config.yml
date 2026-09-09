@@ -23,7 +23,7 @@ algorithm_description: >
 # DPS clones repository_url at this ref, so algorithm_version is the branch or
 # tag to build -- change it to main once the cloud-read work is merged.
 # The repository must be PUBLIC for the build to succeed.
-algorithm_version: on_s3
+algorithm_version: on_s3_v2
 repository_url: https://github.com/SmithB/ATL1415.git
 
 # build_command and run_command are resolved ONE LEVEL ABOVE the repo root: DPS
