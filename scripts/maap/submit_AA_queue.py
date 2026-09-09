@@ -20,10 +20,34 @@ Usage:
 """
 import csv
 import datetime
+import os
+import re
 import sys
 import time
 
 from maap.maap import MAAP
+
+REPO = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+
+def algorithm_version():
+    '''
+    Read algorithm_version from algorithm_config.yml rather than hard-coding it.
+
+    It is BOTH the container tag and the git ref DPS clones (the build passes it
+    as --build-arg BRANCH), so it changes whenever a build has to be forced onto
+    a fresh tag -- and a submitter still naming the old version would silently
+    run the old image, which is the very problem such a bump is trying to solve.
+    '''
+    with open(os.path.join(REPO, 'algorithm_config.yml')) as fh:
+        for line in fh:
+            m = re.match(r'^algorithm_version:\s*(\S+)', line)
+            if m:
+                return m.group(1)
+    raise RuntimeError('algorithm_config.yml has no algorithm_version')
+
+
+VERSION = algorithm_version()
 
 S3_RUN = ('s3://maap-ops-workspace/ben_smith/ATL1415/run_args/rel006/south/AA')
 
@@ -63,7 +87,7 @@ def main():
                 try:
                     job = maap.submitJob(
                         identifier=ident,
-                        algo_id='ATL1415_tile_solve', version='on_s3',
+                        algo_id='ATL1415_tile_solve', version=VERSION,
                         queue=QUEUE, queue_name=QUEUE,
                         x0=x0, y0=y0, step='prelim', args_file=args_url)
                     job_id = getattr(job, 'id', None) or getattr(job, 'job_id', None)
