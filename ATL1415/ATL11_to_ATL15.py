@@ -614,6 +614,23 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
             mask_file=None
         elif mask_file.endswith('.shp') or mask_file.endswith('.db'):
             mask_data=make_mask_from_vector(mask_file, W, ctr, spacing['z0'], srs_proj4=SRS_proj4)
+        else:
+            # NEITHER BRANCH APPLIED, so mask_data is still None and the next
+            # line would fail as "'NoneType' object has no attribute 'z'" --
+            # which says nothing about the cause.  --region is not a label
+            # here, it is the switch that selects the gridded-mask reader, so a
+            # region name that is nearly right ('AA_44km' for the Antarctic
+            # south half) silently skips the mask entirely.  All four 44 km
+            # jobs of the 2026-09-08 cost queue died this way while their 60 km
+            # counterparts at the same tile centers succeeded.
+            raise ValueError(
+                f'--region={region!r} does not select a mask reader: gridded '
+                f"masks are read only for region in ['AA', 'GL'], and "
+                f'--mask_file={mask_file!r} is not a .shp or .db vector mask.  '
+                'A region variant that solves a different footprint (the '
+                'Antarctic south half, say) must keep the parent region name '
+                'and change only its geometry -- see '
+                'scripts/maap/make_AA_44km_args.py.')
 
         # check if mask_data is 2D or 3D
         if len(mask_data.z.shape)==2:
