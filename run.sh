@@ -89,11 +89,19 @@ print_build_id () {
     # Cross-check: what the clone in the image says NOW.  It should agree with
     # the stamp; a disagreement means the image was modified after its build.
     echo "--- live git in the image ---"
+    live_commit=
     if git_q rev-parse --git-dir >/dev/null; then
-        echo "  live_commit=$(git_q rev-parse HEAD || echo unknown)"
+        live_commit=$(git_q rev-parse HEAD || echo unknown)
+        echo "  live_commit=${live_commit}"
         echo "  live_ref=$(git_q describe --all --always HEAD || echo unknown)"
     else
         echo "  (no git metadata in the image -- the stamp above is the only record)"
+    fi
+    # Say it, rather than leaving the reader to diff two 40-character hashes.
+    stamp_commit=$(stamp_field commit)
+    if [ -n "$stamp_commit" ] && [ -n "$live_commit" ] && [ "$stamp_commit" != "$live_commit" ]; then
+        echo "  WARNING: STAMP AND LIVE GIT DISAGREE -- the tree moved after it was built."
+        echo "           The stamp is what build-env.sh built; on DPS (pip install .) that is what runs."
     fi
 
     # What this image THINKS it was registered as.  If it disagrees with the
@@ -109,11 +117,15 @@ print_build_id () {
         echo "  (could not run python in conda env '${env_name}')"
     fi
 
-    # ONE greppable line, so a collector need not parse the block above.
-    stamp_commit=$(stamp_field commit)
+    # ONE greppable line, so a collector need not parse the block above.  EVERY
+    # field comes from the stamp, so the line describes one build rather than
+    # pairing a build-time commit with a run-time config -- the first version
+    # did exactly that, and printed e231ba4 next to an algorithm_version that
+    # commit never had.  Only with no stamp at all does it fall back to live.
     stamp_built=$(stamp_field build_completed)
+    stamp_version=$(stamp_field algorithm_version)
     echo "=========================================================="
-    echo "BUILD_ID: commit=${stamp_commit:-unknown} built=${stamp_built:-INCOMPLETE_OR_ABSENT} algorithm_version=$(config_version)"
+    echo "BUILD_ID: commit=${stamp_commit:-unknown} built=${stamp_built:-INCOMPLETE_OR_ABSENT} algorithm_version=${stamp_version:-$(config_version)}"
     echo "=========================================================="
 }
 

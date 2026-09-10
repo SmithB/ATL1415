@@ -29,14 +29,14 @@
 
 
 # ===========================================================================
-# S1. [DONE 2026-09-06, BUT NOT DURABLE -- RE-RUN AFTER AN ADE RESTART]  Build
+# S1. [DONE 2026-09-10, in the persistent home; survives a restart UNPROVEN]  Build
 #     the ATL1415 conda env in the ADE.   (Q5)
 # ===========================================================================
 # The ADE notebook env cannot `import pointCollection` or `LSsurf`, so every
 # ADE-side stage below and in the region howtos is blocked until this exists.
 # build-env.sh is the same script the DPS build runs, so the two environments
 # stay in step.  It reads `name:` from environment.yml (currently ATL14).
-bash build-env.sh
+CONDA_ENVS_PATH=/home/jovyan/.conda/envs bash build-env.sh
 conda activate ATL14
 python -c "import pointCollection, LSsurf, sparseqr; print('env ok')"
 #
@@ -68,15 +68,23 @@ mkdir -p /home/jovyan/ATL14_processing      # = --ATL14_root in MAAP_dps.txt
 # ATL14`, and after a restart that fails until S1 is re-run.  Budget ~the
 # original build time for it, and remember the editable reinstall below.
 #
-# RECOMMEND, UNTESTED: build into the persistent home instead, which needs no
-# change to build-env.sh -- /home/jovyan/.conda/envs is already the second
-# entry in conda's envs_dirs, so putting it first is enough:
-#     CONDA_ENVS_PATH=/home/jovyan/.conda/envs bash build-env.sh
-# Two things to check before adopting it: conda on NFS is slower than on the
-# local overlay (build AND import time), and build-env.sh is also the DPS build
-# command, so whatever is done here must not change how it behaves on a worker
-# (setting the variable at the call site rather than in the script keeps that
-# guarantee).
+# ADOPTED 2026-09-10 (Ben chose it), and the command at the top of S1 now does
+# it: build into the persistent home, which needs no change to build-env.sh --
+# /home/jovyan/.conda/envs is already the second entry in conda's envs_dirs,
+# so putting it first is enough.  The two worries it carried, MEASURED:
+#   - NFS COST IS NEGLIGIBLE.  Build 392 s (6.5 min) end to end, rc=0, every
+#     import in the build check OK.  `import pointCollection, LSsurf, ATL1415,
+#     sparseqr` takes 1.6 s, three runs within 0.05 s of each other.
+#   - DPS IS UNTOUCHED.  The variable is set at the call site, not in the
+#     script, so a worker's build is exactly what it was.
+# `conda env list` now shows ATL14 at /home/jovyan/.conda/envs/ATL14.  Whether
+# it survives the NEXT restart is the claim this rests on, and it has not been
+# through one yet -- check `conda env list` after the next one.
+#
+# pytest is NOT in environment.yml, deliberately -- that file is the DPS build,
+# and a worker has no use for it.  Add it locally to run tests/:
+#     conda run -n ATL14 python -m pip install pytest
+# 2026-09-10: 23 passed, 2 skipped (the opt-in ATL1415_TIDE_NETWORK_TESTS pair).
 #
 # AND ONE TRAP, hit on 2026-09-06: build-env.sh runs `pip install .`, which
 # COPIES the code into the env.  The console scripts (setup_ATL1415_region.py,
