@@ -1,14 +1,18 @@
 #!/usr/bin/env bash
 # DPS run command for the ATL1415 per-tile solve.
 #
-# Registered as run_command: ATL1415/run.sh.  DPS invokes
-#   /app/dps_wrapper.sh '/app/<repo>/run.sh' <x0> <y0> <step>
-# from the job's working directory, where `input/` holds the localized `file`
-# inputs and `output/` is what gets uploaded when the job finishes.
+# Registered as run_command: ATL1415/run.sh.  Under MAAP's OGC system the
+# generated CWL's baseCommand is /app/<repo>/run.sh, called with every input
+# as --<name> <value>, from a working directory whose ./output* is collected
+# when the job finishes.  The legacy system called it through
+# /app/dps_wrapper.sh with positionals and localized file inputs into input/;
+# both conventions are accepted (see ARGUMENTS below).
 #
-# Usage: run.sh <x0> <y0> <step>
-#   x0, y0  tile center, in meters (polar stereographic; may be negative)
-#   step    prelim | matched | build_id
+# Usage: run.sh --x0 <m> --y0 <m> --step <step> --args_file <uri|path>   (OGC)
+#        run.sh <x0> <y0> <step>        (legacy DPS, local runs; args file in input/)
+#   x0, y0     tile center, in meters (polar stereographic; may be negative)
+#   step       prelim | matched | build_id
+#   args_file  s3:// URI or local path of the composed input_args_<REGION>.txt
 #
 # step=build_id prints the build stamp and exits 0 without solving anything, so
 # ONE cheap job says which commit the image was built from.  --build-id does the
@@ -138,54 +142,132 @@ for arg in "$@"; do
     esac
 done
 
-# DPS passes the declared inputs as positional arguments.  algorithm_config.yml
-# lists the positionals before the file input, but which group DPS emits first is
-# one of the things the sandbox smoke test still has to settle, so tolerate a
-# leading localized-path argument rather than mis-reading it as x0.
-while [ "$#" -gt 0 ] && ! [[ $1 =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; do
-    echo "run.sh: skipping non-numeric leading argument '$1'"
-    shift
+# ===========================================================================
+# ARGUMENTS -- two conventions, because there are two callers.
+# ===========================================================================
+# OGC (since 2026-09-10, docs/howto_MAAP_ogc.sh O2): the generated CWL binds
+# every input as a PREFIXED option, so a job arrives as
+#     run.sh --x0 220000 --y0 20000 --step prelim --args_file s3://.../input_args_AA.txt
+# LEGACY, and every local run: positionals, with the args file found in input/
+#     run.sh 220000 20000 prelim
+# Any --x0/--y0/--step/--args_file anywhere in argv selects the first.
+x0= ; y0= ; step= ; args_src=
+prefixed=false
+for arg in "$@"; do
+    case "$arg" in
+        --x0|--x0=*|--y0|--y0=*|--step|--step=*|--args_file|--args_file=*) prefixed=true ;;
+    esac
 done
 
-if [ "$#" -lt 3 ]; then
-    echo "usage: run.sh <x0> <y0> <prelim|matched>  |  run.sh --build-id" >&2
+if $prefixed; then
+    while [ "$#" -gt 0 ]; do
+        case "$1" in
+            --x0|--y0|--step|--args_file)
+                if [ "$#" -lt 2 ]; then
+                    echo "ERROR: $1 needs a value" >&2; exit 2
+                fi
+                # $2 is taken verbatim, so a negative coordinate is a value,
+                # not mistaken for another option.
+                name=${1#--}; value=$2; shift 2 ;;
+            --x0=*|--y0=*|--step=*|--args_file=*)
+                name=${1%%=*}; name=${name#--}; value=${1#*=}; shift ;;
+            *)
+                echo "run.sh: ignoring unexpected argument '$1'"; shift; continue ;;
+        esac
+        case "$name" in
+            x0) x0=$value ;;
+            y0) y0=$value ;;
+            step) step=$value ;;
+            args_file) args_src=$value ;;
+        esac
+    done
+else
+    # Legacy DPS passed the declared inputs as positionals, and which group it
+    # emitted first was never settled, so tolerate a leading localized-path
+    # argument rather than mis-reading it as x0.
+    while [ "$#" -gt 0 ] && ! [[ $1 =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; do
+        echo "run.sh: skipping non-numeric leading argument '$1'"
+        shift
+    done
+    if [ "$#" -ge 3 ]; then
+        x0=$1; y0=$2; step=$3
+    fi
+fi
+
+if [ -z "$x0" ] || [ -z "$y0" ] || [ -z "$step" ]; then
+    echo "usage: run.sh --x0 <m> --y0 <m> --step <prelim|matched> --args_file <uri|path>" >&2
+    echo "       run.sh <x0> <y0> <prelim|matched>      (args file found in input/)" >&2
+    echo "       run.sh --build-id" >&2
     exit 2
 fi
-x0=$1
-y0=$2
-step=$3
+for v in "$x0" "$y0"; do
+    if ! [[ $v =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; then
+        echo "ERROR: tile center must be numeric meters, got '${v}'" >&2; exit 2
+    fi
+done
 
 case "$step" in
     prelim|matched) ;;
+    # The pre-scan above catches build_id as a bare token; this catches every
+    # other spelling that parses to it, e.g. --step=build_id, which the first
+    # version rejected with "must be ... 'build_id', got 'build_id'".
+    build_id|build-id) print_build_id; exit 0 ;;
     *) echo "ERROR: step must be 'prelim', 'matched' or 'build_id', got '${step}'" >&2; exit 2 ;;
 esac
 
 mkdir -p output
 
-# The ~90 argparse options never become DPS parameters: the @argsfile idiom is
-# entirely client-side (fromfile_prefix_chars), so the composed args file that
-# setup_ATL1415_region.py writes (input_args_<REGION>.txt) is registered as a
-# `file` input and DPS localizes it into input/.  Select it by extension so a
-# second file input (the prelim tile set, for --matched) cannot be picked up
-# by mistake.
-#
-# -L IS LOAD-BEARING.  DPS does not copy a localized input into input/ -- it
-# SYMLINKS it into a shared cache, e.g.
-#   input_args_IS.txt -> /data/work/cache/5/e/4/b/<md5>/input_args_IS.txt
-# and `find -type f` tests the LINK, which is -type l, so without -L this
-# matches nothing and the job dies in the guard below on a file that localized
-# perfectly.  That is exactly how the first smoke test failed (job
-# 61589c00-7a67-4881-93af-b96d0f0e8c4b, 2026-09-08): the ls in that guard
-# printed the symlink it had just refused to find.  -L follows the link, so a
-# symlink to a regular file tests as -type f, and a dangling one is correctly
-# still skipped.  The [ -f ] / [ -d ] tests further down need no such change --
-# POSIX test follows symlinks already.
-args_file=$(find -L input -maxdepth 1 -type f -name '*.txt' | sort | head -1)
-if [ -z "${args_file:-}" ]; then
-    echo "ERROR: no *.txt args file found in input/ -- register the composed" >&2
-    echo "       input_args_<REGION>.txt as a DPS 'file' input." >&2
-    ls -la input 2>&1 >&2 || true
-    exit 2
+# ---------------------------------------------------------------------------
+# THE ARGS FILE.  The ~90 argparse options never become DPS parameters: the
+# @argsfile idiom is entirely client-side (fromfile_prefix_chars), so the
+# composed input_args_<REGION>.txt is one input, read here and passed as @path.
+# ---------------------------------------------------------------------------
+if [ -n "$args_src" ]; then
+    case "$args_src" in
+        s3://*)
+            # A STRING input that run.sh fetches, not a CWL File the runner
+            # stages -- whether the runner can stage an s3:// File is untested
+            # (howto_MAAP_ogc QA).  s3fs rather than the aws CLI: build-env.sh
+            # proves s3fs importable, and nothing guarantees an aws binary on
+            # maap_base.  It uses the worker's own credential chain, as every
+            # other bucket read in the solve does.
+            mkdir -p input
+            args_file="${PWD}/input/$(basename "$args_src")"
+            echo "run.sh: fetching ${args_src} -> ${args_file}"
+            conda run --no-capture-output -n "$env_name" python -c \
+                'import sys, s3fs; s3fs.S3FileSystem().get(sys.argv[1], sys.argv[2])' \
+                "$args_src" "$args_file"
+            ;;
+        *)
+            args_file=$args_src ;;
+    esac
+    if [ ! -f "$args_file" ]; then
+        echo "ERROR: args file '${args_src}' is not a readable file here." >&2
+        exit 2
+    fi
+else
+    # LEGACY: DPS localized the `file` input into input/.  Select it by
+    # extension so a second file input (the prelim tile set, for --matched)
+    # cannot be picked up by mistake.
+    #
+    # -L IS LOAD-BEARING.  Legacy DPS did not copy a localized input into
+    # input/ -- it SYMLINKED it into a shared cache, e.g.
+    #   input_args_IS.txt -> /data/work/cache/5/e/4/b/<md5>/input_args_IS.txt
+    # and `find -type f` tests the LINK, which is -type l, so without -L this
+    # matches nothing and the job dies in the guard below on a file that
+    # localized perfectly.  That is exactly how the first smoke test failed
+    # (job 61589c00-7a67-4881-93af-b96d0f0e8c4b, 2026-09-08).  -L follows the
+    # link, so a symlink to a regular file tests as -type f, and a dangling
+    # one is correctly still skipped.
+    # `|| true`: with no input/ at all, find fails, pipefail fails the pipeline,
+    # and set -e would end the job right here with status 1 and no message --
+    # instead of in the guard below, which says what is missing.
+    args_file=$(find -L input -maxdepth 1 -type f -name '*.txt' 2>/dev/null | sort | head -1) || true
+    if [ -z "${args_file:-}" ]; then
+        echo "ERROR: no --args_file given, and no *.txt args file found in input/." >&2
+        ls -la input 2>&1 >&2 || true
+        exit 2
+    fi
 fi
 args_file=$(readlink -f "$args_file")
 

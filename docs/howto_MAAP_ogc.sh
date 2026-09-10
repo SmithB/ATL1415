@@ -145,7 +145,7 @@
 #
 #
 # ===========================================================================
-# O1. [NEEDS CODE: config]  algorithm_config.yml in the new schema.   [ADE]
+# O1. [OK, 2026-09-10]  algorithm_config.yml in the new schema.   [ADE]
 # ===========================================================================
 # Same file, same information, the api/build field names (F6):
 #   algorithm_name      ATL1415_tile_solve      ->  atl1415_tile_solve  (QF)
@@ -166,10 +166,16 @@
 # recoverable from git (e231ba4..f3d5049) for the F2 fallback.
 # ACCEPTANCE: the plugin's own validators would accept it -- name and
 # version regexes (F7), and base_container_url + build_command present.
+# DONE: rewritten as above, name atl1415_tile_solve (QF, as recommended --
+# say if you want another), ram_min 16 / cores_min 4 as FLOORS (the queue
+# still sizes the worker; untested assumption, noted in the file).
+# register_algorithm.py now runs the plugin's validators itself: the new file
+# passes, and the legacy one (f3d5049) is refused with six reasons, the
+# capitalised name first.
 
 
 # ===========================================================================
-# O2. [NEEDS CODE: run.sh]  Accept the CWL calling convention.   [ADE]
+# O2. [OK LOCALLY, 2026-09-10; UNTESTED ON DPS]  The CWL calling convention.   [ADE]
 # ===========================================================================
 #   run.sh --x0 V --y0 V --step V --args_file V      (the CWL binding, F8)
 #   run.sh V V V                                     (kept: local runs and
@@ -181,10 +187,21 @@
 # ACCEPTANCE: locally, all three forms of build_id still exit 0; a
 # prefixed prelim call reaches ATL11_to_ATL15 with the same argv the
 # positional form produces today.
+# MET, with the solver stubbed to print its argv: positional, prefixed with a
+# local path, and prefixed with the REAL s3:// URI of the published AA args
+# file (fetched with s3fs, 41 lines) give BYTE-IDENTICAL argv.  build_id exits
+# 0 in all five spellings tried, and eight malformed calls exit 2 with a
+# message.  Testing it turned up two bugs, both fixed:
+#   - --step=build_id was refused with "must be ... 'build_id', got
+#     'build_id'": the pre-scan only knew the bare token.  The step check now
+#     handles build_id too.
+#   - legacy positionals with no input/ exited 1 with no message: under
+#     pipefail, find failing on a missing dir killed the assignment.  Older
+#     than today; invisible on legacy DPS, where input/ always existed.
 
 
 # ===========================================================================
-# O3. [NEEDS CODE: register_algorithm.py]  POST api/build.   [ADE]
+# O3. [OK AGAINST MOCKS, 2026-09-10; NEVER POSTED]  POST api/build.   [ADE]
 # ===========================================================================
 # Keep what the script is for -- REFUSE to register work that is not on
 # GitHub -- and swap the transport:
@@ -197,13 +214,22 @@
 #   - once deployed, print the processID (F9) that submitters need.
 # Works under maap-py 4.2.0 AND 5.x: it uses only the auth header, not
 # either version's algorithm methods.
+# DONE.  --dry-run now also prints the exact JSON it would POST; identical
+# under both maap-py versions.  Tested against mocked responses: accepted
+# (202), rejected (400), non-JSON (502), and --status --wait through build
+# running -> successful -> deployment running -> deployed -> processID found,
+# plus a failed build and an unfinished one.  Exit codes: 0 deployed or
+# accepted, 1 invalid config or unpushed work, 2 rejected or failed, 3 not
+# finished.  ONE REAL CALL, read-only: --status on a nonexistent id gets HTTP
+# 404 {"title": "No build with that build ID found", ...} -- so the path is
+# right, and the service speaks RFC 7807 problem documents.
 
 
 # ===========================================================================
 # O4. [BEN] [UNTESTED]  Register, and watch the build.   [ADE]
 # ===========================================================================
 /srv/conda/envs/notebook/bin/python register_algorithm.py
-/srv/conda/envs/notebook/bin/python register_algorithm.py --status $build_id   # printed by the line above
+/srv/conda/envs/notebook/bin/python register_algorithm.py --status $build_id --wait   # id printed above
 # Ben runs this one, to open the links in a browser.  RECORD, here: the
 # build_id, the three link keys as they really come back, the processID,
 # how long the build took, and the s:commitHash in the generated CWL -- the

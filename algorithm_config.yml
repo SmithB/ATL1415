@@ -1,104 +1,115 @@
-# MAAP DPS algorithm registration for the ATL14/15 per-tile solve.
+# MAAP algorithm registration for the ATL14/15 per-tile solve -- OGC SCHEMA.
 #
 # Register with:
 #   /srv/conda/envs/notebook/bin/python register_algorithm.py
-# which wraps register_algorithm_from_yaml_file(), refuses to register when the
-# build would not contain the local work (see below), and prints the build URL.
-# maap-py is only in the ADE notebook env, not in ATL14.
+# which POSTs this file, as JSON, to https://api.maap-project.org/api/build,
+# refuses to when the build would not contain the local work, and prints the
+# build id and every link the server returns.  Then:
+#   /srv/conda/envs/notebook/bin/python register_algorithm.py --status <build_id>
+# See docs/howto_MAAP_ogc.sh, steps O1-O4.
 #
-# ONE algorithm, not one per stage: a MAAP algorithm has exactly one
-# run_command, and the conda+SuiteSparse build is the expensive part, so six
-# registrations would mean six builds of an identical environment.  run.sh
-# dispatches on the `step` positional instead.  Only the per-tile solve runs in
-# DPS -- setup, queue-build, mosaic, to-netcdf and browse stay in the ADE, which
-# is the only place the my-private-bucket mount exists.
+# THIS IS THE OGC SCHEMA, since 2026-09-10.  maap-py 5.x dropped YAML
+# registration against the legacy /api/mas endpoint, and Ben chose to move to
+# MAAP's OGC system.  The field names are the ones MAAP's own Algorithm
+# Catalog form sends to /api/build (maap_algorithms_jupyter_extension 1.0.2),
+# so this file also loads into that form's "Load Algorithm Configuration"
+# button.  The LEGACY form -- repository_url, docker_container_url, queue,
+# inputs.positional / inputs.file -- is in git at f3d5049, and still registers
+# from the ATL14 env's maap-py 4.2.0 if the fallback is ever needed.
+#
+# ONE algorithm, not one per stage: an algorithm has exactly one run_command,
+# and the conda+SuiteSparse build is the expensive part, so six registrations
+# would mean six builds of an identical environment.  run.sh dispatches on the
+# `step` input instead.  Only the per-tile solve runs in DPS -- setup,
+# queue-build, mosaic, to-netcdf and browse stay in the ADE.
 # See docs/Transition_to_maap.md.
 
-algorithm_name: ATL1415_tile_solve
+# LOWERCASE, and it has to be: the build service rejects any name that does
+# not match ^[a-z0-9_-]+$, so the legacy ATL1415_tile_solve is invalid here.
+# Kept as the old name lowercased, so logs and ledgers stay greppable for it.
+algorithm_name: atl1415_tile_solve
 algorithm_description: >
   Per-tile ATL14/15 surface-height fit (ATL11_to_ATL15).  Takes a tile center
   and a processing step (prelim or matched) plus a composed argsfile, and
   writes the fitted tile to output/.
 
-# DPS clones repository_url at this ref, so algorithm_version is the branch or
-# tag to build -- change it to main once the cloud-read work is merged.
+# THE BRANCH OR TAG THE BUILD CLONES -- change it to main once the cloud-read
+# work is merged.  Must match ^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}$.
 # The repository must be PUBLIC for the build to succeed.
 #
-# BACK TO on_s3 ON 2026-09-10, and on_s3_v2 is retired.  That second branch only
-# ever existed to force a fresh container tag: algorithm_version is BOTH the tag
-# and the git ref, so re-registering on_s3 appeared to reuse an existing image
-# and run stale code.  MAAP support says that is not expected behaviour and the
-# platform environment has been updated, so the workaround costs more than it
-# buys -- two branches that must not diverge, and every change having to reach
-# both.
-#
-# on_s3 is deliberately the ref to test that on: it is the tag that HAS a prior
-# image, so a correct rebuild here is real evidence the reuse problem is gone,
-# where rebuilding a never-before-built tag would prove nothing.  Confirm it
-# with ONE job before spending worker hours:
+# on_s3 ON 2026-09-10, and on_s3_v2 is retired.  That second branch only ever
+# existed to force a fresh container tag, after re-registering on_s3 appeared
+# to reuse an existing image and run stale code; MAAP support says that is
+# not expected behaviour.  Whether the OGC build is immune to it is not yet
+# known (howto_MAAP_ogc QB).  Confirm with ONE job before spending worker
+# hours:
 #     scripts/maap/check_build_id.py
-# If the image comes back stale, do NOT revive on_s3_v2 -- bump to an immutable
-# per-build TAG, which is what 8aad07d already identified as the durable fix.
+# If the image comes back stale, do NOT revive on_s3_v2 -- move to an
+# immutable per-build TAG, which is what 8aad07d already identified as the
+# durable fix.
 algorithm_version: on_s3
-repository_url: https://github.com/SmithB/ATL1415.git
+code_repository: https://github.com/SmithB/ATL1415.git
 
-# build_command and run_command are resolved ONE LEVEL ABOVE the repo root: DPS
-# clones to /app/<repo>/ and calls /app/dps_wrapper.sh '/app/<repo>/run.sh'.
+# build_command and run_command are resolved ONE LEVEL ABOVE the repo root:
+# the build clones to /app/<repo>/, and the generated CWL's baseCommand is
+# /app/<repo>/run.sh -- the same layout as the legacy path, and as MAAP's own
+# dps_tutorial (dps_tutorial/gdal_wrapper/run_gdal.sh).
 build_command: ATL1415/build-env.sh
 run_command: ATL1415/run.sh
 
-# maap_base = debian:11 + git + Miniforge.  No MAAP base image ships SuiteSparse,
-# so the build must create its own conda env; this image is the one with conda
-# already present.  Matches $DOCKERIMAGE_PATH_DEFAULT in the ADE.
-docker_container_url: mas.maap-project.org/root/maap-workspaces/custom_images/maap_base:v6.0.0
+# maap_base = debian:11 + git + Miniforge.  No MAAP base image ships
+# SuiteSparse, so build-env.sh creates its own conda env; this image is the
+# one with conda already present.  Matches $DOCKERIMAGE_PATH_DEFAULT in the ADE.
+base_container_url: mas.maap-project.org/root/maap-workspaces/custom_images/maap_base:v6.0.0
 
-# This is only the DEFAULT queue.  Registration turns it into a `queue_name` input
-# on the algorithm, so a submitJob can send an individual tile somewhere else --
-# a bigger queue for the expensive near-pole tiles, say -- without re-registering.
-#
-# TBD: public queues are throttled to ~10 jobs/hr, which makes a per-tile fan-out
-# of thousands of jobs infeasible -- an organizational queue has been requested
-# from the MAAP platform team.  Swap this for that queue name when it exists.
-# Sizing is still a guess: no tile has been solved on DPS yet, and the SLURM runs
-# use 4 tasks and a 4-hour walltime per tile.
-queue: maap-dps-worker-32gb
-disk_space: 20GB
+# FLOORS, not the worker size, and deliberately below the queue's: they become
+# the CWL's ResourceRequirement, and the QUEUE is chosen per job at submit
+# time (submit_job(process_id, inputs, queue)), which is how an expensive
+# near-pole tile still goes to maap-dps-worker-64gb without re-registering.
+# A floor above what a queue offers risks a job that never schedules -- an
+# assumption, UNTESTED, and the first job on each queue will say.
+# Measured on the pre-crossover transect (scripts/maap/AA_cost_results.csv):
+# worst peak 20.9 GiB, and workers came up with 4 or 8 threads.
+# Service caps: ram_min <= 128, cores_min <= 32.
+ram_min: 16
+cores_min: 4
+outdir_max: 20
 
+author: Ben Smith
+keywords: icesat-2, atl14, atl15, land ice
+
+# Every input reaches run.sh as `--<name> <value>` -- that is how the
+# generated CWL binds them -- and run.sh accepts that form as well as the
+# legacy positional one.
 inputs:
-  # Declaration order survives registration: describeAlgorithm() reports the
-  # signature as (x0, y0, step, args_file, queue_name), i.e. positionals then
-  # file.  run.sh still skips a leading non-numeric argument defensively, since
-  # what the wrapper builds for argv has not yet been seen in a real job.
-  positional:
-    - name: x0
-      description: tile center easting, meters (polar stereographic; may be negative)
-      default: ''
-      required: true
-    - name: y0
-      description: tile center northing, meters (polar stereographic; may be negative)
-      default: ''
-      required: true
-    - name: step
-      description: processing step -- prelim or matched
-      default: prelim
-      required: true
+  - name: x0
+    label: x0
+    doc: tile center easting, meters (polar stereographic; may be negative)
+    type: string
+  - name: y0
+    label: y0
+    doc: tile center northing, meters (polar stereographic; may be negative)
+    type: string
+  - name: step
+    label: step
+    doc: processing step -- prelim, matched, or build_id (print the build stamp and exit)
+    type: string
+    default: prelim
+  # A STRING, not a File (howto_MAAP_ogc QA): whether the runner can stage an
+  # s3:// File is untested, so run.sh takes the URI and fetches it itself.
+  # It is the ~90 argparse options as one @argsfile: fromfile_prefix_chars is
+  # entirely client-side, so they never become separate inputs.
+  #
+  # COMPOSE IT WITH default_args/MAAP_dps.txt, not MAAP.txt.  A worker has no
+  # ~/my-private-bucket mount, so every static input the args file names has
+  # to be an s3:// URI -- masks, ancillary grids and the ATL11 geoIndex are
+  # read from the bucket on the worker's own AWS credentials, and tide models
+  # come from pyTMD's public zarr stores.
+  - name: args_file
+    label: args_file
+    doc: s3:// URI (or local path) of the composed ATL11_to_ATL15 argsfile, input_args_<REGION>.txt
+    type: string
 
-  file:
-    # The ~90 argparse options never become DPS parameters: fromfile_prefix_chars
-    # ('@') is entirely client-side, so the composed args file that
-    # setup_ATL1415_region.py writes (input_args_<REGION>.txt) is localized into
-    # input/ and run.sh passes it as @<path>.
-    #
-    # COMPOSE IT WITH default_args/MAAP_dps.txt, not MAAP.txt.  A DPS worker has
-    # no ~/my-private-bucket mount, so every static input the args file names has
-    # to be an s3:// URI -- masks, ancillary grids and the ATL11 geoIndex are read
-    # from the bucket on the worker's own AWS credentials, and tide models come
-    # from pyTMD's public zarr stores.  MAAP.txt names the ADE mount and would
-    # produce an args file whose paths do not exist on the worker.
-    - name: args_file
-      description: composed ATL11_to_ATL15 argsfile (input_args_<REGION>.txt)
-      default: ''
-      download: true
-      required: true
-
-  config: []
+outputs:
+  - name: out
+    type: Directory
