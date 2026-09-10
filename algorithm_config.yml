@@ -23,7 +23,23 @@ algorithm_description: >
 # DPS clones repository_url at this ref, so algorithm_version is the branch or
 # tag to build -- change it to main once the cloud-read work is merged.
 # The repository must be PUBLIC for the build to succeed.
-algorithm_version: on_s3_v2
+#
+# BACK TO on_s3 ON 2026-09-10, and on_s3_v2 is retired.  That second branch only
+# ever existed to force a fresh container tag: algorithm_version is BOTH the tag
+# and the git ref, so re-registering on_s3 appeared to reuse an existing image
+# and run stale code.  MAAP support says that is not expected behaviour and the
+# platform environment has been updated, so the workaround costs more than it
+# buys -- two branches that must not diverge, and every change having to reach
+# both.
+#
+# on_s3 is deliberately the ref to test that on: it is the tag that HAS a prior
+# image, so a correct rebuild here is real evidence the reuse problem is gone,
+# where rebuilding a never-before-built tag would prove nothing.  Confirm it
+# with ONE job before spending worker hours:
+#     scripts/maap/check_build_id.py
+# If the image comes back stale, do NOT revive on_s3_v2 -- bump to an immutable
+# per-build TAG, which is what 8aad07d already identified as the durable fix.
+algorithm_version: on_s3
 repository_url: https://github.com/SmithB/ATL1415.git
 
 # build_command and run_command are resolved ONE LEVEL ABOVE the repo root: DPS

@@ -20,6 +20,62 @@ env_name=$(sed -n 's/^name:[[:space:]]*//p' environment.yml | head -1)
 echo "=== ATL1415 DPS build: env '${env_name}' from ${repo_dir} ==="
 conda --version
 
+# 0. RECORD WHAT IS BEING BUILT, before anything slow happens.
+#
+# DPS clones repository_url at algorithm_version and bakes the result into a
+# container, and nothing in a job log says which commit that was -- so a stale
+# image is indistinguishable from a fix that did not work.  On 2026-09-09 an
+# algorithm_version that had been built before was observed running the OLD
+# code; MAAP support says that is not expected behaviour.  This stamp is how a
+# single job answers the question: run.sh --build-id prints it and exits.
+#
+# Written HERE rather than derived at run time because the answer must be the
+# state of the clone AT BUILD TIME.  .git may or may not survive into the image,
+# and if the build is ever changed to strip it there would be nothing left to
+# read.
+#
+# safe.directory='*' because the build container runs as a different uid than
+# the clone's owner often enough that git's "dubious ownership" check would
+# otherwise turn every field below into 'unknown'.
+build_id_file="${repo_dir}/.atl1415_build_id"
+git_q () { git -c safe.directory='*' -C "$repo_dir" "$@" 2>/dev/null; }
+
+{
+    echo "# ATL1415 build stamp -- written by build-env.sh at build time."
+    echo "# Read it with: run.sh --build-id"
+    if git_q rev-parse --git-dir >/dev/null; then
+        echo "commit=$(git_q rev-parse HEAD || echo unknown)"
+        echo "commit_short=$(git_q rev-parse --short HEAD || echo unknown)"
+        echo "committed=$(git_q show -s --format=%cI HEAD || echo unknown)"
+        echo "subject=$(git_q show -s --format=%s HEAD || echo unknown)"
+        # A DPS clone is normally detached at the ref it was told to build, so
+        # symbolic-ref fails and describe --all is what names it.
+        echo "ref=$(git_q symbolic-ref --short -q HEAD || git_q describe --all --always HEAD || echo unknown)"
+        if [ -z "$(git_q status --porcelain)" ]; then
+            echo "tree_state=clean"
+        else
+            echo "tree_state=dirty"
+        fi
+    else
+        # Not fatal: the image is still buildable and runnable, we just cannot
+        # say what it came from.  Saying so is the whole point.
+        echo "commit=unknown"
+        echo "commit_short=unknown"
+        echo "committed=unknown"
+        echo "subject=unknown"
+        echo "ref=unknown"
+        echo "tree_state=unknown"
+        echo "note=no git metadata in ${repo_dir}; commit cannot be determined"
+    fi
+    echo "algorithm_version=$(sed -n 's/^algorithm_version:[[:space:]]*//p' "${repo_dir}/algorithm_config.yml" 2>/dev/null | head -1)"
+    echo "env_name=${env_name}"
+    echo "build_host=$(hostname 2>/dev/null || echo unknown)"
+    echo "build_started=$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+} > "$build_id_file"
+
+echo "=== build stamp (${build_id_file}) ==="
+sed 's/^/  /' "$build_id_file"
+
 # 1. conda first.  This is what supplies suitesparse (for PySPQR) and gdal
 #    (conda-forge's gdal installs the python bindings with a .dist-info, so pip
 #    treats LSsurf's bare `gdal` requirement as already satisfied instead of
@@ -92,4 +148,9 @@ if missing:
 PYEOF
 
 conda run --no-capture-output -n "$env_name" which ATL11_to_ATL15.py
+
+# 5. Close the stamp.  A stamp WITHOUT build_completed means the image carries a
+#    half-finished build -- worth seeing rather than assuming cannot happen.
+echo "build_completed=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$build_id_file"
+
 echo "=== ATL1415 DPS build complete ==="

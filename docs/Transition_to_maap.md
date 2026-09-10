@@ -1259,6 +1259,40 @@ Listed in the order they block the sequence above.
     bakes the repo in at build time.  Sequence: push on_s3, register_algorithm.py, then one
     tile -- the AA transect (howto_MAAP_AA step 3b) is the natural vehicle, and its cost
     numbers are only meaningful after the rebuild anyway, because crossovers change N.
+    NARROWED 2026-09-10 (Ben): not the transect -- TWO TILES near the pole hole, which is
+    howto_MAAP_AA step 3b-i.  E220_N20 is one of them on purpose: it is the tile that gave
+    N_XO=0, so the rerun is a before/after on the same tile.  Gated on the build-id check
+    below, so the answer cannot be muddied by a stale image a second time.
+
+[ ] A STALE IMAGE IS NOW DETECTABLE IN ONE JOB -- run.sh --build-id.  LANDED 2026-09-10,
+    UNTESTED ON DPS.
+    FINDING, from Ben via MAAP support, 2026-09-10: re-registering an algorithm_version
+    that had been built before produced a container still running the OLD code, and that
+    is NOT expected behaviour.  Ben is now on an updated environment that may resolve it.
+    It is why on_s3_v2 existed (8aad07d): algorithm_version is both the container tag and
+    the git ref, so bumping it was the only way to force a fresh tag.
+    FINDING, checked with git rev-parse and ls-remote the same day: on_s3 and on_s3_v2 were
+    the SAME COMMIT (e231ba4), locally and on origin.  Nothing needed merging -- the second
+    branch was a pointer, never a fork.
+    WHAT LANDED:
+      - build-env.sh writes .atl1415_build_id at BUILD time (commit, ref, tree state,
+        algorithm_version, host, start time), and appends build_completed only when the
+        build finishes, so a half-built image shows as one.  Build time rather than run
+        time because the answer has to survive an image that carries no .git.
+      - run.sh --build-id, or step=build_id as a DPS positional, prints it plus a live-git
+        cross-check and the installed ATL1415, then exits 0 without reading input/.  It is
+        checked before run.sh's non-numeric skip loop, which would otherwise eat the flag.
+        Exercised locally both ways, including with a leading localized-path argument.
+      - scripts/maap/check_build_id.py submits one such job, waits, and prints MATCH /
+        MISMATCH / NO STAMP against the REMOTE tip of algorithm_version.  howto_MAAP_staging
+        S5b.
+      - algorithm_version back to on_s3; on_s3_v2 is to be deleted once the check passes.
+    RECOMMEND: test on on_s3 precisely BECAUSE it has a prior image.  A correct rebuild of a
+    tag that already has a container is real evidence the reuse problem is gone; a clean
+    build of a never-built tag proves nothing.  If it fails, do not revive on_s3_v2 -- move
+    to an immutable per-build tag, as 8aad07d already suggested.
+    NOTE, a property worth relying on: every image built from this commit on carries a
+    stamp, so an image with NO stamp is by itself proof of a stale container.
 
 [ X ] SEPARATELY, AND NOT A MAAP ITEM: the xover_cycles=[1,2] question (Q26) is SETTLED,
     2026-09-09, and needed no code change.  Cycles 1 and 2 are the only cycles whose ATL11

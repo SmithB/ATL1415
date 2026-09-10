@@ -218,6 +218,58 @@ EOF
 # green.  Had the smoke test gone against the old image it would have failed on
 # the Iceland mask read and looked exactly like a credentials problem.
 
+# 2026-09-10: THE STALE IMAGE WAS REAL, AND IT IS NOT SUPPOSED TO HAPPEN.
+# Re-registering an algorithm_version that had been built before produced a
+# container still running the OLD code, which is what the on_s3_v2 branch was
+# invented to escape (8aad07d) -- algorithm_version is BOTH the container tag
+# and the git ref, so bumping it forced a fresh tag.  Ben raised it with MAAP
+# support: THE BEHAVIOUR IS NOT EXPECTED, and he is now running in an updated
+# environment that may resolve it.  Two consequences, both landed 2026-09-10:
+#   - algorithm_version is back to on_s3 and on_s3_v2 is retired, so there is
+#     one branch again.  on_s3 is the RIGHT ref to re-test on: it is the tag
+#     that already has an image, so a correct rebuild is real evidence.
+#   - the image can now be asked what it is -- S5b.
+
+
+# ===========================================================================
+# S5b. [READY, UNTESTED]  Verify the image is the commit you registered.
+# ===========================================================================
+# ONE JOB, a few worker-seconds, and it replaces the guesswork above.  Run it
+# after EVERY register_algorithm.py and before spending worker hours on a run
+# whose results you would otherwise have to throw away.
+/srv/conda/envs/notebook/bin/python scripts/maap/check_build_id.py
+#
+# It submits a single job with step=build_id, waits for it, pulls _stdout.txt
+# off the bucket and compares the commit in the image against what
+# origin/<algorithm_version> points at -- the REMOTE tip, since DPS clones from
+# GitHub and a local-only commit was never a candidate.  Verdicts:
+#
+#   MATCH      the image carries the commit you expected.  Proceed.
+#   MISMATCH   the build cloned something else.  Re-register; if it recurs the
+#              tag is being reused -- do NOT revive on_s3_v2, move to an
+#              immutable per-build TAG (8aad07d names this as the durable fix).
+#   NO STAMP   the image predates the stamp (anything built before 2026-09-10).
+#              Every build from that commit on writes one, so an unstamped
+#              image is ITSELF proof of a stale container.
+#
+# HOW IT WORKS: build-env.sh writes .atl1415_build_id into the repo at BUILD
+# time -- commit, ref, tree state, algorithm_version, build host, and a
+# build_completed line appended only when the build finishes, so a half-built
+# image is visible too.  run.sh --build-id prints it and exits 0 without
+# touching the args file or the solver.  Written at build time rather than read
+# from git at run time so the answer survives an image that carries no .git.
+#
+# From a shell, on any checkout or inside a container:
+#     ./run.sh --build-id
+# and as a DPS step, which is what the job above submits:
+#     run.sh <x0> <y0> build_id      # x0/y0 ignored; args_file input unread
+#
+# The args_file is still a REQUIRED DPS input on this algorithm, so the check
+# names the published AA args file; run.sh exits before it ever looks in input/.
+#
+# The greppable line, if you are reading a job log by hand:
+#     aws s3 cp <job output prefix>/_stdout.txt - | grep '^BUILD_ID:'
+
 
 # ===========================================================================
 # S6. [UNTESTED]  Ask the MAAP platform team for an organizational DPS queue.

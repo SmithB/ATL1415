@@ -8,7 +8,11 @@
 #
 # Usage: run.sh <x0> <y0> <step>
 #   x0, y0  tile center, in meters (polar stereographic; may be negative)
-#   step    prelim | matched
+#   step    prelim | matched | build_id
+#
+# step=build_id prints the build stamp and exits 0 without solving anything, so
+# ONE cheap job says which commit the image was built from.  --build-id does the
+# same from a shell.  See "BUILD ID" below.
 #
 # There is ONE registered algorithm rather than one per stage (see
 # docs/Transition_to_maap.md): a MAAP algorithm has a single run_command, and
@@ -21,6 +25,107 @@ repo_dir=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 env_name=$(sed -n 's/^name:[[:space:]]*//p' "${repo_dir}/environment.yml" | head -1)
 : "${env_name:?could not read 'name:' from environment.yml}"
 
+# ===========================================================================
+# BUILD ID -- answer "what is actually in this image?" in one job.
+# ===========================================================================
+# DPS clones repository_url at algorithm_version and bakes the result into a
+# container, so the working copy in the ADE has nothing to do with what runs on
+# a worker, and no job log has ever said which commit it carries.  That made a
+# stale image indistinguishable from a fix that did not work: on 2026-09-09 an
+# algorithm_version that had been built once already ran the OLD code, which
+# MAAP support has since confirmed is not expected behaviour.
+#
+# build-env.sh writes ${repo_dir}/.atl1415_build_id at BUILD time; this prints
+# it and exits 0 without touching input/, the args file or the solver, so a
+# single submitJob is a complete answer and costs a worker a few seconds.
+#
+# Checked BEFORE the non-numeric skip loop below, which would otherwise shift
+# '--build-id' away as a leading non-numeric argument.
+build_id_file="${repo_dir}/.atl1415_build_id"
+BUILD_ID_PY='import importlib.metadata as md
+try:
+    import ATL1415
+    print("import_ok=True")
+    print("file=%s" % getattr(ATL1415, "__file__", "unknown"))
+except Exception as exc:
+    print("import_ok=False")
+    print("error=%s: %s" % (type(exc).__name__, exc))
+try:
+    print("version=%s" % md.version("ATL1415"))
+except Exception as exc:
+    print("version=unknown (%s)" % type(exc).__name__)
+'
+git_q () { git -c safe.directory='*' -C "$repo_dir" "$@" 2>/dev/null; }
+config_version () {
+    sed -n 's/^algorithm_version:[[:space:]]*//p' "${repo_dir}/algorithm_config.yml" 2>/dev/null | head -1
+}
+# Reads one key out of the stamp, and succeeds (printing nothing) when there is
+# no stamp to read.  It has to succeed: under `set -e` a bare
+# `x=$(sed ... missing_file)` exits the script with sed's status 2, which is
+# how the first version of this flag exited 2 after printing everything but its
+# summary line.
+stamp_field () {
+    [ -f "$build_id_file" ] || return 0
+    sed -n "s/^$1=//p" "$build_id_file" | head -1
+}
+
+print_build_id () {
+    echo "=========================================================="
+    echo "  ATL1415 build id"
+    echo "=========================================================="
+    echo "repo dir    : ${repo_dir}"
+
+    if [ -f "$build_id_file" ]; then
+        echo "--- build stamp (written by build-env.sh at build time) ---"
+        sed 's/^/  /' "$build_id_file"
+    else
+        # An image built before this flag existed, or a build that never got
+        # past its first step.  Say which, rather than printing nothing.
+        echo "--- NO BUILD STAMP at ${build_id_file} ---"
+        echo "  This image predates the build-id flag, or build-env.sh did not"
+        echo "  reach its first step.  Falling back to live git below."
+    fi
+
+    # Cross-check: what the clone in the image says NOW.  It should agree with
+    # the stamp; a disagreement means the image was modified after its build.
+    echo "--- live git in the image ---"
+    if git_q rev-parse --git-dir >/dev/null; then
+        echo "  live_commit=$(git_q rev-parse HEAD || echo unknown)"
+        echo "  live_ref=$(git_q describe --all --always HEAD || echo unknown)"
+    else
+        echo "  (no git metadata in the image -- the stamp above is the only record)"
+    fi
+
+    # What this image THINKS it was registered as.  If it disagrees with the
+    # algorithm_version you submitted to, the image is not the one you meant.
+    echo "  image_algorithm_version=$(config_version)"
+
+    # The installed copy, which is what actually runs: build-env.sh does
+    # `pip install .`, so the console scripts run a COPY of the repo, not the
+    # repo itself.  A mismatch here is the stale-code failure in miniature.
+    # Guarded -- a broken env must not stop the stamp above from being printed.
+    echo "--- installed ATL1415 (the copy the console scripts run) ---"
+    if ! conda run --no-capture-output -n "$env_name" python -c "$BUILD_ID_PY" 2>&1 | sed 's/^/  /'; then
+        echo "  (could not run python in conda env '${env_name}')"
+    fi
+
+    # ONE greppable line, so a collector need not parse the block above.
+    stamp_commit=$(stamp_field commit)
+    stamp_built=$(stamp_field build_completed)
+    echo "=========================================================="
+    echo "BUILD_ID: commit=${stamp_commit:-unknown} built=${stamp_built:-INCOMPLETE_OR_ABSENT} algorithm_version=$(config_version)"
+    echo "=========================================================="
+}
+
+for arg in "$@"; do
+    case "$arg" in
+        --build-id|--build_id|build_id|build-id)
+            print_build_id
+            exit 0
+            ;;
+    esac
+done
+
 # DPS passes the declared inputs as positional arguments.  algorithm_config.yml
 # lists the positionals before the file input, but which group DPS emits first is
 # one of the things the sandbox smoke test still has to settle, so tolerate a
@@ -31,7 +136,7 @@ while [ "$#" -gt 0 ] && ! [[ $1 =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; do
 done
 
 if [ "$#" -lt 3 ]; then
-    echo "usage: run.sh <x0> <y0> <prelim|matched>" >&2
+    echo "usage: run.sh <x0> <y0> <prelim|matched>  |  run.sh --build-id" >&2
     exit 2
 fi
 x0=$1
@@ -40,7 +145,7 @@ step=$3
 
 case "$step" in
     prelim|matched) ;;
-    *) echo "ERROR: step must be 'prelim' or 'matched', got '${step}'" >&2; exit 2 ;;
+    *) echo "ERROR: step must be 'prelim', 'matched' or 'build_id', got '${step}'" >&2; exit 2 ;;
 esac
 
 mkdir -p output

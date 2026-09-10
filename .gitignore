@@ -160,3 +160,5 @@ region_files/*
 # misc
 *.tar
 masks/*
+# build stamp written by build-env.sh (per-image, never committed)
+.atl1415_build_id

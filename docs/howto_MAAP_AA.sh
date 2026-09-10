@@ -196,6 +196,46 @@ aws s3 cp $region_dir_44/input_args_AA_44km.txt $s3_run/
 # (collect_AA_queue.py does not surface N_XO -- its N_ATL11 column comes from
 # the decimate_data N= line, which counts both.)
 #
+# ---------------------------------------------------------------------------
+# 3b-i. [READY]  VERIFY THE CROSSOVER READ FIRST, on two tiles, not sixteen.
+# ---------------------------------------------------------------------------
+# DECIDED 2026-09-10 (Ben): before re-measuring cost, just establish that
+# ATL11XO is read on a worker at all.  Two tiles near the pole hole answer it,
+# and the full transect can wait until the answer is yes.
+#
+# Step 0 first, and then S5b -- there is no point submitting anything until the
+# image is known to carry the crossover commit:
+#     /srv/conda/envs/notebook/bin/python register_algorithm.py
+#     /srv/conda/envs/notebook/bin/python scripts/maap/check_build_id.py
+#
+scripts/maap/submit_AA_queue.py scripts/maap/AA_xo_check_xy.txt \
+    $s3_run/input_args_AA.txt maap-dps-worker-32gb AA_xo_check_jobs.csv
+#
+# WHY THESE TWO (scripts/maap/AA_xo_check_xy.txt):
+#   220000 20000  the pole-hole EDGE tile, 88 S, where track convergence peaks
+#                 -- so crossover density is at its highest anywhere on the
+#                 continent, which makes N_XO=0 unambiguous if the fix failed.
+#                 It is ALSO the exact tile that produced the pre-fix evidence:
+#                 E220_N20 reported N_AT=935506, N_XO=0.  Rerunning it is a
+#                 direct before/after on one tile rather than an argument.
+#   300000 20000  just outside the hole, fully grounded (ice_frac 1.0), as the
+#                 control: whatever E220_N20 does, an ordinary interior tile
+#                 should do too.
+# Both have max|xy| below 360 km, so halves_for() routes each to the 44 km half
+# ONLY -- two centers, two jobs, not four.
+#
+# WHAT SAYS IT WORKED:
+#     aws s3 cp <job output prefix>/_stdout.txt - | grep 'Decimate_data:'
+# N_XO > 0 on both.  For E220_N20 compare against N_AT=935506, N_XO=0.
+#
+# EXPECT IT TO COST MORE THAN THE PRE-FIX RUN.  44km_E220_N20 was the most
+# expensive tile in the whole transect at 132.5 min and 20.9 GiB on a 32 GiB
+# worker -- about 35% headroom -- and crossovers only add points.  If it OOMs,
+# that is a RESULT and not a failure: rerun on maap-dps-worker-64gb, and note
+# that the S6 queue request has to assume the post-crossover numbers.  N_XO is
+# printed by decimate_data early in the fit, so even a job that later dies has
+# already answered the question.
+#
 # Run it (needs the args file from step 3):
 scripts/maap/submit_AA_queue.py scripts/maap/AA_queue_xy.txt \
     $s3_run/input_args_AA.txt maap-dps-worker-32gb AA_queue_jobs.csv
