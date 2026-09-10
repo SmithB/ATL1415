@@ -167,7 +167,7 @@ EOF
 # S5. [DONE]  Register the DPS algorithm -- and RE-register after every code change.
 # ===========================================================================
 # Use the script, which does the four REPL lines plus the push checks below and
-# prints the build URL:
+# prints every URL the server returns, the build log among them:
 #
 #   /srv/conda/envs/notebook/bin/python register_algorithm.py
 #   /srv/conda/envs/notebook/bin/python register_algorithm.py --dry-run   # checks only
@@ -191,6 +191,19 @@ EOF
 # That last line is the one worth having written down: register_algorithm_from_
 # yaml_file() returns a raw requests.Response, and job_web_url is nowhere in
 # maap-py -- it is in the server's JSON, one level down under 'message'.
+#
+# BUT job_web_url IS ONLY THE BUILD LOG (Ben, 2026-09-10): the response carries
+# other URLs beside it.  The script now prints EVERY URL anywhere in the JSON,
+# each labelled with its key path, and marks the build log:
+#
+#   URLs in the registration response (N; all browser-only):
+#     message.job_web_url       https://...   <- build log
+#     message.<other key>       https://...
+#
+# It walks the JSON rather than naming keys, because nothing documents which
+# keys exist.  Which of the others matter is NOT YET KNOWN -- the example above
+# is the format, not a real response.  Record the real key names here after the
+# next registration.
 #
 # 2026-09-04: ATL1415_tile_solve:on_s3 registered, HTTP 200, build pipeline
 # 20059 / job 21091, and describeAlgorithm() answers 200.  Re-register after

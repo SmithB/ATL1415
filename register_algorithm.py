@@ -19,6 +19,12 @@ maap-py at all.  It arrives inside the server's own JSON, under
 ['message']['job_web_url'], which is not documented anywhere and was originally
 found by poking at the response in the REPL.
 
+And job_web_url is ONLY the build log.  Ben learned on 2026-09-10 that the
+response carries other URLs beside it, so this prints EVERY URL anywhere in
+the JSON, each labelled with the key path it came from.  It walks the payload
+rather than naming keys because nothing documents which keys exist -- a field
+added to the API later shows up here without an edit.
+
 SECOND, and the reason for the git checks below: REGISTERING TRIGGERS A BUILD
 THAT CLONES FROM GITHUB.  DPS clones repository_url at algorithm_version and
 bakes the result into a container; the ADE working copy has nothing to do with
@@ -39,6 +45,7 @@ below -- maap-py is not installed in the ATL14 env):
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 
@@ -190,9 +197,43 @@ def build_url(response):
     return None, payload
 
 
+# A URL ends at whitespace, or at a quote or closing bracket, which is what
+# ends one embedded in a sentence like 'see <https://...>'.  Trailing
+# punctuation is stripped afterwards rather than excluded here, so a comma or
+# full stop INSIDE a path survives.
+URL_RE = re.compile(r'https?://[^\s\'"<>)\]]+')
+
+
+def urls_in(node, path=()):
+    '''
+    Yield (key_path, url) for every http(s) URL anywhere in a parsed response.
+
+    Walks dicts and lists all the way down, and finds URLs embedded inside a
+    longer string as well as ones that are the whole value -- a status message
+    that says "build started, see https://..." counts.
+
+    inputs:
+        node: the parsed JSON (dict, list or scalar)
+        path (tuple): key path to node, used for the label
+    output:
+        generator of (str, str): dotted key path, e.g. 'message.job_web_url',
+        with list indices as [i]; and the URL
+    '''
+    if isinstance(node, dict):
+        for key, value in node.items():
+            yield from urls_in(value, path + (str(key),))
+    elif isinstance(node, list):
+        for i, value in enumerate(node):
+            yield from urls_in(value, path + (f'[{i}]',))
+    elif isinstance(node, str):
+        label = '.'.join(path).replace('.[', '[') or '<top level>'
+        for url in URL_RE.findall(node):
+            yield label, url.rstrip('.,;:')
+
+
 def main():
     parser = argparse.ArgumentParser(
-        description='Register the ATL1415 DPS algorithm and print the build URL.')
+        description='Register the ATL1415 DPS algorithm and print the URLs it returns.')
     parser.add_argument('config', nargs='?',
                         default=os.path.join(REPO_DIR, 'algorithm_config.yml'),
                         help='algorithm config yaml (default: the one beside this script)')
@@ -271,8 +312,19 @@ def main():
         print('Registration FAILED.', file=sys.stderr)
         sys.exit(2)
 
+    # Every URL in the response, not only the build log.  Printed before the
+    # job_web_url verdict below so they are not lost when that key is missing.
+    found = list(urls_in(payload)) if isinstance(payload, (dict, list)) else []
+    if found:
+        width = max(len(label) for label, _ in found)
+        print()
+        print(f'URLs in the registration response ({len(found)}; all browser-only):')
+        for label, link in found:
+            note = '   <- build log' if link == url else ''
+            print(f'  {label:<{width}}  {link}{note}')
+
     if url is None:
-        # Registered, but there is nothing to hand back to the caller.
+        # Registered, but there is no build log to hand back to the caller.
         sys.exit(2)
 
     print()
