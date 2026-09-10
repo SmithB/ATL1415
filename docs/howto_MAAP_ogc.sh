@@ -107,13 +107,17 @@
 #       run.sh --x0 220000 --y0 20000 --step prelim --args_file <path>
 #     where today it expects `run.sh 220000 20000 prelim` and FINDS the args
 #     file in input/.  -- the fetched CWLs.  CONSEQUENCE: run.sh has to change.
+#     CONFIRMED by our own generated CWL (O4): baseCommand /app/ATL1415/run.sh,
+#     inputs bound --x0, --y0, --step, --args_file at positions 1-4.
 #     Outputs are collected by `glob: ./output*`, which run.sh's output/
 #     already satisfies.
 #
 # F9. JOBS ADDRESS A PROCESS BY ID, NOT BY name:version.  submit_job() POSTs
 #     to /api/ogc/processes/<process_id>/execution, and each deployed process
 #     has a numeric processID beside its string id.  -- maap.py and
-#     list_algorithms().  Which of the two submit_job wants is not yet known.
+#     list_algorithms().  THE NUMERIC ONE, by the deployment record: its
+#     processLocation is /ogc/processes/64, and the string id is not unique
+#     across versions.  O6 is the first real submit.
 #
 # F10. THE GENERATED CWL RECORDS WHAT IT BUILT: s:codeRepository,
 #     s:commitHash and s:version.  -- shah_dps_tutorial's CWL.  CONSEQUENCE: a
@@ -140,9 +144,18 @@
 # QC. [BEN / MAAP] Is the legacy /api/mas path being retired, and when?  It
 #     decides whether the ATL14 fallback (F2) is safe to keep.
 #
-# QD. [TEST, O6] What do get_job_status / get_job_result return, and is the
-#     job's _stdout.txt still on the bucket at a prefix we can derive?  The
-#     collector and check_build_id both depend on reading that log.
+# QD. [MOSTLY ANSWERED 2026-09-10; O6 confirms]  What do get_job_status /
+#     get_job_result return, and is _stdout.txt still on the bucket?
+#     FINDING: the OGC job endpoints serve the SAME backend as the legacy
+#     jobs -- list_jobs() returns the legacy AA transect jobs, and for one of
+#     them (37a86437...):
+#       get_job_status -> {"jobID", "processID", "type", "status": "successful"}
+#       get_job_result -> {"<id>": {"links": [{href: website}, {href:
+#                          s3://s3-us-west-2.amazonaws.com:80/maap-ops-
+#                          workspace/ben_smith/dps_output/...}, {href: console}]}}
+#       and _stdout.txt, _stderr.txt sit at that prefix.
+#     What is NOT yet seen: a job submitted THROUGH submit_job to an OGC
+#     process.  The first build_id job (O6) is that test.
 #
 # QE. SETTLED 2026-09-10 (Ben): maap-py 5.1.0 in environment.yml, for the
 #     worker AND the ATL14 env.  The first draft of this entry recommended
@@ -251,7 +264,7 @@
 
 
 # ===========================================================================
-# O4. [RUN 2026-09-10 by Ben; build RUNNING when last read]  Register.   [ADE]
+# O4. [OK, 2026-09-10 -- Ben registered; built and DEPLOYED]  Register.   [ADE]
 # ===========================================================================
 /srv/conda/envs/notebook/bin/python register_algorithm.py
 # and open the first URL it prints.  That is the whole step.
@@ -272,13 +285,25 @@
 # GET /api/build returned NO builds earlier on 2026-09-10.  Whatever `created`
 # measures, it is not when this registration happened -- do not time builds
 # with it.
-# STILL TO RECORD once it deploys: how long the build took, the processID
-# (O5 needs it), and the s:commitHash in the generated CWL -- the first real
-# answer to QB, before any job is spent.
+# DEPLOYED, read back the same way:
+#   build status  successful; still running at 17:59:09
+#   deployment    ogc/deploymentJobs/140, created 18:07:06, successful --
+#                 pipeline https://repo.maap-project.org/root/deploy-ogc-hysds/-/pipelines/20199
+#   process       processID 64, id atl1415_tile_solve, version on_s3,
+#                 lastModified 18:08:54, deployedBy ben_smith
+#   CWL           https://repo.maap-project.org/api/v4/projects/137/repository/files/ben_smith%2Fatl1415_tile_solve%2Fon_s3%2Fprocess.cwl/raw
+#   s:commitHash  d401699 -- exactly origin/on_s3 when Ben registered
+#   image         mas.maap-project.org/root/ogc-application-packages/
+#                 ben_smith/atl1415_tile_solve:on_s3 -- the TAG IS THE
+#                 BRANCH, so a rebuild of on_s3 reuses it (why QB is live)
+# How long the build itself took is not known: Ben's registration time was
+# not captured and `created` is unreliable (above).  Registration to
+# deployed was under ~10 minutes.
 
 
 # ===========================================================================
-# O5. [NEEDS CODE: check_build_id.py]  Port to the OGC job calls.   [ADE]
+# O5. [OK, 2026-09-10 -- dry-run and log-reading REAL; submit path mocked]
+#     Port check_build_id.py to the OGC job calls.   [ADE]
 # ===========================================================================
 # FIRST, FIND THE PROCESS: submit_job() needs the deployed process's id
 # (F9).  Look it up by name and version from list_algorithms() --
@@ -289,7 +314,33 @@
 # get_job_status / get_job_result (QD).  TWO comparisons instead of one:
 # the stamp in the image against origin/<algorithm_version>, AND against the
 # s:commitHash in the deployed CWL (F10).  All three agreeing is MATCH.
-# The CWL alone would have said "stale" 2026-09-09 without submitting a job.
+# DONE -- AS BUILT, one change to the paragraph above: image == cwl is the
+# test, and origin is only REPORTED.  Requiring origin too would call a
+# correct image stale whenever GitHub moves on after a build -- which is
+# exactly why the 65c09bf push is being held until O6 has run.
+#   - the process is found by name+version every run (processID 64 today).
+#   - submit_job(64, {x0: '0', y0: '0', step: build_id, args_file}, queue,
+#     dedup=False, tag=atl1415_build_id_<time>).  dedup=False EXPLICITLY: the
+#     inputs are identical every time, and a deduplicated job would hand back
+#     the PREVIOUS image's answer after a rebuild.  Default queue -32gb: the
+#     CWL's ramMin is 16, which a 16 GB worker may not have to allocate.
+#   - the log comes from get_job_result(): walk it for s3:// hrefs, normalize
+#     the endpoint-style one, read <prefix>/_stdout.txt with `aws s3 cp`.
+#   - best effort: the job record's container url + digest, via
+#     list_jobs(tag=...).  A digest unchanged across a rebuild would mean a
+#     reused image, whatever the tag says.
+#   - verdicts MATCH / MISMATCH / NO STAMP / NO NSIDC (maap_pgt unset) exit
+#     0/1/1/1; 2 when the check itself could not run.  --dry-run stops before
+#     submitting.
+# TESTED: --dry-run for real under maap-py 5.1.0a2 and 5.1.0 (finds 64, reads
+# d401699 from the CWL and from GitHub).  Log reading for real, against the
+# legacy AA_cost_44km_E220_N20 job through the OGC endpoints: finds its
+# prefix, reads its 5070-char _stdout.txt, and the tag lookup returns its
+# container digest.  Verdicts on real run.sh output (stamp present, stamp
+# removed, MAAP_PGT removed).  submit -> poll -> log -> verdict, a refused
+# submit, a failed job without a log, and an undeployed process, all with
+# maap mocked -- the one path not yet run for real is submit_job itself,
+# which is O6.
 
 
 # ===========================================================================
