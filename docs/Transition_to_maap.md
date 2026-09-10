@@ -189,6 +189,10 @@ Q14. CROSSOVERS ARE OFF in cloud mode: setup_ATL11_xover.py still cannot write a
          drop the file, both viable -- Q24.
        - AND THE THING NEITHER OF US ASKED: the product has 31 cycles per tile and the code
          reads 2.  Q26.  This one is not a MAAP question at all.
+     DONE 2026-09-09 (e798344).  Cloud crossovers are read.  The one gap this entry
+     ended on -- "writing the schema that points at them" -- was closed by NOT writing one:
+     the schema is built in memory per Q24 option A, and setup_ATL11_xover.py is untouched.
+     A DPS job has not yet confirmed it; see the work item at the end of this file.
 
 Q15. AA now actually gets --tide_adjustment (the bare-flag bug fix), and AA_0331.txt now
      names CATS2008-v2023 rather than CATS2008.  Both are real output changes that a
@@ -251,6 +255,11 @@ Q19. GIVEN THE Q14 FINDINGS, do crossovers go back on for MAAP before the first 
      few hundred bytes each and tilingSchema.from_file() reads them over s3, so
      s3://maap-ops-workspace/ben_smith/ATL11_xover_schema/<release>/ would work.
      A:  Crossovers should be included.  There might be a code change as described in the answer to Q14
+     DONE 2026-09-09 (e798344), and the location half of this question is moot: nothing is
+     written, so there are no cycle_NN/200km_tiling_{AA,AR}.json files to place on the
+     bucket.  setup_ATL11_xover.py did not gain a cloud mode and MAAP_dps.txt does not set
+     --ATL11_xover_dir; both stay exactly as they were.  See Q25 for the switch that
+     replaced it.
 
 Q20. WITH NO howto_MAAP_ATL11 (your Q1/Q13 answers), THE discover -> S3 HANDOFF IS NOWHERE.
      You build the index on discover; the tile jobs read it from
@@ -325,6 +334,22 @@ Q25. OPTION A NEEDS RELEASE/VERSION TO REACH THE SOLVE, and there is a free way 
      nothing to point at.  Cleanest is to let --ATL11_earthaccess cover crossovers too, with
      --ATL11_xover_dir remaining the local-mode switch.  Agreed?
      A:  Agreed.
+     DONE 2026-09-09 (e798344), WITH ONE DEPARTURE FROM WHAT YOU AGREED TO, called out here
+     because it is the part a reader would otherwise take from this entry and get wrong.
+     THE SWITCH IS --ATL11xo_version, NOT --ATL11_earthaccess.  Both are required --
+     read_ATL11 reads crossovers when earthaccess is set AND ATL11xo_version is not None --
+     but --ATL11xo_version is the one that can be absent, so it is the one that decides.
+     WHY: this entry's own premise is that the release and version have to reach the
+     granule names somehow.  A cloud run without --ATL11xo_version therefore has no name to
+     search CMR for, so making --ATL11_earthaccess the switch would turn that case into an
+     error rather than a configuration -- and "along-track from the cloud, no crossovers" is
+     exactly what every DPS job before this commit was in fact doing.  --ATL11_xover_dir
+     remains the local switch, as agreed.
+     ALSO LANDED HERE, and it is the reason this sat unnoticed: parse_known_args now PRINTS
+     what it discards.  --ATL11xo_version was in every composed args file and was being
+     swallowed silently.  It reports rather than raises because the args files are shared
+     between entry points, so unknown switches are legitimate (--ATL14_root for the queue
+     builders, --cycles/--Release/--version for the write2nc scripts).
 
 Q27. WHERE DO THE PREVIOUS ATL14/15 PRODUCTS COME FROM?  (your question, 2026-09-04)
      SHORT ANSWER: yes, CMR + S3 works, nothing has to be staged, and the numbers are good --
@@ -438,8 +463,8 @@ Q27. WHERE DO THE PREVIOUS ATL14/15 PRODUCTS COME FROM?  (your question, 2026-09
         it is deliberately NOT implemented: a monthly run names its reference granules, and
         inventing a second search interface for the one caller would be guesswork.
 
-Q26. NOT A MAAP QUESTION, AND PROBABLY THE MOST IMPORTANT THING IN THIS FILE: THE CROSSOVER
-     READ COVERS 2 CYCLES OUT OF 31, ON DISCOVER AS WELL AS ON MAAP.
+Q26. SETTLED 2026-09-09 -- NOT A DEFECT, AND NOT A MAAP QUESTION.  THE CROSSOVER READ
+     COVERS 2 CYCLES OUT OF 31, ON DISCOVER AS WELL AS ON MAAP, AND THAT IS CORRECT.
      - read_ATL11_xovers(..., xover_cycles=[1,2]) is a default that ATL11_to_ATL15 never
        overrides -- nothing in the repo passes xover_cycles.  setup_ATL11_xover(cycles=['01','02'])
        matches it, and has since the file was first written (2ae71a4, 2026-07-03); it has never
@@ -449,18 +474,24 @@ Q26. NOT A MAAP QUESTION, AND PROBABLY THE MOST IMPORTANT THING IN THIS FILE: TH
      - the cycle label IS the ICESat-2 mission cycle, confirmed from the granules' own
        ancillary_data: c01 covers 2018-10-14 to 2018-12-27, c05 covers 2019-09-26 to
        2019-12-25.
-     So every fit spanning -t=2018.75,2026.5 is currently constrained by crossovers from
-     October 2018 to about March 2019 only -- the first ~6 months of an 8-year record -- while
-     select_best_xover_index() is written to pick the best measurement per cycle across
-     however many cycles it is given.
-     IS THAT DELIBERATE?  If it is, it needs a comment saying why, because it reads as an
-     early-mission default that outlived its data.  If it is not, then discover runs have the
-     same gap and this wants fixing before rel006 production rather than after -- and it is a
-     bigger deal than anything else on this list, since it changes the fit everywhere, not
-     just on MAAP.
-     A: The only data present in cycles 1 and 2 is crossover data.  ATL11 along-track begins in cycle 3.  
-     That is why only cycles 1 and 2 are read from the crossovers.  There are no plans to include crossover 
-     data from later cycles.
+     WHAT THAT LOOKS LIKE, and why it was raised: every fit spanning -t=2018.75,2026.5 is
+     constrained by CROSSOVERS from October 2018 to about March 2019 only -- the first ~6
+     months of an 8-year record -- while select_best_xover_index() is written to pick the
+     best measurement per cycle across however many cycles it is given.  Read on its own
+     that looks like an early-mission default that outlived its data.  It is not.
+     THE ANSWER, from Ben, 2026-09-09: "The only data present in cycles 1 and 2 is
+     crossover data.  ATL11 along-track begins in cycle 3.  That is why only cycles 1 and 2
+     are read from the crossovers.  There are no plans to include crossover data from later
+     cycles."
+     SO THE TWO-CYCLE READ IS PICKING UP PRECISELY THE PART OF THE RECORD THE ALONG-TRACK
+     READ CANNOT SUPPLY.  The fit is not missing seven years of crossovers; after cycle 3
+     the along-track data covers that span, and select_best_xover_index() is given the two
+     cycles that have nothing else.  xover_cycles=[1,2] and setup_ATL11_xover(cycles=
+     ['01','02']) are right as written, on both platforms.
+     DO NOT WIDEN IT, and do not re-raise this as an open item.  The findings above stand
+     only as the record of why it looks wrong to a first reader; read_ATL11_xovers'
+     docstring now carries the same explanation (e798344), which is where the next person
+     to wonder will actually be.
 
 ## The pyTMD AWS_NO_SIGN_REQUEST bug
 FOUND AND FIXED 2026-09-06, while running arctic step 2 in the ADE.  It would have broken
@@ -627,8 +658,12 @@ WORK ITEMS.
     - full suite green on the merge: 265 passed, 3 skipped (the S3 tests are network-gated).
     - unpinned git+ dependency, so no ATL1415 change is needed to consume it.
 
-[ ] setup_ATL11_xover must also be able to emit a CLOUD schema.  THIS IS THE ONLY THING
-    KEEPING CROSSOVERS OFF IN CLOUD MODE, and it is a small change -- verified 2026-09-04:
+[ WITHDRAWN 2026-09-05, per Q24 ] setup_ATL11_xover must also be able to emit a CLOUD
+    schema.  NOT DONE AND NOT WANTED: the schema is built in memory instead (Q25, e798344),
+    so setup_ATL11_xover.py keeps its single local-filesystem job and there is no second
+    writer of the same format to keep in step.  The verified findings below are why the
+    in-memory build is safe, so they are kept -- only the last two bullets, which describe
+    the route not taken, are marked dead.  Verified 2026-09-04:
     - the READ side is complete.  tilingSchema.resolve_files_for_box() has an EarthAccess
       branch that batches one earthaccess.search_data(granule_name=[...]) over the candidate
       tile names and returns direct S3 URLs, and read_ATL11_xovers() already plumbs the shared
@@ -642,13 +677,14 @@ WORK ITEMS.
       plus extension='.h5', with release/version 007/03 -- i.e. exactly what
       --ATL11xo_version=007_cycle_03_30_v03 in rel_006_0331.txt parses to.  No renaming, no
       staging, and no local xover tree is needed on the cloud side.
-    - what is missing: setup_ATL11_xover.py writes directory=<local cycle_src> and no 'source',
-      and it requires the local cycle_src directory to EXIST before it will write anything
-      (it raises otherwise), so it cannot be run in the ADE at all today.  A cloud mode wants
-      source={'type':'EarthAccess','short_name':'ATL11XO'}, directory=None, and no local check.
-    - then MAAP_dps.txt can set --ATL11_xover_dir at wherever the two cycle_NN/200km_tiling_*.json
-      files live (tilingSchema.from_file reads a remote schema, so an s3:// prefix is fine), and
-      setup_ATL1415_region.py's cloud-mode branch must stop suppressing the option.
+    - [DEAD -- the route not taken] setup_ATL11_xover.py writes directory=<local cycle_src>
+      and no 'source', and requires that local directory to EXIST before it writes anything,
+      so it cannot be run in the ADE at all.  Giving it source={'type':'EarthAccess',...},
+      directory=None and no local check would have fixed that.
+    - [DEAD, as above] MAAP_dps.txt would then set --ATL11_xover_dir at wherever the two
+      cycle_NN/200km_tiling_*.json files live, and setup_ATL1415_region.py's cloud-mode
+      branch would stop suppressing the option.  Neither happened: read_ATL11.py builds the
+      identical schema object at read time, so no file and no option are involved.
 [ X ] Add options for ATL11_to_ATL15 to query earthData for ATL11 granules
     - `--ATL11_earthaccess` (295c181).  Granules for a tile are found by searching
       earthaccess/CMR with the tile's lon/lat bounding box (_lonlat_bounding_box, with
@@ -988,10 +1024,12 @@ There is no chaining/DAG mechanism -- jobs are independent and couple only throu
       --ATL11_earthaccess and --ATL11_index=s3://maap-ops-workspace/ben_smith/ATL11_index/
       --tide_directory=/tmp/ATL1415_static/tide_models  -- LOCAL, staged by run.sh
       --ATL14_root=/home/jovyan/ATL14_processing        -- ADE-side only, read by setup
-    It deliberately does NOT set --ATL11_xover_dir: setup no longer derives it in cloud mode
-    (that derivation assumes the local '<...>/index/GeoIndex.h5' layout) and
-    setup_ATL11_xover.py still cannot write a schema with a remote 'source', so there is no
-    cloud crossover tree to point at.  Crossovers are skipped in this mode.
+    It deliberately does NOT set --ATL11_xover_dir: that option names a local tile tree, and
+    setup no longer derives it in cloud mode (the derivation assumes the local
+    '<...>/index/GeoIndex.h5' layout).  CROSSOVERS ARE STILL READ, as of e798344: the
+    release args file supplies --ATL11xo_version=007_cycle_03_30_v03, which is what turns
+    them on in the cloud, and the tiles are resolved from CMR with no tree and no schema
+    file.  Before that commit they were silently skipped in this mode.
 [ X ] Figure out how the MAAP algorithm definition handles python fromfiles
     - the @argsfile idiom survives unchanged.  Nothing in DPS parses your arguments;
       fromfile_prefix_chars is entirely client-side.  Register the args file as a `file` input;
@@ -1114,8 +1152,9 @@ change:
   1. THE LOCATION LAYER.  default_args/discover.txt -> default_args/MAAP_dps.txt.
   2. THE HEMISPHERE LAYER GOES AWAY.  north.txt and south.txt exist only to supply
      --ATL11_index, --ATL11_xover_dir and --Hemisphere.  In cloud mode MAAP_dps.txt
-     carries --ATL11_earthaccess plus the s3 index root, and there is no xover dir, so
-     all that is left in them is --Hemisphere -- which is already a command-line option
+     carries --ATL11_earthaccess plus the s3 index root, and there is no xover dir to carry
+     (crossovers come from CMR instead, keyed by --ATL11xo_version out of the release args
+     file), so all that is left in them is --Hemisphere -- which is already a command-line option
      on setup_ATL1415_region.py.  The MAAP howtos therefore compose
        MAAP_dps.txt + latest_release.txt + <REGION>_latest.txt + quarterly|monthly.txt
      and pass --Hemisphere=1 / --Hemisphere=-1 directly.  (howto_GL.sh and howto_AA.sh
@@ -1197,8 +1236,9 @@ Listed in the order they block the sequence above.
     not arctic-specific and is the more important of the two -- see "The pyTMD
     AWS_NO_SIGN_REQUEST bug", earlier in this file.
 
-[ ] Cloud crossovers (Q19: yes, include them).  REVISED after Q24: setup_ATL11_xover.py is
-    NOT needed on MAAP at all, and neither is a schema file or --ATL11_xover_dir.  The work is
+[ X ] Cloud crossovers (Q19: yes, include them).  DONE 2026-09-09, e798344.
+    REVISED after Q24, and this is the plan the commit was written against:
+    setup_ATL11_xover.py is NOT needed on MAAP at all, and neither is a schema file or --ATL11_xover_dir.  The work is
     entirely inside read_ATL11_xovers: in cloud mode build the per-cycle tilingSchema in
     memory with source={'type':'EarthAccess','short_name':'ATL11XO'} and hand it to the same
     resolve_files_for_box() that already works.  Supporting changes: promote --ATL11xo_version
@@ -1208,9 +1248,23 @@ Listed in the order they block the sequence above.
     point at in the cloud.  setup_ATL11_xover.py stays exactly as it is for discover.
     Verified prerequisites: ATL11XO is a real CMR collection (v007), granule names match the
     format_str character for character, and the labels are tile CENTERS as 'round' assumes.
+    WHAT LANDED, against that plan: as described, except that --ATL11xo_version rather than
+    --ATL11_earthaccess is the switch (Q25 records why).  read_ATL11.xover_tiling_schema()
+    now has the two modes side by side, parse_ATL11xo_version() is shared with
+    setup_ATL11_xover.py so the two cannot drift, and unknown args are reported instead of
+    dropped.
+    STILL UNVERIFIED, and it is the whole point of the change: NO DPS JOB HAS READ A
+    CROSSOVER YET.  The pre-fix evidence is a DPS run of AA tile E220_N20 reporting
+    N_AT=935506, N_XO=0; the post-fix number has to come from a rebuilt image, since DPS
+    bakes the repo in at build time.  Sequence: push on_s3, register_algorithm.py, then one
+    tile -- the AA transect (howto_MAAP_AA step 3b) is the natural vehicle, and its cost
+    numbers are only meaningful after the rebuild anyway, because crossovers change N.
 
-[ ] SEPARATELY, AND NOT A MAAP ITEM: settle the xover_cycles=[1,2] question (Q26) before
-    rel006 production.  The product has 31 cycles; the code reads 2, on discover too.
+[ X ] SEPARATELY, AND NOT A MAAP ITEM: the xover_cycles=[1,2] question (Q26) is SETTLED,
+    2026-09-09, and needed no code change.  Cycles 1 and 2 are the only cycles whose ATL11
+    content is crossover-only -- along-track begins at cycle 3 -- so reading exactly those
+    two is the intended behaviour on discover and on MAAP alike.  Nothing is blocked on it
+    and it is not to be reopened; read_ATL11_xovers' docstring now says so.
 
 [ X ] docs/howto_MAAP_staging.sh (Q20) WRITTEN 2026-09-05, tentative: standing up a fresh MAAP account with everything
     ATL1415 needs -- build the ADE env, stage the Zenodo masks, stage the ATL11 index built on

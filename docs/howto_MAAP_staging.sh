@@ -29,7 +29,8 @@
 
 
 # ===========================================================================
-# S1. [DONE 2026-09-06]  Build the ATL1415 conda env in the ADE.   (Q5)
+# S1. [DONE 2026-09-06, BUT NOT DURABLE -- RE-RUN AFTER AN ADE RESTART]  Build
+#     the ATL1415 conda env in the ADE.   (Q5)
 # ===========================================================================
 # The ADE notebook env cannot `import pointCollection` or `LSsurf`, so every
 # ADE-side stage below and in the region howtos is blocked until this exists.
@@ -52,6 +53,30 @@ python -c "import pointCollection, LSsurf, sparseqr; print('env ok')"
 # The guard is deliberate enough to keep -- a typo'd --ATL14_root should fail
 # loudly rather than silently build a junk tree -- so make the root by hand:
 mkdir -p /home/jovyan/ATL14_processing      # = --ATL14_root in MAAP_dps.txt
+#
+# THE ENV DOES NOT SURVIVE AN ADE INSTANCE RESTART.  FINDING, 2026-09-09:
+# `conda env list` shows only base and notebook, and
+# /home/jovyan/.conda/environments.txt lists only /srv/conda/envs/notebook --
+# the ATL14 env built on 09-06 is gone.  WHY: it was created at
+# /srv/conda/envs/ATL14, and /srv/conda is on the image overlay (`df /`:
+# overlay, 200G), which is rebuilt from the image on every start.  Only
+# /home/jovyan persists (NFS, 2.0T, 726G free) -- which is why the repo, the
+# docs and the processing tree all came back and the env did not.  This box
+# has been up since 2026-09-08, so the loss is one restart old.
+#
+# CONSEQUENCE: every "[ADE]" step in every howto begins with `conda activate
+# ATL14`, and after a restart that fails until S1 is re-run.  Budget ~the
+# original build time for it, and remember the editable reinstall below.
+#
+# RECOMMEND, UNTESTED: build into the persistent home instead, which needs no
+# change to build-env.sh -- /home/jovyan/.conda/envs is already the second
+# entry in conda's envs_dirs, so putting it first is enough:
+#     CONDA_ENVS_PATH=/home/jovyan/.conda/envs bash build-env.sh
+# Two things to check before adopting it: conda on NFS is slower than on the
+# local overlay (build AND import time), and build-env.sh is also the DPS build
+# command, so whatever is done here must not change how it behaves on a worker
+# (setting the variable at the call site rather than in the script keeps that
+# guarantee).
 #
 # AND ONE TRAP, hit on 2026-09-06: build-env.sh runs `pip install .`, which
 # COPIES the code into the env.  The console scripts (setup_ATL1415_region.py,

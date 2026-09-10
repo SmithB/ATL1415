@@ -41,12 +41,16 @@
 # ATL1415.tides does that by default (override with ATL1415_TIDE_ANON=0).
 --tide_directory=s3://pytmd
 
-# NOT SET: --ATL11_xover_dir.  In cloud mode setup_ATL1415_region.py no longer
-# derives it from the index location (that derivation assumes the local
-# '<...>/index/GeoIndex.h5' layout), and setup_ATL11_xover.py cannot yet write a
-# schema with a remote 'source', so there is no cloud crossover tree to point
-# at.  Crossovers are therefore skipped in this mode.  See
-# docs/Transition_to_maap.md.
+# NOT SET: --ATL11_xover_dir.  It names a LOCAL crossover tile tree, and in cloud
+# mode setup_ATL1415_region.py no longer derives it from the index location (that
+# derivation assumes the local '<...>/index/GeoIndex.h5' layout).
+#
+# CROSSOVERS ARE STILL READ HERE.  --ATL11xo_version, which comes from the
+# release args file (rel_006_0331.txt: 007_cycle_03_30_v03), is the cloud switch:
+# read_ATL11 builds the 200 km tiling schema in memory and resolves the ATL11XO
+# tiles through CMR, so nothing is staged and no schema file exists.  Omit
+# --ATL11xo_version and a cloud run is along-track only -- which is what every
+# job before e798344 silently was.  See docs/Transition_to_maap.md Q24/Q25.
 
 # --previous_product_earthaccess reinterprets --previous_product as the release
 # and cycle range to search for in NASA Earthdata Cloud ('<release>_<cycles>'),

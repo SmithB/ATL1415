@@ -177,6 +177,25 @@ aws s3 cp $region_dir_44/input_args_AA_44km.txt $s3_run/
 #      job has used yet: AA sets --tide_model=CATS2008-v2023 and
 #      --tide_adjustment, and IS does not.
 #
+# CROSSOVERS CHANGED UNDER THIS STEP, 2026-09-09 (e798344).  Every DPS job so
+# far has been along-track only -- E220_N20 reported N_AT=935506, N_XO=0 -- and
+# a cloud run now reads crossovers too, keyed by --ATL11xo_version out of the
+# release args file.  TWO CONSEQUENCES HERE:
+#   - REBUILD FIRST (step 0).  DPS bakes the repo in at build time, so a
+#     transect run on the current image would measure the OLD behaviour and
+#     silently look like a valid cost characterisation.
+#   - THE COST NUMBERS MOVE.  Crossovers add points to the fit, so time, peak
+#     RSS and N all rise relative to anything measured before the rebuild.  Do
+#     not mix pre- and post-rebuild rows in the same table.
+# It is also the cheapest confirmation that the fix works on a worker rather
+# than only against CMR: grep the job log for the Decimate_data line and
+# check that N_XO is now non-zero.
+#
+#     aws s3 cp <job output prefix>/_stdout.txt - | grep 'Decimate_data:'
+#
+# (collect_AA_queue.py does not surface N_XO -- its N_ATL11 column comes from
+# the decimate_data N= line, which counts both.)
+#
 # Run it (needs the args file from step 3):
 scripts/maap/submit_AA_queue.py scripts/maap/AA_queue_xy.txt \
     $s3_run/input_args_AA.txt maap-dps-worker-32gb AA_queue_jobs.csv

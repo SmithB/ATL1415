@@ -36,7 +36,9 @@
 #   - there is no hemisphere layer.  north.txt/south.txt exist only to supply
 #     --ATL11_index, --ATL11_xover_dir and --Hemisphere; in cloud mode
 #     MAAP_dps.txt carries the first, the third is a command-line option, and
-#     the second has nothing to point at.  Pass --Hemisphere=1 directly.
+#     the second has nothing to point at -- crossovers are read from CMR
+#     instead, turned on by --ATL11xo_version from the release args file
+#     (e798344).  Pass --Hemisphere=1 directly.
 
 conda activate ATL14
 cd ~/git_repos/ATL1415
