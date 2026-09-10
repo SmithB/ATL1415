@@ -14,8 +14,9 @@
 # Catalog form sends to /api/build (maap_algorithms_jupyter_extension 1.0.2),
 # so this file also loads into that form's "Load Algorithm Configuration"
 # button.  The LEGACY form -- repository_url, docker_container_url, queue,
-# inputs.positional / inputs.file -- is in git at f3d5049, and still registers
-# from the ATL14 env's maap-py 4.2.0 if the fallback is ever needed.
+# inputs.positional / inputs.file -- is in git at f3d5049, with the legacy
+# register_algorithm.py; howto_MAAP_ogc.sh F2 says how to run the two under a
+# throwaway maap-py 4.2.0 env if the fallback is ever needed.
 #
 # ONE algorithm, not one per stage: an algorithm has exactly one run_command,
 # and the conda+SuiteSparse build is the expensive part, so six registrations

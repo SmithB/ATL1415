@@ -35,11 +35,21 @@
 #     -- read in site-packages/maap/maap.py.  CONSEQUENCE: register_algorithm,
 #     submit_AA_queue, collect_AA_queue and check_build_id all break under it.
 #
-# F2. THE LEGACY PATH STILL WORKS TODAY, from the ATL14 env.  environment.yml
-#     pins maap-py==4.2.0, and the env rebuilt this morning has the old calls.
-#     The server's legacy registry, /api/mas/algorithm, is alive and still
-#     lists ATL1415_tile_solve:on_s3 and :on_s3_v2.  -- GET, 2026-09-10.
-#     CONSEQUENCE: a fallback exists while this migration is in progress.
+# F2. THE LEGACY PATH STILL WORKS, SERVER-SIDE.  /api/mas/algorithm is alive
+#     and still lists ATL1415_tile_solve:on_s3 and :on_s3_v2.  -- GET,
+#     2026-09-10.  CLIENT-SIDE it now needs assembling: ATL14 moved to maap-py
+#     5.1.0 the same day (QE), and register_algorithm.py was rewritten for OGC
+#     (O3), so the fallback is the legacy script and config from git under a
+#     throwaway 4.2.0 env:
+#       python3 -m venv ~/maap42 && ~/maap42/bin/pip install maap-py==4.2.0
+#       git show f3d5049:register_algorithm.py > /tmp/register_legacy.py
+#       git show f3d5049:algorithm_config.yml  > /tmp/algorithm_config_legacy.yml
+#       ~/maap42/bin/python /tmp/register_legacy.py /tmp/algorithm_config_legacy.yml
+#     FROM /tmp ITS PUSH CHECKS DO NOT RUN: it takes REPO_DIR from its own
+#     path, finds no git checkout there, and says "NOTE: ... skipping the push
+#     checks."  So do them by hand first -- both must print nothing:
+#       git -C ~/git_repos/ATL1415 status --short
+#       git -C ~/git_repos/ATL1415 log --oneline origin/on_s3..on_s3
 #
 # F3. OUR ALGORITHM WAS NOT MIGRATED.  /api/ogc/processes lists 45 processes
 #     and none is ATL1415.  -- list_algorithms(), 2026-09-10.
@@ -134,11 +144,26 @@
 #     job's _stdout.txt still on the bucket at a prefix we can derive?  The
 #     collector and check_build_id both depend on reading that log.
 #
-# QE. [BEN] The worker pins maap-py==4.2.0 "so the worker and the notebook
-#     env agree" -- they no longer do.  RECOMMEND: leave the worker on 4.2.0.
-#     It needs only earthdata_s3_credentials (F11), which 4.2.0 has and has
-#     been verified to work, and 5.1.0a2 is an alpha.  Revisit once 5.x is
-#     released.
+# QE. SETTLED 2026-09-10 (Ben): maap-py 5.1.0 in environment.yml, for the
+#     worker AND the ATL14 env.  The first draft of this entry recommended
+#     staying on 4.2.0; checked against the code, its reasons did not hold:
+#     - FINDING: the worker's whole maap-py path -- MAAP(), _get_api_header,
+#       aws.earthdata_s3_credentials, requests_utils -- is CODE-IDENTICAL in
+#       4.2.0, 5.1.0a2 and 5.1.0 (ASTs compared, docstrings stripped).  The
+#       one difference: config_reader looks up three OGC endpoints, which the
+#       server already serves.  Requires-Dist is identical.
+#     - FINDING: 5.1.0 FINAL is on PyPI (`pip index versions --pre maap-py`),
+#       so "5.x is an alpha" was only true of the ADE's 5.1.0a2.
+#     - so the worker cannot tell the difference, and the ADE needs 5.x: the
+#       ported job scripts (O5, O7) use submit_job & co., and the howtos run
+#       them after `conda activate ATL14`.
+#     COST: ATL14 no longer has the legacy calls -- the fallback is in F2.
+#     THE RISK THAT REMAINS IS VERSION-INDEPENDENT: pointCollection asks MAAP
+#     for NSIDC credentials ONLY when $MAAP_PGT is set, and silently falls
+#     back to earthaccess (which has no credentials on a worker) when it is
+#     not.  Legacy workers set it; OGC workers are unverified.  run.sh
+#     --build-id now reports maap_pgt=set|unset and maap_py=<version>, so the
+#     O6 job answers it before any tile reads ATL11.
 #
 # QF. [BEN] The new name.  RECOMMEND atl1415_tile_solve: the old name
 #     lowercased, so every log, ledger and doc stays greppable for it.
@@ -250,8 +275,9 @@
 # O6. [UNTESTED]  One build_id job.   [ADE -> DPS]
 # ===========================================================================
 /srv/conda/envs/notebook/bin/python scripts/maap/check_build_id.py
-# Answers QB (fresh image?) and QD (how logs come back).  Nothing below
-# runs until this says MATCH.
+# Answers QB (fresh image?) and QD (how logs come back), and QE's remaining
+# risk: the BUILD_ID line must say maap_pgt=set, or no tile on this system
+# can read NSIDC.  Nothing below runs until this says MATCH and maap_pgt=set.
 
 
 # ===========================================================================

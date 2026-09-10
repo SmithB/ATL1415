@@ -62,6 +62,15 @@ dependencies:
     # docs/howto_MAAP_staging.sh S7 q2.  Verified from the ADE 2026-09-08: that
     # endpoint returns all three fields.
     #
-    # Pinned to the ADE's version, like python and numpy above, so the worker
-    # and the notebook env agree.
-    - maap-py==4.2.0
+    # 5.1.0 SINCE 2026-09-10, from 4.2.0.  On the WORKER the version does not
+    # matter: the only maap-py code a tile job runs -- MAAP(), its auth header,
+    # aws.earthdata_s3_credentials(), the HTTP helper -- is code-identical in
+    # 4.2.0, 5.1.0a2 and 5.1.0 (compared with docstrings stripped; the one
+    # difference is three extra endpoint lookups for the OGC API), with the same
+    # Requires-Dist.  It matters in the ADE, where this file also builds the
+    # ATL14 env: 5.x dropped submitJob/getJob/getJobResult for the OGC calls
+    # (submit_job, get_job_status, get_job_result), and the job scripts under
+    # scripts/maap/ are being ported to those (docs/howto_MAAP_ogc.sh O5, O7).
+    # What 5.x costs: ATL14 no longer carries the legacy calls, so the legacy
+    # fallback (howto_MAAP_ogc F2) needs a throwaway env with maap-py==4.2.0.
+    - maap-py==5.1.0

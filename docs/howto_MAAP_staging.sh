@@ -169,8 +169,10 @@ EOF
 # >>> SUPERSEDED 2026-09-10 -- see docs/howto_MAAP_ogc.sh. <<<
 # maap-py 5.1.0a2 (ADE notebook env) has no register_algorithm_from_yaml_file
 # and no submitJob; Ben chose to move to MAAP's OGC/CWL system.  What follows
-# is the LEGACY procedure: it still works from the ATL14 env (maap-py 4.2.0,
-# `conda run -n ATL14 python register_algorithm.py`) until OGC step O3 lands.
+# is the LEGACY procedure.  O3 has landed (register_algorithm.py now speaks
+# OGC) and ATL14 moved to maap-py 5.1.0, so running it now means the legacy
+# script from git under a throwaway 4.2.0 env -- howto_MAAP_ogc.sh F2.  The
+# statements below about which env has maap-py 4.2.0 were true when written.
 #
 # Use the script, which does the four REPL lines plus the push checks below and
 # prints every URL the server returns, the build log among them:

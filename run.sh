@@ -58,6 +58,10 @@ try:
     print("version=%s" % md.version("ATL1415"))
 except Exception as exc:
     print("version=unknown (%s)" % type(exc).__name__)
+try:
+    print("maap_py=%s" % md.version("maap-py"))
+except Exception as exc:
+    print("maap_py=absent (%s)" % type(exc).__name__)
 '
 git_q () { git -c safe.directory='*' -C "$repo_dir" "$@" 2>/dev/null; }
 config_version () {
@@ -116,9 +120,30 @@ print_build_id () {
     # `pip install .`, so the console scripts run a COPY of the repo, not the
     # repo itself.  A mismatch here is the stale-code failure in miniature.
     # Guarded -- a broken env must not stop the stamp above from being printed.
-    echo "--- installed ATL1415 (the copy the console scripts run) ---"
-    if ! conda run --no-capture-output -n "$env_name" python -c "$BUILD_ID_PY" 2>&1 | sed 's/^/  /'; then
-        echo "  (could not run python in conda env '${env_name}')"
+    echo "--- installed ATL1415 and maap-py (the copies the solve imports) ---"
+    py_out=$(conda run --no-capture-output -n "$env_name" python -c "$BUILD_ID_PY" 2>&1) \
+        || py_out="${py_out}
+(could not run python in conda env '${env_name}')"
+    printf '%s\n' "$py_out" | sed 's/^/  /'
+    maap_py=$(printf '%s\n' "$py_out" | sed -n 's/^maap_py=//p' | head -1)
+
+    # MAAP_PGT decides whether this machine can read NSIDC at all.  A worker
+    # has no Earthdata login of its own; pointCollection gets the DAAC's
+    # temporary S3 credentials from maap.aws.earthdata_s3_credentials(), and
+    # ONLY TRIES when MAAP_PGT is set -- it treats its absence as "not on
+    # MAAP", says nothing, and falls back to earthaccess, which has no
+    # credentials on a worker either.  So a missing MAAP_PGT surfaces much
+    # later as an ATL11 read failure that looks like a permissions or data
+    # error.  Legacy workers set it; whether OGC workers do is unverified
+    # (howto_MAAP_ogc QE), and this answers it without reading any ATL11.
+    # The VALUE is a credential and is never printed -- only whether it is set.
+    echo "--- MAAP credentials on this machine ---"
+    if [ -n "${MAAP_PGT:-}" ]; then maap_pgt=set; else maap_pgt=unset; fi
+    echo "  MAAP_PGT=${maap_pgt}   (value never printed)"
+    echo "  MAAP_API_HOST=${MAAP_API_HOST:-<unset: maap-py defaults to api.maap-project.org>}"
+    if [ "$maap_pgt" = unset ]; then
+        echo "  WARNING: MAAP_PGT IS NOT SET -- NSIDC credentials will not be brokered"
+        echo "           here, and every ATL11 read from NSIDC will fail."
     fi
 
     # ONE greppable line, so a collector need not parse the block above.  EVERY
@@ -129,7 +154,10 @@ print_build_id () {
     stamp_built=$(stamp_field build_completed)
     stamp_version=$(stamp_field algorithm_version)
     echo "=========================================================="
-    echo "BUILD_ID: commit=${stamp_commit:-unknown} built=${stamp_built:-INCOMPLETE_OR_ABSENT} algorithm_version=${stamp_version:-$(config_version)}"
+    # maap_py and maap_pgt are RUN-TIME facts about this machine, not the build
+    # -- appended after the stamp fields, which stay first so the line still
+    # reads as "which build is this".
+    echo "BUILD_ID: commit=${stamp_commit:-unknown} built=${stamp_built:-INCOMPLETE_OR_ABSENT} algorithm_version=${stamp_version:-$(config_version)} maap_py=${maap_py:-unknown} maap_pgt=${maap_pgt}"
     echo "=========================================================="
 }
 
