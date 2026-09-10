@@ -188,13 +188,14 @@ aws s3 cp $region_dir_44/input_args_AA_44km.txt $s3_run/
 #     RSS and N all rise relative to anything measured before the rebuild.  Do
 #     not mix pre- and post-rebuild rows in the same table.
 # It is also the cheapest confirmation that the fix works on a worker rather
-# than only against CMR: grep the job log for the Decimate_data line and
-# check that N_XO is now non-zero.
-#
-#     aws s3 cp <job output prefix>/_stdout.txt - | grep 'Decimate_data:'
-#
-# (collect_AA_queue.py does not surface N_XO -- its N_ATL11 column comes from
-# the decimate_data N= line, which counts both.)
+# than only against CMR: N_XO must now be non-zero.  collect_AA_queue.py
+# reports it as a column since 2026-09-10 (from the solve's
+# "Decimate_data: N_AT=..., N_XO=..." line), so no hand-run grep is needed.
+# THE BASELINE IS ZERO EVERYWHERE: the ported collector, run over all twelve
+# pre-fix transect jobs, reads N_XO=0 on every one of them -- and reproduces
+# AA_cost_results.csv exactly, field for field, while doing it.
+# Under the OGC runner the solve's lines are in the job's _stderr.txt, not
+# _stdout.txt (howto_MAAP_ogc QD); the collector reads both.
 #
 # ---------------------------------------------------------------------------
 # 3b-i. [READY]  VERIFY THE CROSSOVER READ FIRST, on two tiles, not sixteen.
@@ -212,7 +213,14 @@ aws s3 cp $region_dir_44/input_args_AA_44km.txt $s3_run/
 #     /srv/conda/envs/notebook/bin/python scripts/maap/check_build_id.py
 #
 scripts/maap/submit_AA_queue.py scripts/maap/AA_xo_check_xy.txt \
-    $s3_run/input_args_AA.txt maap-dps-worker-32gb AA_xo_check_jobs.csv
+    $s3_run/input_args_AA.txt $s3_run/input_args_AA_44km.txt \
+    maap-dps-worker-32gb AA_xo_check_jobs.csv
+#
+# FIXED 2026-09-10: this command and step 3b's passed FOUR arguments to a
+# five-positional script (xy, args_60km, args_44km, queue, ledger), which put
+# the queue name in the 44 km args slot and the ledger name in the queue
+# slot -- confirmed with --dry-run: queue=AA_xo_check_jobs.csv,
+# args=maap-dps-worker-32gb.  The script now refuses that arrangement.
 #
 # WHY THESE TWO (scripts/maap/AA_xo_check_xy.txt):
 #   220000 20000  the pole-hole EDGE tile, 88 S, where track convergence peaks
@@ -228,8 +236,10 @@ scripts/maap/submit_AA_queue.py scripts/maap/AA_xo_check_xy.txt \
 # ONLY -- two centers, two jobs, not four.
 #
 # WHAT SAYS IT WORKED:
-#     aws s3 cp <job output prefix>/_stdout.txt - | grep 'Decimate_data:'
-# N_XO > 0 on both.  For E220_N20 compare against N_AT=935506, N_XO=0.
+scripts/maap/collect_AA_queue.py AA_xo_check_jobs.csv
+# N_XO > 0 on both.  For E220_N20 compare against N_AT=935506, N_XO=0; for
+# E300_N20, N_AT=1256488, N_XO=0 -- both read back 2026-09-10 from the
+# pre-fix jobs by the collector itself.
 #
 # EXPECT IT TO COST MORE THAN THE PRE-FIX RUN.  44km_E220_N20 was the most
 # expensive tile in the whole transect at 132.5 min and 20.9 GiB on a 32 GiB
@@ -241,7 +251,8 @@ scripts/maap/submit_AA_queue.py scripts/maap/AA_xo_check_xy.txt \
 #
 # Run it (needs the args file from step 3):
 scripts/maap/submit_AA_queue.py scripts/maap/AA_queue_xy.txt \
-    $s3_run/input_args_AA.txt maap-dps-worker-32gb AA_queue_jobs.csv
+    $s3_run/input_args_AA.txt $s3_run/input_args_AA_44km.txt \
+    maap-dps-worker-32gb AA_queue_jobs.csv
 scripts/maap/collect_AA_queue.py AA_queue_jobs.csv
 #
 # The collector joins each job's status to the peak RSS and elapsed time the

@@ -403,7 +403,8 @@
 
 
 # ===========================================================================
-# O7. [NEEDS CODE: submit_AA_queue.py, collect_AA_queue.py]   [ADE]
+# O7. [OK, 2026-09-10 -- dry-runs and the collector REAL; submit_job not yet
+#     run by the submitter]  submit_AA_queue.py, collect_AA_queue.py   [ADE]
 # ===========================================================================
 # Same two scripts, new calls: submit_job with inputs as a dict and the
 # queue as an argument (F1, F9); the collector reads the log wherever O6
@@ -411,6 +412,30 @@
 # FROM O6: the solve's own lines (Decimate_data N_XO, the rusage lines)
 # will be in _stderr.txt, not _stdout.txt; reuse check_build_id's
 # read_logs() rather than a third copy of the log-reading code.
+# DONE:
+#   - scripts/maap/ogc_jobs.py: ONE copy of the process lookup, the log
+#     reader (_stdout + _stderr + build_id.txt), the s3 prefix normalizer,
+#     the job-id parser and the runner-error filter.  check_build_id.py now
+#     imports them; re-reading job db93c7f3 and --dry-run behave identically.
+#   - submit_AA_queue.py: submit_job(process_id, string inputs, queue,
+#     dedup=False, tag=identifier), process found by name+version, ledger
+#     format unchanged.  --dry-run, run for real: the full transect routes
+#     16 centers to 17 jobs (E420 is in the 360-440 km overlap, both halves),
+#     the O8 pair to two 44 km jobs.
+#   - collect_AA_queue.py: get_job_status / get_job_metrics (wall clock only;
+#     its machine fields are null) / get_job_result -> read_logs, and a new
+#     N_AT / N_XO pair of columns from the Decimate_data line.
+#   REAL-DATA CHECK: pointed at the twelve legacy transect jobs of 2026-09-09
+#   04:52 (found with list_jobs -- the OGC endpoints serve them), it
+#   reproduces scripts/maap/AA_cost_results.csv EXACTLY: n_atl11, n_fit, and
+#   each step's seconds and GiB, 12/12.  And it reads N_XO=0 on all twelve --
+#   the pre-fix baseline, for the whole transect, not just E220_N20.
+#   FOUND ON THE WAY, older than today: howto_MAAP_AA's two submit commands
+#   (3b, 3b-i) passed four arguments to a five-positional script, putting the
+#   queue name in the 44 km args slot and the ledger in the queue slot --
+#   dry-run showed queue=AA_xo_check_jobs.csv, args=maap-dps-worker-32gb.
+#   Both commands fixed; the script now refuses that arrangement (exit 2).
+#   NOT YET RUN FOR REAL: the submitter's own submit_job call.  O8 is that.
 
 
 # ===========================================================================
