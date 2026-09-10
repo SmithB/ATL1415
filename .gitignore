@@ -162,3 +162,7 @@ region_files/*
 masks/*
 # build stamp written by build-env.sh (per-image, never committed)
 .atl1415_build_id
+
+# run.sh --build-id writes output/build_id.txt in the current directory -- the
+# repo root, when run there as howto_MAAP_staging S5b shows.  A job-dir artifact.
+/output/
