@@ -136,7 +136,8 @@
 #     args_file as a `string` and have run.sh fetch an s3:// URI itself with
 #     `aws s3 cp`, so the answer does not matter.
 #
-# QB. [TEST, O6] Does a SECOND build of the same algorithm_version produce a
+# QB. [HALF-ANSWERED 2026-09-10: the FIRST build is verified (O6 run 1);
+#     the rebuild for the run.sh fix is the test]  Does a SECOND build of the same algorithm_version produce a
 #     fresh image?  That is the bug that started today (8aad07d); nothing
 #     says the OGC path is immune to it.  The build stamp answers it with one
 #     job, and s:commitHash (F10) answers it with none.
@@ -144,7 +145,17 @@
 # QC. [BEN / MAAP] Is the legacy /api/mas path being retired, and when?  It
 #     decides whether the ATL14 fallback (F2) is safe to keep.
 #
-# QD. [MOSTLY ANSWERED 2026-09-10; O6 confirms]  What do get_job_status /
+# QD. [ANSWERED FOR A FAILED JOB, O6 run 1; a successful one still to see]
+#     ON THIS SYSTEM A JOB RUNS INSIDE MAAP'S CWL RUNNER
+#     (container-maap-cwltool-executor:v1.1.0 -- which is also what the job
+#     record's container_specification names, NOT our image).  The runner's
+#     own log is _stdout.txt; OUR CONTAINER'S OUTPUT IS IN _stderr.txt.  A
+#     failed job's files are under
+#       s3://maap-ops-workspace/dataset/triaged_job/v1.4.0/
+#         triaged_job-<job_id>_task-<uuid>/
+#     -- which is what get_job_result returned for it.  Consequence for O7:
+#     the collector's Decimate_data / rusage lines will be in _stderr.txt.
+#     (Superseded draft of this entry:)  What do get_job_status /
 #     get_job_result return, and is _stdout.txt still on the bucket?
 #     FINDING: the OGC job endpoints serve the SAME backend as the legacy
 #     jobs -- list_jobs() returns the legacy AA transect jobs, and for one of
@@ -157,7 +168,11 @@
 #     What is NOT yet seen: a job submitted THROUGH submit_job to an OGC
 #     process.  The first build_id job (O6) is that test.
 #
-# QE. SETTLED 2026-09-10 (Ben): maap-py 5.1.0 in environment.yml, for the
+# QE. CLOSED 2026-09-10 by O6 run 1: an OGC worker HAS MAAP_PGT --
+#     the runner starts cwltool with --preserve-environment MAAP_PGT and
+#     --preserve-environment MAAP_API_HOST, and the job printed
+#     maap_pgt=set, maap_py=5.1.0.
+#     SETTLED 2026-09-10 (Ben): maap-py 5.1.0 in environment.yml, for the
 #     worker AND the ATL14 env.  The first draft of this entry recommended
 #     staying on 4.2.0; checked against the code, its reasons did not hold:
 #     - FINDING: the worker's whole maap-py path -- MAAP(), _get_api_header,
@@ -344,12 +359,47 @@
 
 
 # ===========================================================================
-# O6. [UNTESTED]  One build_id job.   [ADE -> DPS]
+# O6. [RUN 2026-09-10: IMAGE VERIFIED -- but the JOB FAILED on a run.sh bug,
+#     now fixed; RERUN after the rebuild]  One build_id job.   [ADE -> DPS]
 # ===========================================================================
 /srv/conda/envs/notebook/bin/python scripts/maap/check_build_id.py
 # Answers QB (fresh image?) and QD (how logs come back), and QE's remaining
 # risk: the BUILD_ID line must say maap_pgt=set, or no tile on this system
 # can read NSIDC.  Nothing below runs until this says MATCH and maap_pgt=set.
+#
+# RUN 1, 2026-09-10 -- job db93c7f3-bc2b-45ad-8343-d5d3e60e6139 on -32gb:
+# queued 18:21:44, running 18:23:45, FAILED 18:25:31.
+#   WHAT IT ESTABLISHED, read from the job's own log:
+#   - IMAGE == BUILT: the stamp inside the image says commit=d401699, clean
+#     tree, built 17:59:17-18:03:14 -- the same commit as the CWL's
+#     s:commitHash.  Live git in the image agrees.  The worker PULLED it
+#     fresh ("Status: Downloaded newer image"), digest
+#     sha256:9a91a554d305b88351c756e78b4b7f638a9517363309d0da542cac735d844962.
+#   - maap_py=5.1.0, maap_pgt=set: QE's risk is closed (see QE).
+#   - run.sh got --x0 0 --y0 0 --step build_id --args_file ..., exactly O2's
+#     convention -- F8 and O2 confirmed on a worker.
+#   WHY IT FAILED -- A BUG IN run.sh, MINE, FIXED: the build_id path exited
+#   before `mkdir -p output`, and the CWL collects `glob: ./output*`, so
+#   cwltool ended a job with a complete, correct report as permanentFail:
+#   "Did not find output file with glob pattern: ['./output*']".  The
+#   build_id path now makes output/ and tees its report into
+#   output/build_id.txt, which also makes the answer an uploaded product.
+#   AND A BUG IN check_build_id.py, MINE, FIXED: it read only _stdout.txt,
+#   which on this system is the RUNNER's nine lines; our report is in
+#   _stderr.txt (QD).  Finding no BUILD_ID line it announced "NO STAMP" --
+#   calling a correct image stale.  It now reads both logs and build_id.txt,
+#   never gives an image verdict without a report, and on a job that failed
+#   after the report prints the verdict AND the runner's error.  Re-reading
+#   this job with the fixed script (--job, no new submit): "VERDICT: MATCH"
+#   then "BUT THE JOB ENDED FAILED", quoting the glob error; exit 1.
+#   ALSO SEEN: for one poll after submit, get_job_status answered 404 --
+#   the job was not yet visible.  Harmless; the poller now says so.
+#   cwltool also warned that it SKIPS the container --memory and --cpus
+#   limits despite ramMin/coresMin: on this system they are not enforced on
+#   the container, which can use the whole worker.
+# RUN 2 is due after the fixed run.sh is pushed and re-registered.  It is
+# also QB's test: a SECOND build of on_s3 -- a new digest and the new
+# commit in the stamp mean the tag was rebuilt, not reused.
 
 
 # ===========================================================================
@@ -358,6 +408,9 @@
 # Same two scripts, new calls: submit_job with inputs as a dict and the
 # queue as an argument (F1, F9); the collector reads the log wherever O6
 # found it (QD).  The half-routing and the ledger format do not change.
+# FROM O6: the solve's own lines (Decimate_data N_XO, the rusage lines)
+# will be in _stderr.txt, not _stdout.txt; reuse check_build_id's
+# read_logs() rather than a third copy of the log-reading code.
 
 
 # ===========================================================================

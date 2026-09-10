@@ -161,12 +161,23 @@ print_build_id () {
     echo "=========================================================="
 }
 
+# OUTPUT/ IS NOT OPTIONAL, EVEN HERE.  The generated CWL collects the job's
+# products with `glob: ./output*`, and a job with nothing matching is a
+# permanentFail -- which is exactly how the first OGC build_id job ended
+# (db93c7f3..., 2026-09-10): it printed a complete, correct report and was
+# then failed with "Did not find output file with glob pattern:
+# ['./output*']".  So the report also goes to output/build_id.txt: that
+# satisfies the glob, and makes the answer a product uploaded with the job,
+# readable from its output prefix as well as from the log.
+build_id_and_exit () {
+    mkdir -p output
+    print_build_id | tee output/build_id.txt
+    exit 0
+}
+
 for arg in "$@"; do
     case "$arg" in
-        --build-id|--build_id|build_id|build-id)
-            print_build_id
-            exit 0
-            ;;
+        --build-id|--build_id|build_id|build-id) build_id_and_exit ;;
     esac
 done
 
@@ -239,7 +250,7 @@ case "$step" in
     # The pre-scan above catches build_id as a bare token; this catches every
     # other spelling that parses to it, e.g. --step=build_id, which the first
     # version rejected with "must be ... 'build_id', got 'build_id'".
-    build_id|build-id) print_build_id; exit 0 ;;
+    build_id|build-id) build_id_and_exit ;;
     *) echo "ERROR: step must be 'prelim', 'matched' or 'build_id', got '${step}'" >&2; exit 2 ;;
 esac
 

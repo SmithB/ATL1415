@@ -38,16 +38,21 @@ VERDICTS (exit status):
   1  NO STAMP  the image predates the build stamp, so it is stale by
                definition: every build since 2026-09-10 writes one.
   1  NO NSIDC  maap_pgt=unset, whatever the commits say.
+  1  the report was printed but the JOB then failed: the image verdict is
+     shown, and the runner's errors after it -- not green, because every
+     tile would fail the same way.
   2  the check itself could not run: not deployed, submit refused, timed
-     out, or the job log could not be read (the full status and result are
-     printed, for howto_MAAP_ogc QD).
+     out, no log readable, or the job failed BEFORE run.sh printed a
+     report -- which says nothing about the image, and is never reported
+     as a stale one.
 
 Usage:
   check_build_id.py [args_file_url] [queue] [--expect <sha>] [--timeout <s>]
-                    [--dry-run]
+                    [--dry-run] [--job <job_id>]
 
 --dry-run finds the process, reads its CWL and GitHub, prints what it would
-submit, and stops -- no job.  --expect replaces the cwl commit as the one the
+submit, and stops -- no job.  --job re-reads a job that already ran (after a
+timeout here, or one submitted another way) instead of submitting.  --expect replaces the cwl commit as the one the
 image must equal.
 
 The args_file is a REQUIRED input of the process, so one must be named even
@@ -170,21 +175,70 @@ def s3_prefixes(node):
         yield normalize_s3(node)
 
 
-def read_stdout(result):
+def read_logs(result):
     """
-    The job's _stdout.txt, from the output prefix in get_job_result().
+    Everything the job left that could hold run.sh's report, joined.
 
-    get_job_result() returns the prefix three ways (website, endpoint-style
-    s3, console) under {"<name>": {"links": [{"href": ...}, ...]}}, and
-    _stdout.txt sits at that prefix -- checked on a legacy job through these
-    same OGC endpoints, 2026-09-10.  Returns (text, prefix) or ('', None).
+    UNDER OGC THE REPORT IS IN _stderr.txt, NOT _stdout.txt.  The job runs in
+    MAAP's CWL runner (container-maap-cwltool-executor), which launches our
+    image with cwltool; the runner's own chatter is _stdout.txt, and our
+    container's output comes out on cwltool's stderr.  The first OGC build_id
+    job (db93c7f3..., 2026-09-10) printed a complete, correct report into
+    _stderr.txt while _stdout.txt held nine lines of runner log -- and the
+    first version of this script, reading only _stdout.txt, called a correct
+    image stale.  So read both, plus build_id.txt, which run.sh also writes
+    as a product since that job (the name it lands under is not yet seen, so
+    both likely places are tried).
+
+    get_job_result() gives the prefix three ways (website, endpoint-style s3,
+    console); a failed job's prefix is under dataset/triaged_job/.
+    Returns (text, prefix, [files read]); ('', None, []) when nothing reads.
     """
     for prefix in dict.fromkeys(s3_prefixes(result)):
-        p = subprocess.run(['aws', 's3', 'cp', f'{prefix}/_stdout.txt', '-'],
-                           capture_output=True, text=True, timeout=120)
-        if p.returncode == 0:
-            return p.stdout, prefix
-    return '', None
+        parts, names = [], []
+        for name in ('_stdout.txt', '_stderr.txt', 'build_id.txt',
+                     'output/build_id.txt'):
+            p = subprocess.run(['aws', 's3', 'cp', f'{prefix}/{name}', '-'],
+                               capture_output=True, text=True, timeout=120)
+            if p.returncode == 0 and p.stdout:
+                parts.append(p.stdout)
+                names.append(name)
+        if names:
+            return '\n'.join(parts), prefix, names
+    return '', None, []
+
+
+def image_digest(text):
+    """
+    The digest of OUR image, from the docker pull the runner logs.
+
+    The job record's container_specification is the RUNNER's container
+    (maap-cwltool-executor), not ours -- so this, not container_of(), is the
+    digest that says whether a rebuild produced a new image (QB).
+    """
+    m = re.search(r'^Digest: (sha256:[0-9a-f]+)', text, re.M)
+    return m.group(1) if m else None
+
+
+# Error lines the runner prints on EVERY job, failed or not, which read as
+# alarming and mean nothing: docker inspects the image before pulling it
+# ("No such object", followed by the pull), and cleans up a container that
+# has already exited ("cannot kill container ... No such container").
+BENIGN = (r'^Error: No such object: ', r'cannot kill container: .*No such container')
+
+
+def runner_errors(text, keep=8):
+    """The runner's error lines, for a job that failed, minus BENIGN ones."""
+    lines, hits = text.splitlines(), []
+    for i, line in enumerate(lines):
+        if any(re.search(b, line) for b in BENIGN):
+            continue
+        if re.search(r'ERROR|permanentFail|Error|Traceback', line):
+            hits.append(line)
+            # cwltool puts the REASON on the line after "ERROR ... Job error:"
+            if 'ERROR' in line and i + 1 < len(lines) and lines[i + 1] not in hits:
+                hits.append(lines[i + 1])
+    return list(dict.fromkeys(hits))[-keep:]
 
 
 def job_id_from(response):
@@ -203,11 +257,11 @@ def job_id_from(response):
 
 def container_of(maap, tag):
     """
-    Best effort: the container the job actually ran, from its job record.
+    Best effort: the container named in the job's record.
 
-    The record carries context.container_specification (url, digest) --
-    seen on a legacy job, 2026-09-10.  A digest that stays the same across a
-    rebuild would mean the image was reused, whatever the tag says.
+    On a LEGACY job that was the algorithm image.  On an OGC job it is the
+    RUNNER -- container-maap-cwltool-executor -- which launches our image
+    inside it; image_digest() reads ours from the log.  Reported, labelled.
     """
     try:
         jobs = maap.list_jobs(tag=tag, page_size=5).json().get('jobs', [])
@@ -271,17 +325,19 @@ def verdict(fields, want, origin, image_label='image'):
 
 def main():
     argv = list(sys.argv[1:])
-    expect, timeout, dry_run = None, 1800, False
+    expect, timeout, dry_run, job_id = None, 1800, False, None
     if '--dry-run' in argv:
         argv.remove('--dry-run')
         dry_run = True
-    for flag in ('--expect', '--timeout'):
+    for flag in ('--expect', '--timeout', '--job'):
         if flag in argv:
             i = argv.index(flag)
             value = argv[i + 1]
             del argv[i:i + 2]
             if flag == '--expect':
                 expect = value
+            elif flag == '--job':
+                job_id = value
             else:
                 timeout = int(value)
 
@@ -315,17 +371,21 @@ def main():
               % (pid, json.dumps(inputs), queue, tag))
         return
 
-    # dedup=False, EXPLICITLY: this job's inputs are identical every time, and
-    # a service that deduplicated it would hand back the PREVIOUS image's
-    # answer after a rebuild -- the one thing this check must never do.
-    response = maap.submit_job(pid, inputs, queue, dedup=False, tag=tag)
-    print(f'submit_job -> HTTP {response.status_code}')
-    job_id = job_id_from(response)
-    if not 200 <= response.status_code < 300 or not job_id:
-        print('submit refused or returned no job id; the response was:')
-        print(response.text[:2000])
-        sys.exit(2)
-    print(f'job id           : {job_id}   tag: {tag}\n')
+    if job_id:
+        print(f'job id           : {job_id}   (--job: re-reading, not submitting)\n')
+        tag = None
+    else:
+        # dedup=False, EXPLICITLY: this job's inputs are identical every time,
+        # and a service that deduplicated it would hand back the PREVIOUS
+        # image's answer after a rebuild -- the one thing this must never do.
+        response = maap.submit_job(pid, inputs, queue, dedup=False, tag=tag)
+        print(f'submit_job -> HTTP {response.status_code}')
+        job_id = job_id_from(response)
+        if not 200 <= response.status_code < 300 or not job_id:
+            print('submit refused or returned no job id; the response was:')
+            print(response.text[:2000])
+            sys.exit(2)
+        print(f'job id           : {job_id}   tag: {tag}\n')
 
     deadline, status, record = time.time() + timeout, None, {}
     while time.time() < deadline:
@@ -335,7 +395,11 @@ def main():
         except ValueError:
             record = {'raw': r.text[:500]}
         status = str(record.get('status', f'HTTP {r.status_code}'))
-        print(f'  [{time.strftime("%H:%M:%S")}] {status}')
+        # A job is not visible to get_job_status for a few seconds after
+        # submit_job accepts it: the first poll of the first OGC job got a
+        # 404 problem document, and the next one 'accepted'.
+        shown = ('not visible yet (404)' if status == '404' else status)
+        print(f'  [{time.strftime("%H:%M:%S")}] {shown}')
         if status.lower() in DONE:
             break
         time.sleep(POLL_S)
@@ -348,34 +412,52 @@ def main():
         result = r.json()
     except ValueError:
         result = r.text
-    out, prefix = read_stdout(result)
+    out, prefix, names = read_logs(result)
     if not out:
         # This is howto_MAAP_ogc QD failing: print everything, so the answer
         # to "where do OGC job logs go" can be read off and recorded.
-        print(f'\njob finished {status}, but no _stdout.txt could be read.')
+        print(f'\njob finished {status}, but no log could be read.')
         print('get_job_status:'); print(json.dumps(record, indent=2))
         print(f'get_job_result (HTTP {r.status_code}):')
         print(json.dumps(result, indent=2) if not isinstance(result, str) else result)
         sys.exit(2)
-    print(f'log              : {prefix}/_stdout.txt')
-
-    spec = container_of(maap, tag)
+    print(f"logs             : {prefix}/ {{{', '.join(names)}}}")
+    digest = image_digest(out)
+    print(f'image digest     : {digest or "<no docker pull in the log>"}')
+    spec = container_of(maap, tag) if tag else None
     if spec:
-        print(f"container        : {spec.get('url') or spec.get('id')}\n"
-              f"digest           : {spec.get('digest')}")
+        print(f"runner container : {spec.get('url') or spec.get('id')}")
+
+    ok = status.lower() == 'successful'
+    fields = parse_build_id_line(out)
+    if fields is None:
+        if ok:
+            print('\nVERDICT: NO STAMP -- the job succeeded but printed no'
+                  ' BUILD_ID line: this image predates run.sh --build-id.')
+            sys.exit(1)
+        # A failed job with no report says nothing about the image.  Never
+        # turn "the log is missing" into "the image is stale".
+        print(f'\nJOB {status.upper()} BEFORE run.sh PRINTED A BUILD ID -- no verdict'
+              ' on the image.  The runner said:')
+        print('  ' + '\n  '.join(runner_errors(out) or ['<no error lines found>']))
+        sys.exit(2)
 
     # The whole block: the per-field detail is what makes a mismatch
     # diagnosable rather than merely visible.
     start = out.find('  ATL1415 build id')
-    print('\n' + (out[start:] if start >= 0 else out).rstrip() + '\n')
+    end = out.find('\n', out.find('BUILD_ID:'))
+    print('\n' + out[start if start >= 0 else 0:end if end > 0 else None].rstrip())
+    print('=' * 58 + '\n')
 
-    fields = parse_build_id_line(out)
-    if fields is None:
-        print('VERDICT: NO STAMP -- no BUILD_ID line at all: this image predates'
-              ' run.sh --build-id, so it did not pick up current code.')
-        sys.exit(1)
     code, lines = verdict(fields, want, origin)
     print('\n'.join(lines))
+    if not ok:
+        # The report is valid -- run.sh printed it -- but a job that fails
+        # after a correct report still fails every tile the same way.  Not
+        # green.
+        print(f'\nBUT THE JOB ENDED {status.upper()} after the report.  The runner said:')
+        print('  ' + '\n  '.join(runner_errors(out) or ['<no error lines found>']))
+        code = max(code, 1)
     sys.exit(code)
 
 
