@@ -166,6 +166,12 @@ EOF
 # ===========================================================================
 # S5. [DONE]  Register the DPS algorithm -- and RE-register after every code change.
 # ===========================================================================
+# >>> SUPERSEDED 2026-09-10 -- see docs/howto_MAAP_ogc.sh. <<<
+# maap-py 5.1.0a2 (ADE notebook env) has no register_algorithm_from_yaml_file
+# and no submitJob; Ben chose to move to MAAP's OGC/CWL system.  What follows
+# is the LEGACY procedure: it still works from the ATL14 env (maap-py 4.2.0,
+# `conda run -n ATL14 python register_algorithm.py`) until OGC step O3 lands.
+#
 # Use the script, which does the four REPL lines plus the push checks below and
 # prints every URL the server returns, the build log among them:
 #
@@ -255,6 +261,9 @@ EOF
 # ===========================================================================
 # S5b. [READY, UNTESTED]  Verify the image is the commit you registered.
 # ===========================================================================
+# >>> check_build_id.py uses submitJob, gone in maap-py 5.x: OGC step O5 ports
+# it.  Until then run it from the ATL14 env against the legacy registration. <<<
+#
 # ONE JOB, a few worker-seconds, and it replaces the guesswork above.  Run it
 # after EVERY register_algorithm.py and before spending worker hours on a run
 # whose results you would otherwise have to throw away.

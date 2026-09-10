@@ -199,6 +199,9 @@ aws s3 cp $region_dir_44/input_args_AA_44km.txt $s3_run/
 # ---------------------------------------------------------------------------
 # 3b-i. [READY]  VERIFY THE CROSSOVER READ FIRST, on two tiles, not sixteen.
 # ---------------------------------------------------------------------------
+# >>> BLOCKED 2026-09-10 on docs/howto_MAAP_ogc.sh: submit_AA_queue.py uses
+# submitJob, gone in maap-py 5.x.  This step is OGC step O8. <<<
+#
 # DECIDED 2026-09-10 (Ben): before re-measuring cost, just establish that
 # ATL11XO is read on a worker at all.  Two tiles near the pole hole answer it,
 # and the full transect can wait until the answer is yes.

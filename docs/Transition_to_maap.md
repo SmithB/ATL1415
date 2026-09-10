@@ -1294,6 +1294,16 @@ Listed in the order they block the sequence above.
     NOTE, a property worth relying on: every image built from this commit on carries a
     stamp, so an image with NO stamp is by itself proof of a stale container.
 
+[ ] MOVE TO MAAP'S OGC/CWL ALGORITHM SYSTEM.  PLANNED 2026-09-10, TENTATIVE, NO CODE YET.
+    THE PLAN IS docs/howto_MAAP_ogc.sh (steps O1-O10, findings F1-F11, questions QA-QF);
+    it is not repeated here.  In one paragraph: the ADE's maap-py became 5.1.0a2, which
+    dropped YAML registration and every legacy job call.  Ben chose to migrate rather than
+    stay on the ATL14 env's 4.2.0.  The MAAP-built OGC path takes our model unchanged --
+    repo + build-env.sh + maap_base + run.sh, POSTed as JSON to /api/build -- so the build
+    stamp and build-env.sh carry over.  What changes: the algorithm name (capitals are
+    invalid), the config schema, run.sh's calling convention (--x0 V ... rather than
+    positionals), and every job call.
+
 [ X ] SEPARATELY, AND NOT A MAAP ITEM: the xover_cycles=[1,2] question (Q26) is SETTLED,
     2026-09-09, and needed no code change.  Cycles 1 and 2 are the only cycles whose ATL11
     content is crossover-only -- along-track begins at cycle 3 -- so reading exactly those
