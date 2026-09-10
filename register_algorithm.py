@@ -26,16 +26,20 @@ worker, and no job log will ever say so -- a stale image surfaces as whatever
 the missing fix was meant to prevent.  On 2026-09-04 that cost a cycle.  This
 script refuses to register in that state; --force overrides.
 
-WHAT IT PRINTS: the build id, and EVERY URL in every response, labelled with
-its key path.  Ben learned on 2026-09-10 that the one URL the legacy script
-printed (job_web_url) was only the build log; the OGC service hands back a
-build pipeline, a deployment job and a deployment pipeline as separate links.
-It walks the JSON rather than naming keys, because nothing documents them.
+WHAT IT PRINTS: the build id, then the FIRST URL in the response on a line of
+its own -- that is the build pipeline, pipelineLink.href, and it is the one to
+open (Ben, 2026-09-10) -- then any others, each labelled with its key path.
+It walks the JSON rather than naming keys, because nothing documents them;
+the build record's own `self` link is relative (/build/<id>) and is not a URL
+anyone can open, so it is never printed.
 
 Run it from the ADE:
 
     ./register_algorithm.py [--dry-run] [--force] [algorithm_config.yml]
-    ./register_algorithm.py --status <build_id> [--wait]
+
+and open the FIRST URL it prints -- the build pipeline (Ben, 2026-09-10).
+Nothing else is needed: the build and its deployment are followed from that
+page, so there is no status-polling step.
 """
 
 import argparse
@@ -44,7 +48,6 @@ import os
 import re
 import subprocess
 import sys
-import time
 
 # The default interpreter in an ADE terminal.  Since 2026-09-10 either env
 # works (see the docstring); this is only what the error message suggests.
@@ -180,12 +183,6 @@ INPUT_TYPES = ('string', 'int', 'File', 'Directory', 'long', 'float',
                'boolean', 'double')
 NAME_RE = re.compile(r'^[a-z0-9_-]+$')
 VERSION_RE = re.compile(r'^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}$')
-
-# Terminal states, as the plugin's own polling loop treats them.
-BUILD_DONE = {'successful', 'failed', 'canceled', 'cancelled', 'dismissed'}
-DEPLOY_DONE = {'deployed', 'successful', 'failed', 'error', 'canceled',
-               'cancelled', 'dismissed', 'not found'}
-
 
 def validate_config(config):
     """
@@ -326,8 +323,15 @@ def urls_in(node, path=()):
 
 
 def print_urls(payload, heading):
-    """Every URL in a response, labelled by key path.  Silent when none."""
-    found = list(urls_in(payload)) if isinstance(payload, (dict, list)) else []
+    """
+    URLs labelled by key path.  Silent when none.
+
+    Takes a parsed response, or a list of (label, url) pairs from urls_in().
+    """
+    if isinstance(payload, list) and all(isinstance(x, tuple) for x in payload):
+        found = payload
+    else:
+        found = list(urls_in(payload)) if isinstance(payload, (dict, list)) else []
     if not found:
         return
     width = max(len(label) for label, _ in found)
@@ -343,100 +347,10 @@ def dump(payload, stream=sys.stdout):
         print(payload, file=stream)
 
 
-def deployment_id(build):
-    """
-    The deployment job id, from the build's deploymentLink.
-
-    The link arrives as {'href': '.../deploymentJobs/<id>', ...}; the plugin
-    pulls the id out with this same pattern.
-    """
-    link = build.get('deploymentLink') if isinstance(build, dict) else None
-    href = link.get('href') if isinstance(link, dict) else link
-    m = re.search(r'deploymentJobs/(\w+)', href or '')
-    return m.group(1) if m else None
-
-
-def report_processes(maap, host, name, version):
-    """
-    The processID(s) a deployed build became -- what submit_job() needs.
-
-    Matched on the process's string id and version; submit_job() POSTs to
-    /api/ogc/processes/<process_id>/execution, and whether it wants the
-    numeric processID or the string id is not yet known (howto_MAAP_ogc F9),
-    so both are printed.
-    """
-    code, payload = api(maap, host, 'GET', 'ogc/processes')
-    procs = payload.get('processes', []) if isinstance(payload, dict) else []
-    mine = [p for p in procs if p.get('id') == name
-            or str(p.get('title', '')).lower() == name]
-    if not mine:
-        print(f'  no deployed process named {name!r} yet (HTTP {code}).')
-        return
-    for p in mine:
-        mark = '   <- this version' if str(p.get('version')) == str(version) else ''
-        print(f"  processID={p.get('processID')}  id={p.get('id')}"
-              f"  version={p.get('version')}{mark}")
-
-
-def show_status(maap, host, build_id, config, wait=False, poll_s=30):
-    """
-    Follow one build through to its deployment, printing every link.
-
-    Returns 0 when the build and its deployment both succeeded, 2 when either
-    ended any other way, and 3 when not finished (without --wait).
-    """
-    started = time.time()
-    while True:
-        code, build = api(maap, host, 'GET', f'build/{build_id}')
-        print(f'GET build/{build_id} -> HTTP {code}')
-        if not isinstance(build, dict) or not 200 <= code < 300:
-            dump(build, sys.stderr)
-            return 2
-        b_status = str(build.get('status', '?'))
-        print(f"  build status:      {b_status}")
-        if build.get('deploymentError'):
-            print(f"  deploymentError:   {build['deploymentError']}")
-        print_urls(build, '  URLs in the build record')
-
-        d_status, dep_id = None, deployment_id(build)
-        if dep_id:
-            dcode, dep = api(maap, host, 'GET', f'ogc/deploymentJobs/{dep_id}')
-            print(f'GET ogc/deploymentJobs/{dep_id} -> HTTP {dcode}')
-            if isinstance(dep, dict):
-                d_status = str(dep.get('status', '?'))
-                print(f'  deployment status: {d_status}')
-                if dep.get('error'):
-                    print(f"  deployment error:  {dep['error']}")
-                print_urls(dep, '  URLs in the deployment record')
-            else:
-                dump(dep, sys.stderr)
-
-        build_over = b_status.lower() in BUILD_DONE
-        deploy_over = d_status is not None and d_status.lower() in DEPLOY_DONE
-        if build_over and (deploy_over or b_status.lower() != 'successful'):
-            break
-        if not wait:
-            print('\n(not finished -- rerun, or add --wait to poll)')
-            return 3
-        elapsed = int(time.time() - started)
-        print(f'\n... {elapsed} s, polling again in {poll_s} s\n')
-        time.sleep(poll_s)
-
-    ok = (b_status.lower() == 'successful'
-          and d_status is not None and d_status.lower() in ('deployed', 'successful'))
-    print()
-    print(f"Deployed processes for {config.get('algorithm_name')}:")
-    report_processes(maap, host, config.get('algorithm_name'),
-                     config.get('algorithm_version'))
-    print('\nRESULT:', 'DEPLOYED' if ok else f'NOT DEPLOYED (build {b_status},'
-          f' deployment {d_status})')
-    return 0 if ok else 2
-
-
 def main():
     parser = argparse.ArgumentParser(
         description='Register the ATL1415 DPS algorithm with the MAAP OGC build'
-                    ' service, and follow it into deployment.')
+                    ' service, and print the build pipeline to open.')
     parser.add_argument('config', nargs='?',
                         default=os.path.join(REPO_DIR, 'algorithm_config.yml'),
                         help='algorithm config yaml (default: the one beside this script)')
@@ -450,10 +364,6 @@ def main():
                         help='register even if the build would not contain the local work')
     parser.add_argument('--no-fetch', action='store_true',
                         help='do not fetch origin before comparing (offline)')
-    parser.add_argument('--status', metavar='BUILD_ID',
-                        help='report a build and its deployment instead of registering')
-    parser.add_argument('--wait', action='store_true',
-                        help='with --status: poll until the build and deployment finish')
     args = parser.parse_args()
 
     MAAP, algorithm_utils = import_maap()
@@ -466,10 +376,6 @@ def main():
     config = algorithm_utils.read_yaml_file(args.config)
     name = config.get('algorithm_name', '<unnamed>')
     version = config.get('algorithm_version')
-
-    if args.status:
-        sys.exit(show_status(MAAP(maap_host=args.host), args.host, args.status,
-                             config, wait=args.wait))
 
     print(f'config:     {args.config}')
     print(f'algorithm:  {name}:{version}')
@@ -528,12 +434,21 @@ def main():
         dump(payload, sys.stderr)
         sys.exit(2)
 
-    build_id = payload.get('build_id')
-    print(f'build_id:   {build_id}')
-    print_urls(payload, 'URLs in the registration response')
+    print(f"build_id:   {payload.get('build_id')}")
+    found = list(urls_in(payload))
+    if not found:
+        # Accepted, but nothing to open -- say so rather than exit quietly.
+        print('No URL in the response; the full body was:', file=sys.stderr)
+        dump(payload, sys.stderr)
+        sys.exit(2)
+    label, link = found[0]
     print()
-    print('Follow the build and its deployment -- every link, as each appears:')
-    print(f'    {os.path.relpath(os.path.realpath(__file__))} --status {build_id} --wait')
+    print('Open this in a browser -- the build pipeline:')
+    print(f'    {link}')
+    print(f'    ({label})')
+    if len(found) > 1:
+        print()
+        print_urls(found[1:], 'Also in the response')
 
 
 if __name__ == '__main__':

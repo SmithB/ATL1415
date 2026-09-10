@@ -226,44 +226,65 @@
 
 
 # ===========================================================================
-# O3. [OK AGAINST MOCKS, 2026-09-10; NEVER POSTED]  POST api/build.   [ADE]
+# O3. [OK, 2026-09-10 -- USED FOR THE REAL REGISTRATION IN O4]  POST api/build.
 # ===========================================================================
 # Keep what the script is for -- REFUSE to register work that is not on
 # GitHub -- and swap the transport:
-#   - read algorithm_config.yml, send it as JSON to POST /api/build using
+#   - read algorithm_config.yml, validate it with the rules the Algorithm
+#     Catalog form enforces (F7), send it as JSON to POST /api/build using
 #     maap-py's _get_api_header() (F6); print the build_id.
-#   - print EVERY URL in each response, as f3d5049 already does.
-#   - --status <build_id>: GET /api/build/<id>, follow deploymentLink to
-#     /api/ogc/deploymentJobs/<id>, and print status plus all three links
-#     (pipeline, deployment, deployment pipeline) and any deploymentError.
-#   - once deployed, print the processID (F9) that submitters need.
+#   - print the FIRST URL in the response on a line of its own, as the one to
+#     open -- the build pipeline -- then any others, labelled by key path.
 # Works under maap-py 4.2.0 AND 5.x: it uses only the auth header, not
-# either version's algorithm methods.
-# DONE.  --dry-run now also prints the exact JSON it would POST; identical
-# under both maap-py versions.  Tested against mocked responses: accepted
-# (202), rejected (400), non-JSON (502), and --status --wait through build
-# running -> successful -> deployment running -> deployed -> processID found,
-# plus a failed build and an unfinished one.  Exit codes: 0 deployed or
-# accepted, 1 invalid config or unpushed work, 2 rejected or failed, 3 not
-# finished.  ONE REAL CALL, read-only: --status on a nonexistent id gets HTTP
-# 404 {"title": "No build with that build ID found", ...} -- so the path is
-# right, and the service speaks RFC 7807 problem documents.
+# either version's algorithm methods.  --dry-run prints the exact JSON.
+# Exit codes: 0 accepted, 1 invalid config or unpushed work, 2 rejected, or
+# accepted with no URL to open.
+#
+# REVISED 2026-09-10, after the first real registration: the draft also had
+# `--status <build_id> [--wait]`, which followed the build into its
+# deployment job and printed every link at each stage.  REMOVED, per Ben:
+# "The first url returned by release 5 of maap_py is the correct one.
+# There's no need for the --status --wait step."  The pipeline page is where
+# the build and its deployment are followed.  What --status also did --
+# look up the processID of the deployed process -- moves to O5, the first
+# code that needs it.
 
 
 # ===========================================================================
-# O4. [BEN] [UNTESTED]  Register, and watch the build.   [ADE]
+# O4. [RUN 2026-09-10 by Ben; build RUNNING when last read]  Register.   [ADE]
 # ===========================================================================
 /srv/conda/envs/notebook/bin/python register_algorithm.py
-/srv/conda/envs/notebook/bin/python register_algorithm.py --status $build_id --wait   # id printed above
-# Ben runs this one, to open the links in a browser.  RECORD, here: the
-# build_id, the three link keys as they really come back, the processID,
-# how long the build took, and the s:commitHash in the generated CWL -- the
-# first real answer to QB, before any job is spent.
+# and open the first URL it prints.  That is the whole step.
+#
+# RECORD of the first registration, read back from GET /api/build
+# (read-only) just after Ben ran it:
+#   build_id      18533aaa-19a5-4720-a66c-26c454c750ab
+#   status        running   (updated 2026-09-10T17:59:09)
+#   repository    https://github.com/SmithB/ATL1415.git @ on_s3
+#   pipelineLink  https://repo.maap-project.org/root/build-ogc-app-pack/-/pipelines/20198
+#                 -- "Link to build pipeline", rel=monitor: THE URL TO OPEN.
+#                 The builds run in MAAP's GitLab project
+#                 root/build-ogc-app-pack.
+#   links         {href: /build/<id>, rel: self} -- RELATIVE, so not
+#                 something a browser can open, and never printed.
+#   no deploymentLink yet while the build is running.
+# ODDITY, not acted on: the record says created 2026-09-04T17:15:15, though
+# GET /api/build returned NO builds earlier on 2026-09-10.  Whatever `created`
+# measures, it is not when this registration happened -- do not time builds
+# with it.
+# STILL TO RECORD once it deploys: how long the build took, the processID
+# (O5 needs it), and the s:commitHash in the generated CWL -- the first real
+# answer to QB, before any job is spent.
 
 
 # ===========================================================================
 # O5. [NEEDS CODE: check_build_id.py]  Port to the OGC job calls.   [ADE]
 # ===========================================================================
+# FIRST, FIND THE PROCESS: submit_job() needs the deployed process's id
+# (F9).  Look it up by name and version from list_algorithms() --
+# id == atl1415_tile_solve, version == on_s3 -- rather than hard-coding a
+# number that changes with every redeploy.  (This was in register_algorithm's
+# --status until O3 was revised.)
 # submit_job(process_id, {x0, y0, step: build_id, args_file}, queue), then
 # get_job_status / get_job_result (QD).  TWO comparisons instead of one:
 # the stamp in the image against origin/<algorithm_version>, AND against the

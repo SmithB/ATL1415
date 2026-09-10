@@ -4,8 +4,7 @@
 #   /srv/conda/envs/notebook/bin/python register_algorithm.py
 # which POSTs this file, as JSON, to https://api.maap-project.org/api/build,
 # refuses to when the build would not contain the local work, and prints the
-# build id and every link the server returns.  Then:
-#   /srv/conda/envs/notebook/bin/python register_algorithm.py --status <build_id>
+# build id and, first, the build pipeline URL to open in a browser.
 # See docs/howto_MAAP_ogc.sh, steps O1-O4.
 #
 # THIS IS THE OGC SCHEMA, since 2026-09-10.  maap-py 5.x dropped YAML
