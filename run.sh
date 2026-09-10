@@ -77,6 +77,21 @@ stamp_field () {
     sed -n "s/^$1=//p" "$build_id_file" | head -1
 }
 
+# THE ONE-LINE SUMMARY, shared by --build-id and the header of EVERY tile job.
+# Every field but the last two comes from the stamp, so the line describes one
+# build rather than pairing a build-time commit with a run-time config (the
+# first version did that, printing e231ba4 beside a version it never had);
+# only with no stamp at all does it fall back to live.  maap_py (the argument)
+# and maap_pgt are run-time facts about this machine.
+build_id_summary () {
+    local commit built version pgt
+    commit=$(stamp_field commit)
+    built=$(stamp_field build_completed)
+    version=$(stamp_field algorithm_version)
+    if [ -n "${MAAP_PGT:-}" ]; then pgt=set; else pgt=unset; fi
+    echo "BUILD_ID: commit=${commit:-unknown} built=${built:-INCOMPLETE_OR_ABSENT} algorithm_version=${version:-$(config_version)} maap_py=${1:-unknown} maap_pgt=${pgt}"
+}
+
 print_build_id () {
     echo "=========================================================="
     echo "  ATL1415 build id"
@@ -146,18 +161,9 @@ print_build_id () {
         echo "           here, and every ATL11 read from NSIDC will fail."
     fi
 
-    # ONE greppable line, so a collector need not parse the block above.  EVERY
-    # field comes from the stamp, so the line describes one build rather than
-    # pairing a build-time commit with a run-time config -- the first version
-    # did exactly that, and printed e231ba4 next to an algorithm_version that
-    # commit never had.  Only with no stamp at all does it fall back to live.
-    stamp_built=$(stamp_field build_completed)
-    stamp_version=$(stamp_field algorithm_version)
+    # ONE greppable line, so a collector need not parse the block above.
     echo "=========================================================="
-    # maap_py and maap_pgt are RUN-TIME facts about this machine, not the build
-    # -- appended after the stamp fields, which stay first so the line still
-    # reads as "which build is this".
-    echo "BUILD_ID: commit=${stamp_commit:-unknown} built=${stamp_built:-INCOMPLETE_OR_ABSENT} algorithm_version=${stamp_version:-$(config_version)} maap_py=${maap_py:-unknown} maap_pgt=${maap_pgt}"
+    build_id_summary "${maap_py:-unknown}"
     echo "=========================================================="
 }
 
@@ -324,6 +330,17 @@ echo "  args file   : ${args_file}"
 echo "  threads     : ${threads}"
 echo "  conda env   : ${env_name}"
 echo "  working dir : ${PWD}"
+echo "=========================================================="
+# EVERY TILE CERTIFIES ITS OWN BUILD (Ben, 2026-09-10, "option 1").  MAAP's
+# runner calls cwltool without --force-docker-pull, so a worker that already
+# holds an image under this tag runs THAT one -- the 2026-09-10 build_id job
+# (f537a824) logged no pull at all.  A worker still holding an older build of
+# the same tag would run old code, and a build_id job only vouches for the
+# worker it lands on.  So each job says which build produced it, and
+# collect_AA_queue.py reports it per tile.  maap_py=unchecked: reading it
+# costs a conda start, and the build_id job reports it.  The durable fix is an
+# immutable tag per build -- howto_MAAP_ogc O11, required before production.
+build_id_summary unchecked
 echo "=========================================================="
 grep -v '^[[:space:]]*$' "$args_file" | sed 's/^/  arg: /'
 echo "=========================================================="

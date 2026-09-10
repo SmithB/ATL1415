@@ -136,8 +136,9 @@
 #     args_file as a `string` and have run.sh fetch an s3:// URI itself with
 #     `aws s3 cp`, so the answer does not matter.
 #
-# QB. [HALF-ANSWERED 2026-09-10: the FIRST build is verified (O6 run 1);
-#     the rebuild for the run.sh fix is the test]  Does a SECOND build of the same algorithm_version produce a
+# QB. [ANSWERED 2026-09-10 by O6 run 2: YES, the rebuild of on_s3 ran the
+#     new commit.  BUT see O11: a worker's image cache can still serve an
+#     older build of the same tag.]  Does a SECOND build of the same algorithm_version produce a
 #     fresh image?  That is the bug that started today (8aad07d); nothing
 #     says the OGC path is immune to it.  The build stamp answers it with one
 #     job, and s:commitHash (F10) answers it with none.
@@ -145,7 +146,8 @@
 # QC. [BEN / MAAP] Is the legacy /api/mas path being retired, and when?  It
 #     decides whether the ATL14 fallback (F2) is safe to keep.
 #
-# QD. [ANSWERED FOR A FAILED JOB, O6 run 1; a successful one still to see]
+# QD. [ANSWERED 2026-09-10: failed job by O6 run 1, successful by run 2 --
+#     see O6 for both paths]
 #     ON THIS SYSTEM A JOB RUNS INSIDE MAAP'S CWL RUNNER
 #     (container-maap-cwltool-executor:v1.1.0 -- which is also what the job
 #     record's container_specification names, NOT our image).  The runner's
@@ -228,7 +230,7 @@
 
 
 # ===========================================================================
-# O2. [OK LOCALLY, 2026-09-10; UNTESTED ON DPS]  The CWL calling convention.   [ADE]
+# O2. [OK, 2026-09-10 -- locally, and ON A WORKER in both O6 runs]  The CWL calling convention.   [ADE]
 # ===========================================================================
 #   run.sh --x0 V --y0 V --step V --args_file V      (the CWL binding, F8)
 #   run.sh V V V                                     (kept: local runs and
@@ -359,8 +361,8 @@
 
 
 # ===========================================================================
-# O6. [RUN 2026-09-10: IMAGE VERIFIED -- but the JOB FAILED on a run.sh bug,
-#     now fixed; RERUN after the rebuild]  One build_id job.   [ADE -> DPS]
+# O6. [OK, 2026-09-10 -- run 2 clean: MATCH, exit 0, job successful]
+#     One build_id job.   [ADE -> DPS]
 # ===========================================================================
 /srv/conda/envs/notebook/bin/python scripts/maap/check_build_id.py
 # Answers QB (fresh image?) and QD (how logs come back), and QE's remaining
@@ -397,14 +399,28 @@
 #   cwltool also warned that it SKIPS the container --memory and --cpus
 #   limits despite ramMin/coresMin: on this system they are not enforced on
 #   the container, which can use the whole worker.
-# RUN 2 is due after the fixed run.sh is pushed and re-registered.  It is
-# also QB's test: a SECOND build of on_s3 -- a new digest and the new
-# commit in the stamp mean the tag was rebuilt, not reused.
+# RUN 2, 2026-09-10, after Ben re-registered at 8935494 (build 2cedbffb,
+# deploymentJobs/141; the redeploy KEPT processID 64) -- job f537a824 on
+# -32gb: submitted 20:53:47, successful 20:57:49, exit 0.
+#   - VERDICT: MATCH.  The stamp says commit=8935494, built 20:47:45, the
+#     CWL's s:commitHash is 8935494, maap_py=5.1.0, maap_pgt=set.
+#   - The run.sh fix works: build_id.txt was uploaded as a product.
+#   - A SUCCESSFUL job's files are under
+#       s3://maap-ops-workspace/ben_smith/dps_output/atl1415_tile_solve_1786/
+#         on_s3/<yyyy>/<mm>/<dd>/<HH>/<MM>/<SS>/<usec>/
+#     -- _stdout.txt, _stderr.txt, and the output/ contents at the top
+#     level (build_id.txt beside them).  QD is closed.
+#   - QB is answered: a SECOND build of on_s3 ran the NEW code.
+#   - BUT NO IMAGE PULL WAS LOGGED -- see O11.  Run 1's log showed "No such
+#     object" and a pull; run 2's shows neither, and the runner invokes
+#     cwltool without --force-docker-pull.  The worker ran an image it
+#     already held under this tag.  It was the new one -- the stamp says so
+#     -- but nothing guarantees that on another worker.
 
 
 # ===========================================================================
-# O7. [OK, 2026-09-10 -- dry-runs and the collector REAL; submit_job not yet
-#     run by the submitter]  submit_AA_queue.py, collect_AA_queue.py   [ADE]
+# O7. [OK, 2026-09-10 -- all REAL: dry-runs, the collector on 12 legacy
+#     jobs, and the submitter's first submissions (O8)]  submit_AA_queue.py, collect_AA_queue.py   [ADE]
 # ===========================================================================
 # Same two scripts, new calls: submit_job with inputs as a dict and the
 # queue as an argument (F1, F9); the collector reads the log wherever O6
@@ -435,14 +451,32 @@
 #   queue name in the 44 km args slot and the ledger in the queue slot --
 #   dry-run showed queue=AA_xo_check_jobs.csv, args=maap-dps-worker-32gb.
 #   Both commands fixed; the script now refuses that arrangement (exit 2).
-#   NOT YET RUN FOR REAL: the submitter's own submit_job call.  O8 is that.
+#   RUN FOR REAL at O8: both submit_job calls accepted, job ids in the ledger.
+#   AND (O11 option 1): a per-tile commit column, from the BUILD_ID line
+#   run.sh now prints in every tile job, with a warning when a ledger mixes
+#   builds or a worker lacked MAAP_PGT.  Tested: mocked ledger (mixed builds,
+#   MAAP_PGT unset, an unstamped job) raises both warnings; the real legacy
+#   ledger still gives the same numbers, commit '-', no warnings.
 
 
 # ===========================================================================
-# O8. [UNTESTED]  The two pole-hole tiles.   [ADE -> DPS]
+# O8. [SUBMITTED 2026-09-10 20:59, RUNNING]  The two pole-hole tiles.   [ADE -> DPS]
 # ===========================================================================
 # howto_MAAP_AA step 3b-i, unchanged in intent: E220_N20 and E300_N20, and
 # N_XO > 0 on both.  E220_N20 read N_XO=0 before the crossover fix.
+# SUBMITTED on build 8935494 (the O6 run-2 image) with the corrected howto
+# command; queue -32gb:
+#   AA_cost_44km_E220_N20  d2e9bcba-cdf5-4966-9f6e-5c7e62321645
+#   AA_cost_44km_E300_N20  3273c127-961c-4b93-80f3-22c0708e5b56
+# Ledger: ~/ATL14_processing/maap_ledgers/AA_xo_check_jobs.csv -- OUTSIDE
+# the checkout on purpose: an untracked file there makes
+# register_algorithm.py refuse.  Read it with
+#   scripts/maap/collect_AA_queue.py ~/ATL14_processing/maap_ledgers/AA_xo_check_jobs.csv
+# These two were built before per-tile stamping (O11 option 1), so their
+# commit column reads '-'.  A cached image cannot fake this test: every
+# image ever built on this system (d401699, 8935494) has the crossover fix.
+# PRE-FIX BASELINE, from the collector: E220_N20 N_AT=935506 N_XO=0;
+# E300_N20 N_AT=1256488 N_XO=0.
 
 
 # ===========================================================================
@@ -460,3 +494,38 @@
 #   - the legacy registrations ATL1415_tile_solve:on_s3 and :on_s3_v2 still
 #     exist on /api/mas/algorithm (F2).  Keep them until QC is answered: they
 #     ARE the fallback.
+
+
+# ===========================================================================
+# O11. [REQUIRED BEFORE PRODUCTION -- NEEDS CODE + A DECISION]  An immutable
+#      image tag per build.   (Ben, 2026-09-10: "flag option 2 as needed
+#      before production")
+# ===========================================================================
+# THE RISK, verified 2026-09-10 (O6 run 2): MAAP's runner calls cwltool
+# WITHOUT --force-docker-pull, and cwltool uses any image a worker already
+# holds under the requested tag.  The image tag is algorithm_version --
+# on_s3 -- which EVERY rebuild reuses.  A worker that ran an earlier build
+# of on_s3 and has it cached will run that older code for a job submitted
+# after a rebuild, silently.  This is a plausible mechanism for the
+# 2026-09-09 stale-image incident, and a build_id job only vouches for the
+# one worker it lands on.
+#
+# DONE NOW -- detection (option 1, Ben's choice): every tile job prints
+# run.sh's one-line BUILD_ID summary at the top of its log, and
+# collect_AA_queue.py reports each tile's commit and WARNS when a ledger's
+# tiles ran more than one build.  That catches it after the fact; it does
+# not prevent it.
+#
+# REQUIRED BEFORE PRODUCTION -- prevention (option 2): make the tag change
+# with every build, so no cache can hold a stale image under it.
+# RECOMMEND: a git tag per build, e.g. on_s3-8935494, as algorithm_version
+# (8aad07d named this the durable fix after the on_s3_v2 episode).  What it
+# touches: algorithm_config.yml (the version), register_algorithm.py (create
+# and push the tag, or refuse without one), and nothing that reads the
+# version from the config -- check_build_id.py and submit_AA_queue.py
+# already do.  Each tagged build becomes its own process VERSION, so old
+# versions accumulate in the process list and want deleting
+# (delete_algorithm) now and then.
+# ALTERNATIVE or COMPLEMENT, needs MAAP: run cwltool with
+# --force-docker-pull, or generate dockerPull pinned by digest
+# (image@sha256:...).  Either closes it platform-side for every user.

@@ -17,6 +17,14 @@ it to a hand-run grep.  It comes from the solve's
 line, the FIT step's (the first): E220_N20 printed N_AT=935506, N_XO=0 before
 the crossover fix.  N_ATL11 is still decimate_data's N=, which counts both.
 
+WHICH BUILD RAN EACH TILE is a column too.  Since 2026-09-10 run.sh prints its
+one-line BUILD_ID summary at the top of every tile job, because MAAP's runner
+reuses a worker's cached image for a tag without re-pulling it -- so one
+build_id job cannot vouch for every worker.  After the table the collector
+WARNS if the ledger's tiles ran more than one build (a stale cached image, or
+a rebuild landing mid-run) or any ran with MAAP_PGT unset (no NSIDC).  Jobs
+from before per-tile stamping show '-'.
+
 Time and peak memory are what the job reports about ITSELF
 (scripts/run_with_rusage.py, one line per fit / error / matched step);
 get_job_metrics() is used only for the wall clock, because its machine and
@@ -43,6 +51,7 @@ XO_RE  = re.compile(r'Decimate_data: N_AT=(\d+), N_XO=(\d+)')
 RUSAGE = re.compile(r'=== rusage \[(\w+)\]: elapsed ([\d.]+) s, peak RSS ([\d.]+) GiB')
 FIT_RE = re.compile(r'initial: (\d+):')
 ITER_RE = re.compile(r'starting qr solve for iteration (\d+)')
+BUILD_RE = re.compile(r'^BUILD_ID: (.*)$', re.M)
 
 
 def json_or_empty(response):
@@ -76,27 +85,46 @@ def collect(maap, row):
     out['N_XO'] = xo.group(2) if xo else '-'
     out['N_fit'] = fit.group(1) if fit else '-'
     out['iters'] = str(max(map(int, iters)) + 1) if iters else '-'
+    build = BUILD_RE.search(text)
+    fields = dict(f.split('=', 1) for f in build.group(1).split() if '=' in f) if build else {}
+    out['commit'] = fields.get('commit', '-')[:7]
+    out['maap_pgt'] = fields.get('maap_pgt', '-')
     return out, steps
 
 
 COLUMNS = (('tile', 26), ('status', 11), ('secs', 7), ('max_mem_GiB', 11),
            ('N_ATL11', 9), ('N_AT', 8), ('N_XO', 7), ('N_fit', 8), ('iters', 5),
-           ('queue', 22))
+           ('commit', 7), ('queue', 22))
 
 
 def main():
     maap = MAAP(maap_host=os.environ.get('MAAP_API_HOST', 'api.maap-project.org'))
     print(' '.join(f'{name:>{width}}' for name, width in COLUMNS))
+    builds, no_pgt = {}, []
     for row in csv.DictReader(open(LEDGER)):
         try:
             fields, steps = collect(maap, row)
         except Exception as exc:
             print(f"{row['identifier'][-26:]:>26} <collect failed: {type(exc).__name__}: {exc}>")
             continue
+        if fields.get('commit', '-') != '-':
+            builds.setdefault(fields['commit'], []).append(fields['tile'])
+        if fields.get('maap_pgt') == 'unset':
+            no_pgt.append(fields['tile'])
         fields['tile'] = fields['tile'][-26:]
         print(' '.join(f'{fields.get(name, "-"):>{width}}' for name, width in COLUMNS))
         for label, (secs, gib) in steps.items():
             print(f"{'':26} {'step ' + label:>11} {secs:7.0f} {gib:11.2f}")
+
+    if len(builds) > 1:
+        print('\nWARNING: THESE TILES RAN DIFFERENT BUILDS -- a worker used a cached'
+              ' older image, or a rebuild landed mid-run.  Results from different'
+              ' builds must not be mixed:')
+        for commit, tiles in builds.items():
+            print(f'  {commit}: {", ".join(tiles)}')
+    if no_pgt:
+        print('\nWARNING: MAAP_PGT WAS UNSET on the workers for: ' + ', '.join(no_pgt) +
+              ' -- they could not get NSIDC credentials.')
 
 
 if __name__ == '__main__':

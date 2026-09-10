@@ -47,6 +47,12 @@ algorithm_description: >
 # If the image comes back stale, do NOT revive on_s3_v2 -- move to an
 # immutable per-build TAG, which is what 8aad07d already identified as the
 # durable fix.
+#
+# REQUIRED BEFORE PRODUCTION (howto_MAAP_ogc O11): that per-build tag.  MAAP's
+# runner reuses a worker's cached image for this tag without re-pulling
+# (verified 2026-09-10), so while every rebuild reuses `on_s3`, a worker can
+# run an older build of it.  Detection is in place -- every tile logs its
+# build, and collect_AA_queue.py flags mixed builds -- but not prevention.
 algorithm_version: on_s3
 code_repository: https://github.com/SmithB/ATL1415.git
 
