@@ -198,7 +198,7 @@ aws s3 cp $region_dir_44/input_args_AA_44km.txt $s3_run/
 # _stdout.txt (howto_MAAP_ogc QD); the collector reads both.
 #
 # ---------------------------------------------------------------------------
-# 3b-i. [READY]  VERIFY THE CROSSOVER READ FIRST, on two tiles, not sixteen.
+# 3b-i. [OK, 2026-09-11]  VERIFY THE CROSSOVER READ FIRST, on two tiles, not sixteen.
 # ---------------------------------------------------------------------------
 # >>> BLOCKED 2026-09-10 on docs/howto_MAAP_ogc.sh: submit_AA_queue.py uses
 # submitJob, gone in maap-py 5.x.  This step is OGC step O8. <<<
@@ -240,6 +240,12 @@ scripts/maap/collect_AA_queue.py AA_xo_check_jobs.csv
 # N_XO > 0 on both.  For E220_N20 compare against N_AT=935506, N_XO=0; for
 # E300_N20, N_AT=1256488, N_XO=0 -- both read back 2026-09-10 from the
 # pre-fix jobs by the collector itself.
+# RUN 2026-09-10/11 on build 8935494 -- PASSED:
+#   E220_N20  N_XO=171488  N_AT=935506   3.1 h (was 2.2)  21.40 GiB (was 20.93)
+#   E300_N20  N_XO=52882   N_AT=1256488  1.3 h (was 1.1)  16.32 GiB (was 15.70)
+# Along-track counts unchanged, and N_ATL11 rose by exactly N_XO on both.
+# So 3b's cost numbers (AA_cost_results.csv) are pre-crossover and low --
+# most of all near the pole; rerun the transect before sizing S6.
 #
 # EXPECT IT TO COST MORE THAN THE PRE-FIX RUN.  44km_E220_N20 was the most
 # expensive tile in the whole transect at 132.5 min and 20.9 GiB on a 32 GiB

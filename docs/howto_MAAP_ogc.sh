@@ -460,7 +460,7 @@
 
 
 # ===========================================================================
-# O8. [SUBMITTED 2026-09-10 20:59, RUNNING]  The two pole-hole tiles.   [ADE -> DPS]
+# O8. [OK, 2026-09-11 -- N_XO > 0 on both tiles]  The two pole-hole tiles.   [ADE -> DPS]
 # ===========================================================================
 # howto_MAAP_AA step 3b-i, unchanged in intent: E220_N20 and E300_N20, and
 # N_XO > 0 on both.  E220_N20 read N_XO=0 before the crossover fix.
@@ -481,8 +481,18 @@
 # A WORKER.  N_AT unchanged at 1256488; N_ATL11 5430970 -> 5483852, which is
 # +52882 exactly, so every added point is a crossover; N_fit 1256487 ->
 # 1309369.  Cost: fit 2672 -> 3205 s (+20%), peak 15.70 -> 16.32 GiB, error
-# step 1425 -> 1481 s.  E220_N20 still running at 00:14 (3h15m in; its
-# pre-fix run was 2.2 h).
+# step 1425 -> 1481 s.
+# E220_N20 DONE (successful, 11032 s = 3.1 h): N_XO=171488.  N_AT unchanged
+# at 935506; N_ATL11 12168633 -> 12340121, +171488 exactly; N_fit 743118 ->
+# 893044.  Cost: fit 4646 -> 6599 s (+42%), error 3302 -> 4423 s (+34%),
+# whole job 2.2 -> 3.1 h; peak 20.93 -> 21.40 GiB on a 32 GiB worker.
+# THE ANSWER: ATL11XO is read on a MAAP worker, and the pole-hole edge --
+# where tracks converge -- gains the most (18% more input points there,
+# 1% at E300_N20).
+# CONSEQUENCE FOR SIZING (S6): every number in AA_cost_results.csv is
+# pre-crossover and now too low, most of all near the pole.  The transect
+# (howto_MAAP_AA 3b) wants rerunning before the queue request is written;
+# the submitter and collector for it are ready (O7).
 
 
 # ===========================================================================
