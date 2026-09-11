@@ -533,7 +533,9 @@
 # ===========================================================================
 # O10. [BEN]  Retire what is left of the legacy path.
 # ===========================================================================
-#   - delete the on_s3_v2 branch on GitHub (still at e231ba4, unused).
+#   - DONE 2026-09-11 (Ben): the on_s3_v2 branch is deleted on GitHub
+#     (it was at e231ba4, which is an ancestor of on_s3, so nothing was
+#     lost).  A local branch of that name may still sit in a checkout.
 #   - the legacy registrations ATL1415_tile_solve:on_s3 and :on_s3_v2 still
 #     exist on /api/mas/algorithm (F2).  Keep them until QC is answered: they
 #     ARE the fallback.

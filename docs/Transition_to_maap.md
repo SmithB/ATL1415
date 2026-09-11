@@ -1306,6 +1306,7 @@ Listed in the order they block the sequence above.
         MISMATCH / NO STAMP against the REMOTE tip of algorithm_version.  howto_MAAP_staging
         S5b.
       - algorithm_version back to on_s3; on_s3_v2 is to be deleted once the check passes.
+        DELETED on GitHub 2026-09-11 by Ben, the check having passed (howto_MAAP_ogc O10).
     RECOMMEND: test on on_s3 precisely BECAUSE it has a prior image.  A correct rebuild of a
     tag that already has a container is real evidence the reuse problem is gone; a clean
     build of a never-built tag proves nothing.  If it fails, do not revive on_s3_v2 -- move
