@@ -477,6 +477,12 @@
 # image ever built on this system (d401699, 8935494) has the crossover fix.
 # PRE-FIX BASELINE, from the collector: E220_N20 N_AT=935506 N_XO=0;
 # E300_N20 N_AT=1256488 N_XO=0.
+# E300_N20 DONE (successful, 4696 s): N_XO=52882 -- CROSSOVERS ARE READ ON
+# A WORKER.  N_AT unchanged at 1256488; N_ATL11 5430970 -> 5483852, which is
+# +52882 exactly, so every added point is a crossover; N_fit 1256487 ->
+# 1309369.  Cost: fit 2672 -> 3205 s (+20%), peak 15.70 -> 16.32 GiB, error
+# step 1425 -> 1481 s.  E220_N20 still running at 00:14 (3h15m in; its
+# pre-fix run was 2.2 h).
 
 
 # ===========================================================================
@@ -529,3 +535,59 @@
 # ALTERNATIVE or COMPLEMENT, needs MAAP: run cwltool with
 # --force-docker-pull, or generate dockerPull pinned by digest
 # (image@sha256:...).  Either closes it platform-side for every user.
+
+
+# ===========================================================================
+# O12. [a: OK LOCALLY, TAKES EFFECT AT THE NEXT BUILD; b: OK -- 2026-09-10.
+#      Written first, as a plan, then built]  Tiles record their
+#      build; a run's notes say which build changes are intended.
+#      (Ben, 2026-09-10 -- "Build in tile + run notes file")
+# ===========================================================================
+# THE SCENARIO, Ben's: a full Antarctic/Greenland/Arctic RUN is under way, a
+# bug turns up that affects a few tiles, the bug is patched, those tiles are
+# rerun -- and the thousands it did not affect are kept.  From then on the
+# run's tiles come from two builds ON PURPOSE.  O11's detection would flag
+# that as a stale-worker warning every time; it needs a way to be told.
+#
+# O12a. [NEEDS CODE: run.sh, ATL11_to_ATL15.py]  THE TILE KNOWS ITS BUILD.
+#   run.sh exports the stamp's commit, algorithm_version and build_completed
+#   as ATL1415_BUILD_COMMIT / _VERSION / _COMPLETED; save_fit_to_file writes
+#   them as /meta attributes build_commit, build_version, build_completed
+#   (ascii, like the existing input_files).  save_errors_to_file, which
+#   appends the error fields into the same file, writes errors_build_* --
+#   so a patch that reruns only the error step shows up too.  Unset
+#   variables (discover, a local run) mean absent attributes, nothing else.
+#   WHY IN THE FILE: job logs are not forever, and the mosaic step reads
+#   tiles, not logs.  Needs a rebuild to take effect.
+#   DONE: ATL11_to_ATL15.write_build_provenance(), called from both writers;
+#   tests/test_build_provenance.py (4 tests: all fields, the errors_ prefix,
+#   unset -> absent, empty -> absent).  With the solver stubbed, the three
+#   variables reach it and its argv is unchanged; `conda run` passes them
+#   through (checked).  NOTE: h5py 3.16 returns these ascii attributes as
+#   str, as it already does input_files.
+#
+# O12b. [NEEDS CODE: collect_AA_queue.py]  run_notes.txt, PLAIN TEXT, FILLED
+#   IN LATER.  One file per run, beside its args files on the bucket --
+#   e.g. s3://.../run_args/rel006/south/AA/run_notes.txt -- one line per
+#   intended build change:
+#       # from          to             note (free text to the end of the line)
+#       on_s3-8935494   on_s3-3f2c1a7  fixes the tide-mask edge bug; only the
+#                                      grounding-line tiles were rerun
+#   A build is named by its algorithm_version or by a commit prefix of 7+
+#   characters.  The collector finds the file from the ledger's args_file
+#   column (or --notes).  Builds linked by notes -- directly or in a chain
+#   -- are reported as INTENDED, with the notes; anything unlinked still
+#   WARNS, and the warning prints the exact line that would declare it.
+#   The file is edited on the bucket, not in git, so writing a note never
+#   blocks register_algorithm.py.
+#   DONE, with one guard added while building it: a name matching MORE THAN
+#   ONE of the ledger's builds is IGNORED as ambiguous.  Until O11, every
+#   build's version is `on_s3`, and a note naming it would otherwise link --
+#   and excuse -- every build, a real stale worker included; so name builds
+#   by commit prefix until then.  Tested: no notes (warns, prints the line
+#   to add), declared by commit prefix, a chain of three, a partial chain
+#   (still warns about the rest), and the ambiguous name.  The real legacy
+#   ledger's output is unchanged.
+#
+# LATER, not now: the mosaic step reading /meta build_* and the same notes
+# file, so a released mosaic can list the builds inside it.

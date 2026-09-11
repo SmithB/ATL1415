@@ -833,6 +833,34 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
     S['file_list'] = file_list
     return S
 
+# Which build of this code wrote a tile (docs/howto_MAAP_ogc.sh O12a).  On
+# MAAP, run.sh exports these from the image's build stamp; anywhere else they
+# are unset and the attributes are simply not written.  A production run can
+# end up with tiles from more than one build on purpose -- a bug patched and
+# only the affected tiles rerun -- and the tile is the one record of which is
+# which that outlives the job logs.  attribute name -> environment variable.
+BUILD_PROVENANCE_ENV = {
+    'build_commit': 'ATL1415_BUILD_COMMIT',
+    'build_version': 'ATL1415_BUILD_VERSION',
+    'build_completed': 'ATL1415_BUILD_COMPLETED',
+}
+
+
+def write_build_provenance(group, prefix=''):
+    '''
+    Record the build that is writing into an HDF5 group, as ascii attributes.
+
+    inputs:
+        group: an h5py group -- a tile's /meta
+        prefix: prepended to each attribute name ('errors_' for the error step,
+            which appends into a tile written earlier, possibly by another build)
+    '''
+    for attr, env in BUILD_PROVENANCE_ENV.items():
+        value = os.environ.get(env)
+        if value:
+            group.attrs[prefix + attr] = value.encode('ascii')
+
+
 def save_fit_to_file(S,  filename, dzdt_lags=None, reference_epoch=0):
     if os.path.isfile(filename):
         os.remove(filename)
@@ -850,6 +878,7 @@ def save_fit_to_file(S,  filename, dzdt_lags=None, reference_epoch=0):
             h5f['meta'].attrs['input_files'] = ','.join([os.path.basename(Si) for Si in S['file_list']]).encode('ascii')
         h5f['meta'].attrs['first_delta_time']=np.nanmin(S['data'].delta_time)
         h5f['meta'].attrs['last_delta_time']=np.nanmax(S['data'].delta_time)
+        write_build_provenance(h5f['meta'])
         h5f.create_group('/RMS')
         for key in S['RMS']:
             h5f.create_dataset('/RMS/'+key, data=S['RMS'][key])
@@ -977,6 +1006,7 @@ def save_errors_to_file( S, filename, dzdt_lags=None, reference_epoch=None, grid
             ds.to_h5(filename, group=key.replace('sigma_',''))
 
     with h5py.File(filename,'r+') as h5f:
+        write_build_provenance(h5f.require_group('meta'), prefix='errors_')
         for key in S['E']['sigma_bias']:
             if 'bias/sigma' in h5f and  key in h5f['/bias/sigma']:
                 print(f'{key} already exists in sigma_bias')

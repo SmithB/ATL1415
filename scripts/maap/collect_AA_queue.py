@@ -25,18 +25,34 @@ WARNS if the ledger's tiles ran more than one build (a stale cached image, or
 a rebuild landing mid-run) or any ran with MAAP_PGT unset (no NSIDC).  Jobs
 from before per-tile stamping show '-'.
 
+MIXED BUILDS CAN BE INTENDED (howto_MAAP_ogc O12b).  A production run that
+patches a bug and reruns only the affected tiles is mixed ON PURPOSE.  Such a
+change is declared, whenever convenient, in the run's run_notes.txt -- plain
+text, beside the run's args files on the bucket, one line per change:
+    # from          to             note (free text to the end of the line)
+    on_s3-8935494   on_s3-3f2c1a7  tide-mask edge fix; grounding-line tiles rerun
+A build is named by its algorithm_version or by a commit prefix of 7+
+characters.  Builds linked by notes, directly or through a chain, are reported
+as INTENDED with their notes; anything unlinked still warns, and the warning
+prints the line that would declare it.  A name that matches more than one of
+the ledger's builds is ignored as ambiguous -- which is what `on_s3` does until
+every build has its own tag (O11) -- so a note cannot wave through a stale
+worker by accident.
+
 Time and peak memory are what the job reports about ITSELF
 (scripts/run_with_rusage.py, one line per fit / error / matched step);
 get_job_metrics() is used only for the wall clock, because its machine and
 memory fields come back null.
 
 Usage:
-  collect_AA_queue.py [ledger.csv]        (default AA_queue_jobs.csv, the
-                                            submitter's default)
+  collect_AA_queue.py [ledger.csv] [--notes <uri|path>]
+      ledger  default AA_queue_jobs.csv, the submitter's default
+      notes   default <directory of the ledger's args_file>/run_notes.txt
 """
 import csv
 import os
 import re
+import subprocess
 import sys
 
 from maap.maap import MAAP
@@ -44,7 +60,13 @@ from maap.maap import MAAP
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ogc_jobs import read_logs  # noqa: E402
 
-LEDGER = sys.argv[1] if len(sys.argv) > 1 else 'AA_queue_jobs.csv'
+_ARGV = list(sys.argv[1:])
+NOTES = None
+if '--notes' in _ARGV:
+    _i = _ARGV.index('--notes')
+    NOTES = _ARGV[_i + 1]
+    del _ARGV[_i:_i + 2]
+LEDGER = _ARGV[0] if _ARGV else 'AA_queue_jobs.csv'
 
 N_RE   = re.compile(r'decimate_data: N_target:[^,]+, N=(\d+)')
 XO_RE  = re.compile(r'Decimate_data: N_AT=(\d+), N_XO=(\d+)')
@@ -88,8 +110,100 @@ def collect(maap, row):
     build = BUILD_RE.search(text)
     fields = dict(f.split('=', 1) for f in build.group(1).split() if '=' in f) if build else {}
     out['commit'] = fields.get('commit', '-')[:7]
+    out['commit_full'] = fields.get('commit', '-')
+    out['version'] = fields.get('algorithm_version', '-')
     out['maap_pgt'] = fields.get('maap_pgt', '-')
     return out, steps
+
+
+def read_text(where):
+    """A small text file from s3:// or disk, or None if it is not there."""
+    if where.startswith('s3://'):
+        p = subprocess.run(['aws', 's3', 'cp', where, '-'],
+                           capture_output=True, text=True, timeout=120)
+        return p.stdout if p.returncode == 0 else None
+    return open(where).read() if os.path.isfile(where) else None
+
+
+def parse_notes(text):
+    """run_notes.txt -> [(from, to, note)]; '#' comments and blank lines skipped."""
+    notes = []
+    for line in (text or '').splitlines():
+        if line.lstrip().startswith('#'):
+            continue            # a '#' later in a line is note text, and kept
+        parts = line.split(None, 2)
+        if len(parts) >= 2:
+            notes.append((parts[0], parts[1], parts[2] if len(parts) > 2 else ''))
+    return notes
+
+
+def resolve(name, builds):
+    """The ledger builds a note's name refers to: by version, or commit prefix."""
+    return {key for key, (commit, version) in builds.items()
+            if name == version or (len(name) >= 7 and commit.startswith(name))}
+
+
+def report_builds(builds, tiles_by_build, notes, notes_where):
+    """
+    Say whether the ledger's mix of builds is declared intended.
+
+    builds: key -> (full commit, version); tiles_by_build: key -> [tiles].
+    Builds are linked by notes (union-find), so a chain A->B->C covers A..C.
+    """
+    if len(builds) < 2:
+        return
+    parent = {key: key for key in builds}
+
+    def root(key):
+        while parent[key] != key:
+            key = parent[key]
+        return key
+
+    used, ambiguous = [], []
+    for a, b, note in notes:
+        ra, rb = resolve(a, builds), resolve(b, builds)
+        if len(ra) > 1 or len(rb) > 1:
+            ambiguous.append((a, b))
+            continue
+        if ra and rb:
+            parent[root(ra.pop())] = root(rb.pop())
+            used.append((a, b, note))
+
+    def label(key):
+        commit, version = builds[key]
+        return f'{commit[:7]} ({version})'
+
+    groups = {}
+    for key in builds:
+        groups.setdefault(root(key), []).append(key)
+    listing = ''.join(f'\n  {label(k)}: {len(tiles_by_build[k])} tile(s)'
+                      for k in builds)
+    if len(groups) == 1:
+        print(f'\nMIXED BUILDS, ALL DECLARED INTENDED in {notes_where}:{listing}')
+    else:
+        print('\nWARNING: THESE TILES RAN DIFFERENT BUILDS -- a worker used a cached'
+              ' older image, or a rebuild landed mid-run -- and run_notes.txt does'
+              ' not declare the change intended.  Results from undeclared builds'
+              ' must not be mixed:')
+        for key in builds:
+            print(f'  {label(key)}: {", ".join(tiles_by_build[key])}')
+    for a, b, note in used:
+        print(f'  INTENDED  {a} -> {b}: {note or "(no note text)"}')
+    for a, b in ambiguous:
+        print(f'  IGNORED   {a} -> {b}: a name there matches more than one build'
+              ' in this ledger; use a commit prefix of 7+ characters.')
+    if len(groups) > 1:
+        # Offer the exact line for each unlinked group, against the largest.
+        ordered = sorted(groups.values(), key=lambda g: -sum(len(tiles_by_build[k]) for k in g))
+        main = ordered[0][0]
+        where = notes_where or '<the run\'s run_notes.txt>'
+        print(f'\n  If a change is intended, declare it in {where}, e.g.:')
+        for group in ordered[1:]:
+            other = group[0]
+            names = [builds[k][1] for k in builds]
+            name = (lambda k: builds[k][1] if names.count(builds[k][1]) == 1
+                    else builds[k][0][:7])
+            print(f'    {name(main)}  {name(other)}  <what changed, and which tiles were rerun>')
 
 
 COLUMNS = (('tile', 26), ('status', 11), ('secs', 7), ('max_mem_GiB', 11),
@@ -100,15 +214,23 @@ COLUMNS = (('tile', 26), ('status', 11), ('secs', 7), ('max_mem_GiB', 11),
 def main():
     maap = MAAP(maap_host=os.environ.get('MAAP_API_HOST', 'api.maap-project.org'))
     print(' '.join(f'{name:>{width}}' for name, width in COLUMNS))
-    builds, no_pgt = {}, []
-    for row in csv.DictReader(open(LEDGER)):
+    rows = list(csv.DictReader(open(LEDGER)))
+    notes_where = NOTES
+    if notes_where is None:
+        args_files = [r.get('args_file', '') for r in rows if r.get('args_file')]
+        if args_files:
+            notes_where = args_files[0].rsplit('/', 1)[0] + '/run_notes.txt'
+    builds, tiles_by_build, no_pgt = {}, {}, []
+    for row in rows:
         try:
             fields, steps = collect(maap, row)
         except Exception as exc:
             print(f"{row['identifier'][-26:]:>26} <collect failed: {type(exc).__name__}: {exc}>")
             continue
-        if fields.get('commit', '-') != '-':
-            builds.setdefault(fields['commit'], []).append(fields['tile'])
+        if fields.get('commit_full', '-') != '-':
+            key = fields['commit_full']
+            builds[key] = (fields['commit_full'], fields['version'])
+            tiles_by_build.setdefault(key, []).append(fields['tile'])
         if fields.get('maap_pgt') == 'unset':
             no_pgt.append(fields['tile'])
         fields['tile'] = fields['tile'][-26:]
@@ -117,11 +239,10 @@ def main():
             print(f"{'':26} {'step ' + label:>11} {secs:7.0f} {gib:11.2f}")
 
     if len(builds) > 1:
-        print('\nWARNING: THESE TILES RAN DIFFERENT BUILDS -- a worker used a cached'
-              ' older image, or a rebuild landed mid-run.  Results from different'
-              ' builds must not be mixed:')
-        for commit, tiles in builds.items():
-            print(f'  {commit}: {", ".join(tiles)}')
+        text = read_text(notes_where) if notes_where else None
+        if text is None:
+            print(f'\n(no run notes found{" at " + notes_where if notes_where else ""})')
+        report_builds(builds, tiles_by_build, parse_notes(text), notes_where)
     if no_pgt:
         print('\nWARNING: MAAP_PGT WAS UNSET on the workers for: ' + ', '.join(no_pgt) +
               ' -- they could not get NSIDC credentials.')

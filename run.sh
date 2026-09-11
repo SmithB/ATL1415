@@ -342,6 +342,12 @@ echo "=========================================================="
 # immutable tag per build -- howto_MAAP_ogc O11, required before production.
 build_id_summary unchecked
 echo "=========================================================="
+# ...and hands the same facts to the solver, which writes them into the tile's
+# /meta as build_commit / build_version / build_completed (howto_MAAP_ogc
+# O12a) -- the record of which build made a tile that outlives this log.
+export ATL1415_BUILD_COMMIT="$(stamp_field commit)"
+export ATL1415_BUILD_VERSION="$(stamp_field algorithm_version)"
+export ATL1415_BUILD_COMPLETED="$(stamp_field build_completed)"
 grep -v '^[[:space:]]*$' "$args_file" | sed 's/^/  arg: /'
 echo "=========================================================="
 
