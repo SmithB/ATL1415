@@ -148,7 +148,7 @@ aws s3 cp $region_dir_44/input_args_AA_44km.txt $s3_run/
 
 
 # ===========================================================================
-# 3b. [ADE+DPS] [READY, BLOCKED ON STEP 3]  The cost-characterisation transect.
+# 3b. [ADE+DPS] [SUBMITTED 2026-09-11 on ab84687, running]  The cost-characterisation transect.
 # ===========================================================================
 # WHY, and it is not part of the production workflow: the Iceland smoke tile
 # (staging S7) took 26.6 minutes for 239613 ATL11 points, and it is close to
@@ -260,6 +260,18 @@ scripts/maap/submit_AA_queue.py scripts/maap/AA_queue_xy.txt \
     $s3_run/input_args_AA.txt $s3_run/input_args_AA_44km.txt \
     maap-dps-worker-32gb AA_queue_jobs.csv
 scripts/maap/collect_AA_queue.py AA_queue_jobs.csv
+#
+# SUBMITTED 2026-09-11 ~15:50 UTC, the POST-CROSSOVER rerun, on build ab84687
+# (MATCH, maap_pgt=set: howto_MAAP_ogc O6 run 3); queue -32gb.  All 17
+# submit_job calls accepted -- 16 centers, E420_N20 in both halves.  Ledger,
+# outside the checkout so it cannot block register_algorithm.py:
+#   ~/ATL14_processing/maap_ledgers/AA_transect_ab84687_jobs.csv
+# Read it with
+scripts/maap/collect_AA_queue.py ~/ATL14_processing/maap_ledgers/AA_transect_ab84687_jobs.csv
+# First run on a build whose tiles print their BUILD_ID and write /meta
+# build_* (howto_MAAP_ogc O11 option 1, O12a), so its commit column should
+# read ab84687 on every row -- anything else is a stale worker.  Its rows
+# REPLACE AA_cost_results.csv; do not mix the two (see above).
 #
 # The collector joins each job's status to the peak RSS and elapsed time the
 # job reports about ITSELF (scripts/run_with_rusage.py, one line per fit /

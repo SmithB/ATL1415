@@ -416,6 +416,20 @@
 #     cwltool without --force-docker-pull.  The worker ran an image it
 #     already held under this tag.  It was the new one -- the stamp says so
 #     -- but nothing guarantees that on another worker.
+#     CORRECTED BY RUN 3: "no pull logged" does NOT show a cached image.
+# RUN 3, 2026-09-11, after Ben re-registered at ab84687 (built 15:01:35-
+# 15:04:35, process modified 15:08:55, processID STILL 64) -- job c0232572
+# on -32gb: submitted 15:40:44, running 15:42:45, successful 15:44:16.
+#   - VERDICT: MATCH -- stamp, CWL s:commitHash and origin/on_s3 are all
+#     ab84687; clean tree; maap_py=5.1.0, maap_pgt=set.
+#   - AGAIN NO PULL IN EITHER LOG, and _stdout.txt is only the runner's CWL
+#     download and input list.  Yet the job ran ab84687, built 38 minutes
+#     earlier, which NO earlier job had run -- so this worker cannot have had
+#     it cached from a job.  The image reached it by some route that leaves no
+#     line in the job's logs.  The inference in run 2 ("no pull, so it was
+#     cached") does not hold.  O11's risk is NOT disproven by this -- it
+#     just has no observed instance.  What does detect it is the per-tile
+#     build line.
 
 
 # ===========================================================================
@@ -519,7 +533,9 @@
 # ===========================================================================
 # THE RISK, verified 2026-09-10 (O6 run 2): MAAP's runner calls cwltool
 # WITHOUT --force-docker-pull, and cwltool uses any image a worker already
-# holds under the requested tag.  The image tag is algorithm_version --
+# holds under the requested tag.  (That run 2 itself RAN a cached image was
+# an inference from a missing pull line, and O6 run 3 shows that inference
+# is unsafe.  The mechanism stands; no instance of it has been observed.)  The image tag is algorithm_version --
 # on_s3 -- which EVERY rebuild reuses.  A worker that ran an earlier build
 # of on_s3 and has it cached will run that older code for a job submitted
 # after a rebuild, silently.  This is a plausible mechanism for the
@@ -548,7 +564,9 @@
 
 
 # ===========================================================================
-# O12. [a: OK LOCALLY, TAKES EFFECT AT THE NEXT BUILD; b: OK -- 2026-09-10.
+# O12. [a: OK LOCALLY, IN THE IMAGE SINCE ab84687 (O6 run 3) -- first
+#      checked on a real tile when the transect (howto_MAAP_AA 3b) lands;
+#      b: OK -- 2026-09-10.
 #      Written first, as a plan, then built]  Tiles record their
 #      build; a run's notes say which build changes are intended.
 #      (Ben, 2026-09-10 -- "Build in tile + run notes file")
