@@ -492,11 +492,14 @@
 # whole job 2.2 -> 3.1 h; peak 20.93 -> 21.40 GiB on a 32 GiB worker.
 # THE ANSWER: ATL11XO is read on a MAAP worker, and the pole-hole edge --
 # where tracks converge -- gains the most (18% more input points there,
-# 1% at E300_N20).
+# 1% at E300_N20).  CORRECTED 2026-09-11: those two divide by different
+# things.  18% is N_XO/N_AT; 1% was N_XO/N_ATL11.  On one basis, N_XO/N_AT,
+# E300_N20 is 4.2% -- and its N_fit rose by exactly N_XO.
 # CONSEQUENCE FOR SIZING (S6): every number in AA_cost_results.csv is
 # pre-crossover and now too low, most of all near the pole.  The transect
 # (howto_MAAP_AA 3b) wants rerunning before the queue request is written;
 # the submitter and collector for it are ready (O7).
+# RERUN 2026-09-11 on ab84687, all 17 successful -- howto_MAAP_AA 3b.
 
 
 # ===========================================================================
@@ -557,12 +560,13 @@
 #     patched tiles mixes builds on purpose, and O12b explains the mix.
 # A commit, not a tag, names the build: on_s3 is a branch every build reuses,
 # and the build time separates two builds of one commit.
-# First checked on real tile jobs when howto_MAAP_AA 3b lands.
+# CHECKED ON REAL TILE JOBS 2026-09-11: all 17 of howto_MAAP_AA 3b's jobs
+# log BUILD_ID commit=ab84687, and all 16 tiles written carry it in /meta.
 
 
 # ===========================================================================
-# O12. [a: OK LOCALLY, IN THE IMAGE SINCE ab84687 (O6 run 3) -- first
-#      checked on a real tile when the transect (howto_MAAP_AA 3b) lands;
+# O12. [a: OK ON DPS 2026-09-11 -- all 16 transect tiles (howto_MAAP_AA 3b)
+#      carry build_commit and errors_build_commit ab84687 in /meta;
 #      b: A SUGGESTION, NO SOFTWARE -- revised 2026-09-11]  Tiles record
 #      their build; a run ends with an annotated build history.
 # ===========================================================================

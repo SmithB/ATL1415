@@ -258,9 +258,11 @@ EOF
 # Ask for: cores / RAM / disk / walltime per queue, and any max-in-flight limit.
 # On the OGC path the queue is chosen per job, as submit_job's queue argument;
 # the scripts default to -32gb, and -32vcpu-64gb may be the better production
-# target.  WHAT TO ASK FOR comes from the post-crossover AA transect
-# (howto_MAAP_AA 3b, submitted 2026-09-11); the pre-crossover numbers in
-# AA_cost_results.csv are too low, most of all near the pole.
+# target.  WHAT TO ASK FOR, from the post-crossover AA transect of
+# 2026-09-11 (howto_MAAP_AA 3b, scripts/maap/AA_cost_results.csv): every tile
+# measured fits 32 GiB (worst 21.5 GiB, at the pole-hole edge); roughly an
+# hour per tile, the worst 2.5 h; and -32gb workers come with 4 OR 8
+# threads, unannounced, which moves a tile's time by tens of percent.
 
 
 # ===========================================================================

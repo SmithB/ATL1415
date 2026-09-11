@@ -140,7 +140,7 @@ aws s3 cp $region_dir_44/input_args_AA_44km.txt $s3_run/
 
 
 # ===========================================================================
-# 3b. [ADE+DPS] [SUBMITTED 2026-09-11 on ab84687, running]  The cost-characterisation transect.
+# 3b. [ADE+DPS] [OK 2026-09-11, post-crossover, on ab84687]  The cost-characterisation transect.
 # ===========================================================================
 # WHY, and it is not part of the production workflow: the Iceland smoke tile
 # (staging S7) took 26.6 minutes for 239613 ATL11 points, and it is close to
@@ -237,6 +237,7 @@ scripts/maap/collect_AA_queue.py AA_xo_check_jobs.csv
 # Along-track counts unchanged, and N_ATL11 rose by exactly N_XO on both.
 # So 3b's cost numbers (AA_cost_results.csv) are pre-crossover and low --
 # most of all near the pole; rerun the transect before sizing S6.
+# RERUN 2026-09-11 (below); the file now holds the post-crossover numbers.
 #
 # EXPECT IT TO COST MORE THAN THE PRE-FIX RUN.  44km_E220_N20 was the most
 # expensive tile in the whole transect at 132.5 min and 20.9 GiB on a 32 GiB
@@ -263,6 +264,35 @@ scripts/maap/collect_AA_queue.py ~/ATL14_processing/maap_ledgers/AA_transect_ab8
 # build_* (howto_MAAP_ogc O11, O12a): the collector's commit column should
 # read ab84687 on every row, and this is the first check of that.  Its rows
 # REPLACE AA_cost_results.csv; do not mix the two (see above).
+#
+# RESULT, all 17 SUCCESSFUL by 20:28 UTC (~4.6 h after submission).  Now in
+# scripts/maap/AA_cost_results.csv, same columns as before plus n_xo and
+# build; the pre-crossover table is in git at cbb4cfc.
+#   - EVERY TILE RAN ab84687, by the log's BUILD_ID line AND by the tile's
+#     /meta build_commit and errors_build_commit -- the first check of
+#     howto_MAAP_ogc O11/O12a on real tiles.  (E100_N20 wrote no tile.)
+#   - THE WHOLE TRANSECT RAN, tide tiles included.  The first transect
+#     collected only one of the six; now all six solved, and the logged
+#     "mean tide adjustment scale" tracks each tile's floating fraction:
+#     0.980/0.995/0.995 on the three floating tiles (tide_frac 1.0), and
+#     0.25/0.31/0.56 on the grounding-line tiles (tide_frac 0.32/0.44/0.67).
+#   - E100_N20, inside the pole hole: skipped cleanly in 8 s -- the empty-
+#     tile fix works in production.
+#   - CROSSOVERS MATTER ONLY NEAR THE POLE.  N_XO/N_AT: 18% at E220_N20,
+#     4.2% at E300_N20, 1.3% and 2.7% at E420 (44 and 60 km), 0.9% at E620,
+#     under 0.3% beyond, 0.03% at the coast, ~0.1% on the tide tiles.
+#     E220_N20 and E300_N20 reproduce O8's counts exactly.
+#   - MEMORY: worst 21.47 GiB (E220_N20, was 20.93); every other tile
+#     <= 18.92.  Every tile measured fits the 32 GiB queue with >= 1/3
+#     headroom; none needs -64gb.
+#   - TIME: worst 148 min fit+error (E220_N20, 8 threads; was 132.5); the
+#     six tide tiles 47-57 min; median fit+error 0.88 h over the 16 tiles
+#     with data (was 1.02 h over 11).  DO NOT READ THAT AS A SPEED-UP: the mix
+#     of tiles differs, 13 of 16 workers had 4 threads where the first run
+#     had mostly 8, and identical inputs vary by ~20% between workers
+#     (E220_N20 took 11032 s in O8 and 8909 s here).  Same-thread pairs:
+#     E900 (8/8) unchanged, E1220 and E1620 (4/4) +2-5%, E620 (4/4) +16%,
+#     E220 (8/8) +12%.  Roughly an hour per tile, as before.
 #
 # The collector joins each job's status to the peak RSS and elapsed time the
 # job reports about ITSELF (scripts/run_with_rusage.py, one line per fit /
