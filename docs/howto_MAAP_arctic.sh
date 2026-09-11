@@ -13,7 +13,7 @@
 # READ docs/howto_MAAP_GL.sh FIRST.  GL is the reference workflow; this file
 # marks only what the arctic regions do differently.  Same tags:
 #   [ADE] / [DPS]   [OK] [UNTESTED] [NEEDS CODE: x]
-# Steps are numbered 1..11.
+# Steps are numbered 1..12.
 #
 # Prerequisite: docs/howto_MAAP_staging.sh S1-S6; step 5 is gated on S7.
 #
@@ -253,3 +253,12 @@ bash scripts/maap/run_arctic_to_nc.sh   default_args/latest_release.txt \
 # monthly: the same four with default_args/monthly.txt.  The run_arctic_*.sh
 # scripts already derive hemi_suffix="_monthly" by grepping the period file,
 # so that part needs no change (Q17).
+
+
+# ===========================================================================
+# 12. [ADE] [SUGGESTION, NO SOFTWARE]  Annotate the run's build history.
+# ===========================================================================
+# The run's last step, quarterly or monthly: the git history across the
+# builds its tiles ran, annotated with what changed and which tiles were
+# rerun on which build.  The procedure is howto_MAAP_ogc O12b; it is not
+# repeated here.

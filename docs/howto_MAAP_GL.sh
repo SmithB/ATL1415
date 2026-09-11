@@ -15,7 +15,7 @@
 #   [OK]            expected to work as written; the pieces exist
 #   [UNTESTED]      the pieces exist but this command has not been run on MAAP
 #   [NEEDS CODE: x] blocked -- x does not exist yet
-# and numbered 1..12 so steps can be referred to ("GL step 5") from
+# and numbered 1..13 so steps can be referred to ("GL step 5") from
 # docs/Transition_to_maap.md and from the other MAAP howtos.
 #
 # Prerequisite: docs/howto_MAAP_staging.sh S1-S6.  Nothing below works until
@@ -244,3 +244,12 @@ region_dir_m=/home/jovyan/ATL14_processing/rel006/north_monthly/GL
 setup_ATL1415_region.py default_args/MAAP_dps.txt default_args/latest_release.txt \
     default_args/GL_latest.txt default_args/monthly.txt --Hemisphere=1 \
     --ATL14_reference_file <the rel006 quarterly ATL14_GL netCDF>
+
+
+# ===========================================================================
+# 13. [ADE] [SUGGESTION, NO SOFTWARE]  Annotate the run's build history.
+# ===========================================================================
+# The run's last step, quarterly or monthly: the git history across the
+# builds its tiles ran, annotated with what changed and which tiles were
+# rerun on which build.  The procedure is howto_MAAP_ogc O12b; it is not
+# repeated here.

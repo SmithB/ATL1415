@@ -15,7 +15,7 @@
 # the parts that are identical.  Tags and numbering follow the same scheme:
 #   [ADE] / [DPS]   where it runs
 #   [OK] [UNTESTED] [NEEDS CODE: x]
-# Steps are numbered 1..14.
+# Steps are numbered 1..15.
 #
 # Prerequisite: docs/howto_MAAP_staging.sh S1-S6; step 6 is gated on S7.
 #
@@ -269,8 +269,8 @@ scripts/maap/collect_AA_queue.py AA_queue_jobs.csv
 # Read it with
 scripts/maap/collect_AA_queue.py ~/ATL14_processing/maap_ledgers/AA_transect_ab84687_jobs.csv
 # First run on a build whose tiles print their BUILD_ID and write /meta
-# build_* (howto_MAAP_ogc O11 option 1, O12a), so its commit column should
-# read ab84687 on every row -- anything else is a stale worker.  Its rows
+# build_* (howto_MAAP_ogc O11, O12a): the collector's commit column should
+# read ab84687 on every row, and this is the first check of that.  Its rows
 # REPLACE AA_cost_results.csv; do not mix the two (see above).
 #
 # The collector joins each job's status to the peak RSS and elapsed time the
@@ -450,3 +450,12 @@ bash scripts/maap/run_antarctic_tonc.sh default_args/latest_release.txt \
 # type=path_or_uri with no action='append' (ATL11_to_ATL15.py:987), so a second
 # occurrence overwrites the first.  Either the message or the argument is
 # wrong.  Decide which when AA monthly is picked up.
+
+
+# ===========================================================================
+# 15. [ADE] [SUGGESTION, NO SOFTWARE]  Annotate the run's build history.
+# ===========================================================================
+# The run's last step, quarterly or monthly: the git history across the
+# builds its tiles ran, annotated with what changed and which tiles were
+# rerun on which build.  The procedure is howto_MAAP_ogc O12b; it is not
+# repeated here.

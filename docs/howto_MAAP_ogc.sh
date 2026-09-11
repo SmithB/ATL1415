@@ -137,8 +137,7 @@
 #     `aws s3 cp`, so the answer does not matter.
 #
 # QB. [ANSWERED 2026-09-10 by O6 run 2: YES, the rebuild of on_s3 ran the
-#     new commit.  BUT see O11: a worker's image cache can still serve an
-#     older build of the same tag.]  Does a SECOND build of the same algorithm_version produce a
+#     new commit, and again at run 3.  O11 closes the rest.]  Does a SECOND build of the same algorithm_version produce a
 #     fresh image?  That is the bug that started today (8aad07d); nothing
 #     says the OGC path is immune to it.  The build stamp answers it with one
 #     job, and s:commitHash (F10) answers it with none.
@@ -411,25 +410,15 @@
 #     -- _stdout.txt, _stderr.txt, and the output/ contents at the top
 #     level (build_id.txt beside them).  QD is closed.
 #   - QB is answered: a SECOND build of on_s3 ran the NEW code.
-#   - BUT NO IMAGE PULL WAS LOGGED -- see O11.  Run 1's log showed "No such
-#     object" and a pull; run 2's shows neither, and the runner invokes
-#     cwltool without --force-docker-pull.  The worker ran an image it
-#     already held under this tag.  It was the new one -- the stamp says so
-#     -- but nothing guarantees that on another worker.
-#     CORRECTED BY RUN 3: "no pull logged" does NOT show a cached image.
+#   - No image pull was logged (run 1's was).  Not a stale image -- see run 3.
 # RUN 3, 2026-09-11, after Ben re-registered at ab84687 (built 15:01:35-
 # 15:04:35, process modified 15:08:55, processID STILL 64) -- job c0232572
 # on -32gb: submitted 15:40:44, running 15:42:45, successful 15:44:16.
 #   - VERDICT: MATCH -- stamp, CWL s:commitHash and origin/on_s3 are all
 #     ab84687; clean tree; maap_py=5.1.0, maap_pgt=set.
-#   - AGAIN NO PULL IN EITHER LOG, and _stdout.txt is only the runner's CWL
-#     download and input list.  Yet the job ran ab84687, built 38 minutes
-#     earlier, which NO earlier job had run -- so this worker cannot have had
-#     it cached from a job.  The image reached it by some route that leaves no
-#     line in the job's logs.  The inference in run 2 ("no pull, so it was
-#     cached") does not hold.  O11's risk is NOT disproven by this -- it
-#     just has no observed instance.  What does detect it is the per-tile
-#     build line.
+#   - Again no pull in either log, though no earlier job had run this build:
+#     the image reaches a worker by a route the job logs do not show, so a
+#     missing pull line says nothing about staleness.  Nothing to act on (O11).
 
 
 # ===========================================================================
@@ -466,11 +455,12 @@
 #   dry-run showed queue=AA_xo_check_jobs.csv, args=maap-dps-worker-32gb.
 #   Both commands fixed; the script now refuses that arrangement (exit 2).
 #   RUN FOR REAL at O8: both submit_job calls accepted, job ids in the ledger.
-#   AND (O11 option 1): a per-tile commit column, from the BUILD_ID line
-#   run.sh now prints in every tile job, with a warning when a ledger mixes
-#   builds or a worker lacked MAAP_PGT.  Tested: mocked ledger (mixed builds,
-#   MAAP_PGT unset, an unstamped job) raises both warnings; the real legacy
-#   ledger still gives the same numbers, commit '-', no warnings.
+#   AND (O11): a per-tile commit column, from the BUILD_ID line run.sh now
+#   prints in every tile job, then a list of the builds the ledger's tiles
+#   ran, and a warning when a worker lacked MAAP_PGT.  (Until 2026-09-11 it
+#   also warned on mixed builds; see O11, O12b.)  Tested: mocked ledger (two
+#   builds, MAAP_PGT unset, an unstamped job) lists both builds and warns
+#   once; the real O8 ledger gives the same numbers, commit '-', no list.
 
 
 # ===========================================================================
@@ -486,7 +476,7 @@
 # the checkout on purpose: an untracked file there makes
 # register_algorithm.py refuse.  Read it with
 #   scripts/maap/collect_AA_queue.py ~/ATL14_processing/maap_ledgers/AA_xo_check_jobs.csv
-# These two were built before per-tile stamping (O11 option 1), so their
+# These two were built before per-tile stamping (O11), so their
 # commit column reads '-'.  A cached image cannot fake this test: every
 # image ever built on this system (d401699, 8935494) has the crossover fix.
 # PRE-FIX BASELINE, from the collector: E220_N20 N_AT=935506 N_XO=0;
@@ -527,57 +517,42 @@
 
 
 # ===========================================================================
-# O11. [REQUIRED BEFORE PRODUCTION -- NEEDS CODE + A DECISION]  An immutable
-#      image tag per build.   (Ben, 2026-09-10: "flag option 2 as needed
-#      before production")
+# O11. [RESOLVED 2026-09-11 (Ben)]  Stale images: record the build, audit later.
 # ===========================================================================
-# THE RISK, verified 2026-09-10 (O6 run 2): MAAP's runner calls cwltool
-# WITHOUT --force-docker-pull, and cwltool uses any image a worker already
-# holds under the requested tag.  (That run 2 itself RAN a cached image was
-# an inference from a missing pull line, and O6 run 3 shows that inference
-# is unsafe.  The mechanism stands; no instance of it has been observed.)  The image tag is algorithm_version --
-# on_s3 -- which EVERY rebuild reuses.  A worker that ran an earlier build
-# of on_s3 and has it cached will run that older code for a job submitted
-# after a rebuild, silently.  This is a plausible mechanism for the
-# 2026-09-09 stale-image incident, and a build_id job only vouches for the
-# one worker it lands on.
+# Ben, 2026-09-11: once the ADE moved to maap-py 5 (the OGC path), workers
+# stopped running stale images, and "I would consider the problem resolved if
+# each job run by each worker records the git tag for its build, so that
+# problems can be audited after the fact."  So no prevention: no per-build
+# image tag, no request to MAAP for --force-docker-pull.  (Both were drafted
+# here 2026-09-10; git has them, at c645cc3.)
 #
-# DONE NOW -- detection (option 1, Ben's choice): every tile job prints
-# run.sh's one-line BUILD_ID summary at the top of its log, and
-# collect_AA_queue.py reports each tile's commit and WARNS when a ledger's
-# tiles ran more than one build.  That catches it after the fact; it does
-# not prevent it.
-#
-# REQUIRED BEFORE PRODUCTION -- prevention (option 2): make the tag change
-# with every build, so no cache can hold a stale image under it.
-# RECOMMEND: a git tag per build, e.g. on_s3-8935494, as algorithm_version
-# (8aad07d named this the durable fix after the on_s3_v2 episode).  What it
-# touches: algorithm_config.yml (the version), register_algorithm.py (create
-# and push the tag, or refuse without one), and nothing that reads the
-# version from the config -- check_build_id.py and submit_AA_queue.py
-# already do.  Each tagged build becomes its own process VERSION, so old
-# versions accumulate in the process list and want deleting
-# (delete_algorithm) now and then.
-# ALTERNATIVE or COMPLEMENT, needs MAAP: run cwltool with
-# --force-docker-pull, or generate dockerPull pinned by digest
-# (image@sha256:...).  Either closes it platform-side for every user.
+# THE RECORD, every item in the image since ab84687:
+#   - every job's log starts with run.sh's BUILD_ID line -- commit, build
+#     time, algorithm_version, maap_pgt;
+#   - every tile's /meta carries build_commit / build_version /
+#     build_completed, and errors_build_* for the error step (O12a) -- the
+#     copy that outlives the logs;
+#   - collect_AA_queue.py prints each tile's commit and lists the builds a
+#     ledger's tiles ran.  It does not warn on a mix: a run that reruns
+#     patched tiles mixes builds on purpose, and O12b explains the mix.
+# A commit, not a tag, names the build: on_s3 is a branch every build reuses,
+# and the build time separates two builds of one commit.
+# First checked on real tile jobs when howto_MAAP_AA 3b lands.
 
 
 # ===========================================================================
 # O12. [a: OK LOCALLY, IN THE IMAGE SINCE ab84687 (O6 run 3) -- first
 #      checked on a real tile when the transect (howto_MAAP_AA 3b) lands;
-#      b: OK -- 2026-09-10.
-#      Written first, as a plan, then built]  Tiles record their
-#      build; a run's notes say which build changes are intended.
-#      (Ben, 2026-09-10 -- "Build in tile + run notes file")
+#      b: A SUGGESTION, NO SOFTWARE -- revised 2026-09-11]  Tiles record
+#      their build; a run ends with an annotated build history.
 # ===========================================================================
 # THE SCENARIO, Ben's: a full Antarctic/Greenland/Arctic RUN is under way, a
 # bug turns up that affects a few tiles, the bug is patched, those tiles are
 # rerun -- and the thousands it did not affect are kept.  From then on the
-# run's tiles come from two builds ON PURPOSE.  O11's detection would flag
-# that as a stale-worker warning every time; it needs a way to be told.
+# run's tiles come from two builds ON PURPOSE, and someone auditing the run
+# later needs to know why.
 #
-# O12a. [NEEDS CODE: run.sh, ATL11_to_ATL15.py]  THE TILE KNOWS ITS BUILD.
+# O12a. [OK LOCALLY; IN THE IMAGE SINCE ab84687]  THE TILE KNOWS ITS BUILD.
 #   run.sh exports the stamp's commit, algorithm_version and build_completed
 #   as ATL1415_BUILD_COMMIT / _VERSION / _COMPLETED; save_fit_to_file writes
 #   them as /meta attributes build_commit, build_version, build_completed
@@ -586,7 +561,7 @@
 #   so a patch that reruns only the error step shows up too.  Unset
 #   variables (discover, a local run) mean absent attributes, nothing else.
 #   WHY IN THE FILE: job logs are not forever, and the mosaic step reads
-#   tiles, not logs.  Needs a rebuild to take effect.
+#   tiles, not logs.
 #   DONE: ATL11_to_ATL15.write_build_provenance(), called from both writers;
 #   tests/test_build_provenance.py (4 tests: all fields, the errors_ prefix,
 #   unset -> absent, empty -> absent).  With the solver stubbed, the three
@@ -594,28 +569,25 @@
 #   through (checked).  NOTE: h5py 3.16 returns these ascii attributes as
 #   str, as it already does input_files.
 #
-# O12b. [NEEDS CODE: collect_AA_queue.py]  run_notes.txt, PLAIN TEXT, FILLED
-#   IN LATER.  One file per run, beside its args files on the bucket --
-#   e.g. s3://.../run_args/rel006/south/AA/run_notes.txt -- one line per
-#   intended build change:
-#       # from          to             note (free text to the end of the line)
-#       on_s3-8935494   on_s3-3f2c1a7  fixes the tide-mask edge bug; only the
-#                                      grounding-line tiles were rerun
-#   A build is named by its algorithm_version or by a commit prefix of 7+
-#   characters.  The collector finds the file from the ledger's args_file
-#   column (or --notes).  Builds linked by notes -- directly or in a chain
-#   -- are reported as INTENDED, with the notes; anything unlinked still
-#   WARNS, and the warning prints the exact line that would declare it.
-#   The file is edited on the bucket, not in git, so writing a note never
-#   blocks register_algorithm.py.
-#   DONE, with one guard added while building it: a name matching MORE THAN
-#   ONE of the ledger's builds is IGNORED as ambiguous.  Until O11, every
-#   build's version is `on_s3`, and a note naming it would otherwise link --
-#   and excuse -- every build, a real stale worker included; so name builds
-#   by commit prefix until then.  Tested: no notes (warns, prints the line
-#   to add), declared by commit prefix, a chain of three, a partial chain
-#   (still warns about the rest), and the ambiguous name.  The real legacy
-#   ledger's output is unchanged.
+# O12b. [SUGGESTION, NO SOFTWARE]  THE RUN'S LAST STEP: AN ANNOTATED BUILD
+#   HISTORY.  Ben, 2026-09-11: "generate a git history for the branch
+#   corresponding to the run and annotate it to explain what changes happened
+#   during the run.  No software is needed to do this."  Exacting by hand and
+#   quick for Claude, so ask Claude to draft it and review the draft:
+#     1. The builds the run used: the collector's "Builds that ran these
+#        tiles" for each of the run's ledgers, or build_commit /
+#        errors_build_commit in the tiles' /meta.
+#     2. The branch's history across them, oldest build to newest:
+git -C ~/git_repos/ATL1415 log --reverse --date=short \
+    --format='%h %ad %s' <oldest build>^..<newest build>
+#     3. Annotate it: for each commit, what changed and whether it touches
+#        the solve; for each build, which tiles ran on it and why they were
+#        rerun.
+#     4. Keep it with the run -- e.g. build_history.txt beside the run's args
+#        files on the bucket, so writing it never blocks register_algorithm.py.
+#   It replaces run_notes.txt and the collector code that read it (built
+#   2026-09-10 in 78ed7c3, removed 2026-09-11), which asked for a line per
+#   build change DURING the run.
 #
-# LATER, not now: the mosaic step reading /meta build_* and the same notes
-# file, so a released mosaic can list the builds inside it.
+# LATER, not now: the mosaic step reading /meta build_*, so a released mosaic
+# can list the builds inside it beside the annotated history.

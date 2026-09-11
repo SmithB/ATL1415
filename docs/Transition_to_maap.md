@@ -1294,13 +1294,10 @@ Listed in the order they block the sequence above.
     NOTE, a property worth relying on: every image built from this commit on carries a
     stamp, so an image with NO stamp is by itself proof of a stale container.
 
-[ ] REQUIRED BEFORE PRODUCTION: AN IMMUTABLE IMAGE TAG PER BUILD.  FLAGGED 2026-09-10 (Ben).
-    FINDING (howto_MAAP_ogc O6 run 2): MAAP's runner calls cwltool without
-    --force-docker-pull, so a worker reuses whatever image it holds under the tag -- and
-    every rebuild reuses the tag `on_s3`.  A worker with an older build cached runs old
-    code, silently.  DETECTION IS DONE: every tile logs its build; collect_AA_queue.py
-    reports it per tile and warns on mixed builds.  PREVENTION IS NOT: the plan, and the
-    MAAP-side alternative, are howto_MAAP_ogc O11.
+[x] STALE IMAGES: RESOLVED 2026-09-11 (Ben).  Workers stopped running stale images once the
+    ADE moved to maap-py 5; what remains is an audit trail.  Every job logs its build and
+    every tile records it in /meta, and a run ends with an annotated git history of the
+    builds it used.  No per-build image tag.  howto_MAAP_ogc O11 and O12.
 
 [ ] MOVE TO MAAP'S OGC/CWL ALGORITHM SYSTEM.  PLANNED 2026-09-10, TENTATIVE, NO CODE YET.
     THE PLAN IS docs/howto_MAAP_ogc.sh (steps O1-O10, findings F1-F11, questions QA-QF);

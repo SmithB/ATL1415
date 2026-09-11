@@ -331,15 +331,10 @@ echo "  threads     : ${threads}"
 echo "  conda env   : ${env_name}"
 echo "  working dir : ${PWD}"
 echo "=========================================================="
-# EVERY TILE CERTIFIES ITS OWN BUILD (Ben, 2026-09-10, "option 1").  MAAP's
-# runner calls cwltool without --force-docker-pull, so a worker that already
-# holds an image under this tag runs THAT one -- the 2026-09-10 build_id job
-# (f537a824) logged no pull at all.  A worker still holding an older build of
-# the same tag would run old code, and a build_id job only vouches for the
-# worker it lands on.  So each job says which build produced it, and
-# collect_AA_queue.py reports it per tile.  maap_py=unchecked: reading it
-# costs a conda start, and the build_id job reports it.  The durable fix is an
-# immutable tag per build -- howto_MAAP_ogc O11, required before production.
+# EVERY TILE RECORDS ITS OWN BUILD, so a run can be audited after the fact
+# (howto_MAAP_ogc O11): a build_id job only vouches for the worker it lands
+# on.  collect_AA_queue.py reports it per tile.  maap_py=unchecked: reading it
+# costs a conda start, and the build_id job reports it.
 build_id_summary unchecked
 echo "=========================================================="
 # ...and hands the same facts to the solver, which writes them into the tile's
