@@ -263,6 +263,52 @@ EOF
 # measured fits 32 GiB (worst 21.5 GiB, at the pole-hole edge); roughly an
 # hour per tile, the worst 2.5 h; and -32gb workers come with 4 OR 8
 # threads, unannounced, which moves a tile's time by tens of percent.
+#
+# HOW BIG A RUN IS -- A ROUGH ESTIMATE, 2026-09-11 (Ben asked for rough, low
+# effort).  Worker-hours are fit + error, the prelim step only:
+#   Antarctica   9143 jobs  (8725 at 60 km, 418 at 44 km)   ~8,600 h
+#   Greenland    1486 jobs  (60 km)                          ~1,260 h
+# THE MATCHED STEP IS NOT MEASURED.  If it costs about what prelim does, a
+# full run is roughly double: ~17,000 h AA, ~2,500 h GL.  Not counted: queue
+# wait, image pulls, and the ADE-side 200 km / mosaic / netCDF steps.
+# At the public ~10 jobs/hr, AA's prelim jobs alone take ~38 days just to
+# submit -- which is the case for this queue.
+# INDICATIVE $ ONLY, unverified: at ~$0.25-0.40 per worker-hour (AWS
+# on-demand list prices for 32 GB instances, from memory; how MAAP bills is
+# not known), AA prelim ~$2-3.5k, GL ~$0.3-0.5k.
+#
+# HOW IT WAS MADE, so it can be redone:
+#   - area: band 1 (the first timeslice) of each ice mask at 4 km, as ice
+#     fraction --
+#       gdal_translate -b 1 -ot Float32 -tr 4000 4000 -r average \
+#         /vsis3/maap-ops-workspace/ben_smith/ATL1415/masks/Antarctic/AntarcticIceMask_2018.00_2026.25_240m_v4.1.tif AA_ice_4km.tif
+#     and the same for Arctic/GreenlandIceMask_2018.1_2026.0_100m_v4.1.tif.
+#     (-r max is silently unsupported for this read and falls back to
+#     nearest.)
+#   - tiles: every centre on the 40 km grid (odd multiples of 20 km) whose
+#     60 km window -- 44 km in AA's south half, max|xy| <= 440 km -- holds
+#     any ice.  AA's count agrees with count_AA_tiles.py's 9220.
+#   - cost per tile: fit + error hours interpolated from the transect by
+#     DISTANCE TO THE NEAREST POLE (south for AA, north for GL, polar
+#     stereographic radius), held constant past its ends.  60 km: 1.9 h at
+#     420 km, 1.5 h at 620, 1.0 h at 900, then a flat ~0.8-0.9 h out to
+#     2420 km.  44 km: 2.5 h at the pole-hole edge (221 km), 1.3 h at 301,
+#     0.7 h at 420.
+# WHERE THE HOURS ARE: spread evenly.  AA gives ~900-1,070 h to every 250 km
+# band from 750 to 2250 km; everything within 500 km of the pole is only
+# ~750 h, because the expensive tiles are few.
+# WHAT MAKES IT ROUGH:
+#   - ~20% run-to-run noise between workers, and the 4/8-thread lottery.
+#   - GL runs to 3341 km, and 23% of its tiles lie past the transect's
+#     2420 km, priced at 0.77 h.  The curve is flat there -- the error step is
+#     ~26 min on every tile -- so the error is small.
+#   - partial-ice tiles are priced as full ones.  Counted tiles average 0.92
+#     ice fraction in AA but 0.76 in GL, so GL is probably a little high.
+#   - memory: nothing measured exceeds 22 GiB, and GL's nearest tile is
+#     668 km from the pole, where AA's 60 km tiles peaked near 16 GiB, so
+#     32 GB should hold.
+#   - the other Arctic regions are not estimated: their masks are .db
+#     vectors and would need rasterizing first.
 
 
 # ===========================================================================
