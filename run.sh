@@ -32,7 +32,7 @@ env_name=$(sed -n 's/^name:[[:space:]]*//p' "${repo_dir}/environment.yml" | head
 # ===========================================================================
 # BUILD ID -- answer "what is actually in this image?" in one job.
 # ===========================================================================
-# DPS clones repository_url at algorithm_version and bakes the result into a
+# A build clones code_repository at algorithm_version and bakes the result into a
 # container, so the working copy in the ADE has nothing to do with what runs on
 # a worker, and no job log has ever said which commit it carries.  That made a
 # stale image indistinguishable from a fix that did not work: on 2026-09-09 an
@@ -41,7 +41,7 @@ env_name=$(sed -n 's/^name:[[:space:]]*//p' "${repo_dir}/environment.yml" | head
 #
 # build-env.sh writes ${repo_dir}/.atl1415_build_id at BUILD time; this prints
 # it and exits 0 without touching input/, the args file or the solver, so a
-# single submitJob is a complete answer and costs a worker a few seconds.
+# single build_id job is a complete answer (scripts/maap/check_build_id.py).
 #
 # Checked BEFORE the non-numeric skip loop below, which would otherwise shift
 # '--build-id' away as a leading non-numeric argument.
@@ -347,7 +347,7 @@ grep -v '^[[:space:]]*$' "$args_file" | sed 's/^/  arg: /'
 echo "=========================================================="
 
 # Every solve is wrapped so the job reports its own peak memory.  DPS will not
-# tell us: getJobMetrics() returns max_mem_usage for a FAILED job but came back
+# tell us: get_job_metrics() returns null memory fields, and on the legacy path it came back
 # an empty dict for the first tile that succeeded (fdc4d767, 2026-09-08), and
 # retrieve_attributes() populated only `status`.  Sizing the production queue
 # needs peak RSS per tile, so the job measures itself.  The wrapper is

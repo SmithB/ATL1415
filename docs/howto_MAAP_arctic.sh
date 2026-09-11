@@ -50,20 +50,13 @@ s3_out=s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/north/$reg
 
 
 # ===========================================================================
-# 0. [ADE] [UNTESTED]  Rebuild the DPS image if any code has changed.
+# 0. [ADE] [OK 2026-09-11]  Rebuild the DPS image if any code has changed.
 # ===========================================================================
-# DPS DOES NOT RUN THIS WORKING COPY.  It clones repository_url at
-# algorithm_version (on_s3) FROM GITHUB at build time and bakes the result into
-# a container, so anything uncommitted, unpushed, or committed since the last
-# build is simply not on the worker -- and nothing in a job log says so.  A
-# stale image fails as a wrong-looking runtime error, not as a version error.
-#
-#   git -C ~/git_repos/ATL1415 status --short                     # nothing uncommitted
-#   git -C ~/git_repos/ATL1415 log --oneline origin/on_s3..on_s3  # empty
-#
-# If either is non-empty, push, then re-register and wait for the build to go
-# green before submitting anything -- staging S5, which carries the rule and
-# the record of the one rebuild this has already forced.
+# DPS DOES NOT RUN THIS WORKING COPY: a build clones on_s3 from GitHub.  Push,
+# register, and check the image -- staging S5 and S5b carry the rule, and
+# howto_MAAP_ogc O3-O6 the detail:
+/srv/conda/envs/notebook/bin/python register_algorithm.py           # refuses unpushed work
+/srv/conda/envs/notebook/bin/python scripts/maap/check_build_id.py  # must say MATCH
 
 
 # ===========================================================================

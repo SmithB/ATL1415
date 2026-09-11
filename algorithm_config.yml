@@ -39,20 +39,11 @@ algorithm_description: >
 #
 # on_s3 ON 2026-09-10, and on_s3_v2 is retired.  That second branch only ever
 # existed to force a fresh container tag, after re-registering on_s3 appeared
-# to reuse an existing image and run stale code; MAAP support says that is
-# not expected behaviour.  Whether the OGC build is immune to it is not yet
-# known (howto_MAAP_ogc QB).  Confirm with ONE job before spending worker
-# hours:
+# to reuse an existing image and run stale code.  It has not recurred on the
+# OGC path (howto_MAAP_ogc QB, O6), and Ben considers it resolved (O11):
+# every job logs the build that ran it, and every tile records it, for audit.
+# After each registration, confirm with ONE job before spending worker hours:
 #     scripts/maap/check_build_id.py
-# If the image comes back stale, do NOT revive on_s3_v2 -- move to an
-# immutable per-build TAG, which is what 8aad07d already identified as the
-# durable fix.
-#
-# REQUIRED BEFORE PRODUCTION (howto_MAAP_ogc O11): that per-build tag.  MAAP's
-# runner reuses a worker's cached image for this tag without re-pulling
-# (verified 2026-09-10), so while every rebuild reuses `on_s3`, a worker can
-# run an older build of it.  Detection is in place -- every tile logs its
-# build, and collect_AA_queue.py flags mixed builds -- but not prevention.
 algorithm_version: on_s3
 code_repository: https://github.com/SmithB/ATL1415.git
 

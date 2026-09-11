@@ -557,7 +557,9 @@ WORK ITEMS.
     the next thing to find out on maap-dps-sandbox -- but there is no longer a named reason
     to expect it to fail, and no reason to read a submit failure as an account problem
     before looking at the job itself.
-[ ] Smoke-test one sandbox DPS job.  THE BUILD IS NO LONGER THE OPEN PART -- the algorithm
+[x] Smoke-test one sandbox DPS job.  DONE 2026-09-08 on the legacy path: the four STILL OPEN
+    questions below are answered in howto_MAAP_staging.sh S7, which also shows the OGC form
+    of the submit call.  (As written before the run:)  THE BUILD IS NO LONGER THE OPEN PART -- the algorithm
     is registered and describeAlgorithm answers 200 (see Registration log).  What remains is
     purely a run-time question, and listJobs() is still empty.
     ANSWERED by the successful build / registration, do not re-ask:
@@ -578,6 +580,9 @@ WORK ITEMS.
     - how long does one prelim tile take, and how much memory does it need?
 
 ## Registration log
+THE LEGACY PATH (/api/mas, maap-py 4.2.0), 2026-09-04..10.  Registrations on the OGC path
+from 2026-09-10 on are recorded in howto_MAAP_ogc.sh O4 and O6, not here.
+
 2026-09-04: ATL1415_tile_solve:on_s3 registered from algorithm_config.yml.
   register_algorithm_from_yaml_file() -> HTTP 200, commit 9a9988fd in
   repo.maap-project.org/root/register-job-hysds-v4, build pipeline 20059, job 21091.
@@ -1037,7 +1042,16 @@ There is no chaining/DAG mechanism -- jobs are independent and couple only throu
       @${args_file}.  The ~90 argparse options never have to become DPS parameters.
       Only the per-job values need flattening: a tile job is (x0, y0, step, args_file),
       i.e. 3 positionals + 1 file input.
+    - OGC PATH, 2026-09-10: still (x0, y0, step, args_file), but all four are STRING inputs
+      bound as options -- run.sh --x0 V --y0 V --step V --args_file V -- and args_file is an
+      s3:// URI that run.sh copies into input/ itself.  The @argsfile idiom is unchanged.
+      howto_MAAP_ogc O1-O2.
 [ X ] define a build command based on maap example repository
+    - OGC PATH, 2026-09-10: build-env.sh and run.sh carried over unchanged in role;
+      algorithm_config.yml was rewritten in the /api/build schema (algorithm_name
+      atl1415_tile_solve, code_repository, base_container_url, ram_min/cores_min, one
+      `inputs` list; the queue moved to submit time), and run.sh gained the option form
+      above.  howto_MAAP_ogc O1-O4.  The notes below describe the LEGACY registration.
     - WRITTEN: `build-env.sh`, `run.sh`, `algorithm_config.yml` at the repo root, modelled on
       MAAP-Project/dps_tutorial (gdal_wrapper) and maap-documentation-examples/gedi-subset.
       No Dockerfile of our own; the base image is chosen by URL.
@@ -1206,8 +1220,9 @@ Listed in the order they block the sequence above.
     1 km decimation on the fly with gdal_translate and caching it.  Cache location, resampling
     rule and band selection are still open -- see Q16, all three of which change the tile set.
 
-[ ] scripts/submit_MAAP_jobs.py and scripts/check_MAAP_jobs.py.  Nothing in the repo
-    talks to maap.submitJob today.  The submitter loops the xy list, applies a rate /
+[ ] scripts/submit_MAAP_jobs.py and scripts/check_MAAP_jobs.py.  THE OGC CALLS EXIST for
+    one region: scripts/maap/submit_AA_queue.py, collect_AA_queue.py and ogc_jobs.py
+    (howto_MAAP_ogc O7) -- build these from them.  The submitter loops the xy list, applies a rate /
     max-in-flight policy (Q11), and writes the ledger; the monitor is the
     slurm_run_status.py analogue (Q10).  This is the biggest new piece and the one that
     makes the howtos executable rather than aspirational.
@@ -1263,9 +1278,13 @@ Listed in the order they block the sequence above.
     howto_MAAP_AA step 3b-i.  E220_N20 is one of them on purpose: it is the tile that gave
     N_XO=0, so the rerun is a before/after on the same tile.  Gated on the build-id check
     below, so the answer cannot be muddied by a stale image a second time.
+    VERIFIED 2026-09-11 (howto_MAAP_ogc O8, build 8935494): E220_N20 N_XO=171488, E300_N20
+    N_XO=52882, along-track counts unchanged.  CROSSOVERS ARE READ ON A MAAP WORKER.
 
-[ ] A STALE IMAGE IS NOW DETECTABLE IN ONE JOB -- run.sh --build-id.  LANDED 2026-09-10,
-    UNTESTED ON DPS.
+[x] A STALE IMAGE IS NOW DETECTABLE IN ONE JOB -- run.sh --build-id.  LANDED 2026-09-10,
+    TESTED ON DPS 2026-09-10/11 (howto_MAAP_ogc O6 runs 1-3; now `--step build_id` on the OGC
+    path, and staging S5b).  The RECOMMEND's per-build tag below is superseded: Ben considers
+    stale images resolved (howto_MAAP_ogc O11, and the item after this one).
     FINDING, from Ben via MAAP support, 2026-09-10: re-registering an algorithm_version
     that had been built before produced a container still running the OLD code, and that
     is NOT expected behaviour.  Ben is now on an updated environment that may resolve it.
@@ -1299,8 +1318,10 @@ Listed in the order they block the sequence above.
     every tile records it in /meta, and a run ends with an annotated git history of the
     builds it used.  No per-build image tag.  howto_MAAP_ogc O11 and O12.
 
-[ ] MOVE TO MAAP'S OGC/CWL ALGORITHM SYSTEM.  PLANNED 2026-09-10, TENTATIVE, NO CODE YET.
-    THE PLAN IS docs/howto_MAAP_ogc.sh (steps O1-O10, findings F1-F11, questions QA-QF);
+[ ] MOVE TO MAAP'S OGC/CWL ALGORITHM SYSTEM.  PLANNED 2026-09-10; DONE THROUGH O9 AS OF
+    2026-09-11 -- registered, deployed, build check MATCH, tiles solved with crossovers.
+    Left: O10, retiring the legacy registrations (Ben; keep them until QC is answered).
+    THE PLAN IS docs/howto_MAAP_ogc.sh (steps O1-O12, findings F1-F11, questions QA-QF);
     it is not repeated here.  In one paragraph: the ADE's maap-py became 5.1.0a2, which
     dropped YAML registration and every legacy job call.  Ben chose to migrate rather than
     stay on the ATL14 env's 4.2.0.  The MAAP-built OGC path takes our model unchanged --
@@ -1331,17 +1352,20 @@ to github and restage the algorithm:
 
     git push origin on_s3
     /srv/conda/envs/notebook/bin/python register_algorithm.py
+    /srv/conda/envs/notebook/bin/python scripts/maap/check_build_id.py
 
-DPS clones repository_url at algorithm_version FROM GITHUB at build time and bakes the result
-into a container, so anything uncommitted, unpushed, or committed since the last build is not
-on the worker -- and no job log says so.  register_algorithm.py refuses to register in that
-state and prints the build URL when it does; maap-py is only in the ADE notebook env, not in
-ATL14.  This is step 0 of each region howto and the rebuild rule in staging S5.  It has
-already bitten once: the 2026-09-04 build predated 0d77630, 1023306 and b293807.
+A build clones code_repository at algorithm_version FROM GITHUB and bakes the result into the
+image, so anything uncommitted, unpushed, or committed since the last build is not on the
+worker.  register_algorithm.py refuses to register in the first two states and prints the
+build pipeline's URL when it does; check_build_id.py then says MATCH if the image is what was
+built.  Every tile job logs its build, so a missed rebuild shows afterwards.  This is step 0
+of each region howto and the rebuild rule in staging S5.  It has already bitten once: the
+2026-09-04 build predated 0d77630, 1023306 and b293807.
 
 
   0. [DONE 2026-09-05] Write the four howtos, tentative and numbered.
-  1. Smoke-test one sandbox DPS job (staging S7).  It settles five things that no amount
+  1. [DONE 2026-09-08, legacy path]
+     Smoke-test one sandbox DPS job (staging S7).  It settles five things that no amount
      of reading can, including whether submitJob works on this account at all, and it is
      what sizes the production queue.        -> unblocks GL step 5, AA 6, arctic 6
   2. make_ATL1415_queue.py cloud fixes + --xy_out, and IMPLEMENT the 1 km mask recipe

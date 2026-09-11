@@ -164,125 +164,61 @@ EOF
 
 
 # ===========================================================================
-# S5. [DONE]  Register the DPS algorithm -- and RE-register after every code change.
+# S5. [OK, ON THE OGC PATH -- first 2026-09-10; latest ab84687, 2026-09-11]
+#     Register the algorithm -- and RE-register after every code change.
 # ===========================================================================
-# >>> SUPERSEDED 2026-09-10 -- see docs/howto_MAAP_ogc.sh. <<<
-# maap-py 5.1.0a2 (ADE notebook env) has no register_algorithm_from_yaml_file
-# and no submitJob; Ben chose to move to MAAP's OGC/CWL system.  What follows
-# is the LEGACY procedure.  O3 has landed (register_algorithm.py now speaks
-# OGC) and ATL14 moved to maap-py 5.1.0, so running it now means the legacy
-# script from git under a throwaway 4.2.0 env -- howto_MAAP_ogc.sh F2.  The
-# statements below about which env has maap-py 4.2.0 were true when written.
-#
-# Use the script, which does the four REPL lines plus the push checks below and
-# prints every URL the server returns, the build log among them:
-#
-#   /srv/conda/envs/notebook/bin/python register_algorithm.py
-#   /srv/conda/envs/notebook/bin/python register_algorithm.py --dry-run   # checks only
-#
-# The notebook env is the one that always has maap-py (/srv/conda/envs/notebook,
-# maap-py 4.2.0), and it is the default interpreter in a fresh ADE terminal.  An
-# ATL14 env built BEFORE 2026-09-08 does not have it, so `conda activate ATL14`
-# -- which every region howto starts with -- shadowed it and broke the script;
-# environment.yml now installs maap-py==4.2.0, so an ATL14 env rebuilt since
-# then works too.  The path above is the one that works either way.  The script
-# says so and exits 1 rather than tracebacking.  A notebook is NOT required:
-# MAAP_API_HOST and MAAP_PGT are set in the ADE environment, so MAAP()
-# authenticates from env with no ~/.maap-py.ini, and a plain python session
-# works.  What the script runs is still just:
-#
-#   from maap.maap import MAAP
-#   maap = MAAP(maap_host='api.maap-project.org')
-#   response = maap.register_algorithm_from_yaml_file('algorithm_config.yml')
-#   response.json()['message']['job_web_url']     # <-- where the build URL is
-#
-# That last line is the one worth having written down: register_algorithm_from_
-# yaml_file() returns a raw requests.Response, and job_web_url is nowhere in
-# maap-py -- it is in the server's JSON, one level down under 'message'.
-#
-# BUT job_web_url IS ONLY THE BUILD LOG (Ben, 2026-09-10): the response carries
-# other URLs beside it.  The script now prints EVERY URL anywhere in the JSON,
-# each labelled with its key path, and marks the build log:
-#
-#   URLs in the registration response (N; all browser-only):
-#     message.job_web_url       https://...   <- build log
-#     message.<other key>       https://...
-#
-# It walks the JSON rather than naming keys, because nothing documents which
-# keys exist.  Which of the others matter is NOT YET KNOWN -- the example above
-# is the format, not a real response.  Record the real key names here after the
-# next registration.
-#
-# 2026-09-04: ATL1415_tile_solve:on_s3 registered, HTTP 200, build pipeline
-# 20059 / job 21091, and describeAlgorithm() answers 200.  Re-register after
-# any change to algorithm_config.yml, build-env.sh, run.sh or environment.yml.
-#
-# Registration makes the signature (x0, y0, step, args_file, queue_name) --
-# positionals first, then the file input, then the queue override.
-#
-# Build logs are BROWSER-ONLY; they are not on this filesystem.  Read them at
-# the URL register_algorithm_from_yaml_file() returns.
+# THE PROCEDURE IS howto_MAAP_ogc.sh O3-O4 and is not repeated here:
+/srv/conda/envs/notebook/bin/python register_algorithm.py
+# then open the first URL it prints (the build pipeline), and go on to S5b.
 #
 # THE REBUILD RULE, which every region howto's step 0 points here for:
-# DPS does not run the ADE working copy.  It clones repository_url at
-# algorithm_version (on_s3) FROM GITHUB at build time and bakes the result into
-# a container.  Anything uncommitted, unpushed, or committed since the last
-# build is NOT on the worker, and no job log will say so -- a stale image
-# surfaces as whatever the missing fix was meant to prevent.  So before any
-# submission, check both:
+# a build clones code_repository at algorithm_version (on_s3) FROM GITHUB and
+# bakes it into the image, so anything uncommitted, unpushed, or committed
+# since the last build is NOT on the worker.  register_algorithm.py enforces
+# the first two -- unless given --force, it refuses while either prints anything:
+#   git -C ~/git_repos/ATL1415 status --short
+#   git -C ~/git_repos/ATL1415 log --oneline origin/on_s3..on_s3
+# The third is yours to remember: re-register after any change to code the
+# worker runs, algorithm_config.yml, build-env.sh, run.sh or environment.yml.
+# A missed rebuild is visible afterwards: every tile job logs the build that
+# ran it, and collect_AA_queue.py shows it per tile (howto_MAAP_ogc O11).
 #
-#   git -C ~/git_repos/ATL1415 status --short                     # nothing uncommitted
-#   git -C ~/git_repos/ATL1415 log --oneline origin/on_s3..on_s3  # empty
-#
-# and if either is non-empty, push and re-register before submitting.
-#
-# 2026-09-08: THIS HAS ALREADY BITTEN ONCE, before a single job was submitted.
-# The 2026-09-04 build predated three commits of fixes that every region needs:
-#   0d77630  as_gdal_path, without which the arctic .db masks do not open
-#   1023306  pyTMD AWS_NO_SIGN_REQUEST, without which EVERY /vsis3 read on the
-#            worker -- mask, geoid, tide mask, in every region -- returns 403
-#   b293807  Q27 W1/W3/W4/W5, the previous-product fixes
-# on_s3 was pushed to b293807 and re-registration submitted 2026-09-08 by Ben;
-# THE BUILD RESULT HAS NOT BEEN SEEN YET, so S7 is still gated on it going
-# green.  Had the smoke test gone against the old image it would have failed on
-# the Iceland mask read and looked exactly like a credentials problem.
-
-# 2026-09-10: THE STALE IMAGE WAS REAL, AND IT IS NOT SUPPOSED TO HAPPEN.
-# Re-registering an algorithm_version that had been built before produced a
-# container still running the OLD code, which is what the on_s3_v2 branch was
-# invented to escape (8aad07d) -- algorithm_version is BOTH the container tag
-# and the git ref, so bumping it forced a fresh tag.  Ben raised it with MAAP
-# support: THE BEHAVIOUR IS NOT EXPECTED, and he is now running in an updated
-# environment that may resolve it.  Two consequences, both landed 2026-09-10:
-#   - algorithm_version is back to on_s3 and on_s3_v2 is retired, so there is
-#     one branch again.  on_s3 is the RIGHT ref to re-test on: it is the tag
-#     that already has an image, so a correct rebuild is real evidence.
-#   - the image can now be asked what it is -- S5b.
+# HISTORY -- the legacy path (/api/mas, maap-py 4.2.0), a record and not a
+# procedure.  The legacy script and config are in git at f3d5049; howto_MAAP_ogc
+# F2 says how to run them if that fallback is ever needed.
+#   2026-09-04  ATL1415_tile_solve:on_s3 registered, build pipeline 20059.
+#   2026-09-08  THE REBUILD RULE BIT, before any job ran: the 09-04 build
+#               predated 0d77630 (as_gdal_path, for the arctic .db masks),
+#               1023306 (pyTMD AWS_NO_SIGN_REQUEST, without which every /vsis3
+#               read on a worker returns 403) and b293807 (Q27 W1/W3/W4/W5).
+#               Against that image the S7 smoke test would have failed on the
+#               Iceland mask and looked exactly like a credentials problem.
+#   2026-09-10  A rebuild of an already-built algorithm_version ran the OLD
+#               code -- the on_s3_v2 episode (8aad07d); MAAP support said that
+#               is not expected.  It has not recurred on the OGC path, and Ben
+#               considers it resolved (howto_MAAP_ogc O11).
+#   2026-09-10  maap-py 5.1.0a2 dropped register_algorithm_from_yaml_file and
+#               every legacy job call; Ben chose to migrate (howto_MAAP_ogc).
 
 
 # ===========================================================================
-# S5b. [READY, UNTESTED]  Verify the image is the commit you registered.
+# S5b. [OK -- howto_MAAP_ogc O6 runs 1-3; MATCH at ab84687, 2026-09-11]
+#      Verify the image is the commit you registered.
 # ===========================================================================
-# >>> check_build_id.py uses submitJob, gone in maap-py 5.x: OGC step O5 ports
-# it.  Until then run it from the ATL14 env against the legacy registration. <<<
-#
-# ONE JOB, a few worker-seconds, and it replaces the guesswork above.  Run it
-# after EVERY register_algorithm.py and before spending worker hours on a run
-# whose results you would otherwise have to throw away.
+# ONE JOB, a few worker-minutes.  Run it after EVERY register_algorithm.py and
+# before spending worker hours on a run.
 /srv/conda/envs/notebook/bin/python scripts/maap/check_build_id.py
 #
-# It submits a single job with step=build_id, waits for it, pulls _stdout.txt
-# off the bucket and compares the commit in the image against what
-# origin/<algorithm_version> points at -- the REMOTE tip, since DPS clones from
-# GitHub and a local-only commit was never a candidate.  Verdicts:
-#
-#   MATCH      the image carries the commit you expected.  Proceed.
-#   MISMATCH   the build cloned something else.  Re-register; if it recurs the
-#              tag is being reused -- do NOT revive on_s3_v2, move to an
-#              immutable per-build TAG (8aad07d names this as the durable fix).
-#   NO STAMP   the image predates the stamp (anything built before 2026-09-10).
-#              Every build from that commit on writes one, so an unstamped
-#              image is ITSELF proof of a stale container.
+# It submits one job with --step build_id to the deployed process, waits,
+# reads the job's report, and compares the commit stamped into the image with
+# the s:commitHash the build service recorded in the process's CWL;
+# origin/on_s3 is printed beside them.  howto_MAAP_ogc O5 describes it in
+# full, and the script's docstring lists the verdicts:
+#   MATCH      the image is what the build recorded, and maap_pgt=set.  Proceed.
+#   MISMATCH   it is not.  Re-register; if it recurs, take it to MAAP support.
+#   NO STAMP   the image predates the build stamp (nothing built since
+#              2026-09-10 lacks one).
+#   NO NSIDC   MAAP_PGT was unset on the worker, so no tile could read ATL11.
 #
 # HOW IT WORKS: build-env.sh writes .atl1415_build_id into the repo at BUILD
 # time -- commit, ref, tree state, algorithm_version, build host, and a
@@ -293,14 +229,12 @@ EOF
 #
 # From a shell, on any checkout or inside a container:
 #     ./run.sh --build-id
-# and as a DPS step, which is what the job above submits:
-#     run.sh <x0> <y0> build_id      # x0/y0 ignored; args_file input unread
-#
-# The args_file is still a REQUIRED DPS input on this algorithm, so the check
-# names the published AA args file; run.sh exits before it ever looks in input/.
-#
-# The greppable line, if you are reading a job log by hand:
-#     aws s3 cp <job output prefix>/_stdout.txt - | grep '^BUILD_ID:'
+# and as the job above runs it (x0, y0 and args_file are required inputs of
+# the process, and ignored):
+#     run.sh --x0 0 --y0 0 --step build_id --args_file <published args file>
+# The report is in the job's _stderr.txt -- on this system _stdout.txt is the
+# CWL runner's own log (howto_MAAP_ogc QD) -- and in output/build_id.txt.  Its
+# one-line summary starts `BUILD_ID:`, and every tile job prints one too.
 
 
 # ===========================================================================
@@ -322,13 +256,35 @@ EOF
 # RAM, walltime per tile), but nothing about S7 produces the queue itself.
 #
 # Ask for: cores / RAM / disk / walltime per queue, and any max-in-flight limit.
-# algorithm_config.yml names -32gb as its default; -32vcpu-64gb is probably the
-# better production target, but NOTHING HAS BEEN MEASURED -- S7 is what measures it.
+# On the OGC path the queue is chosen per job, as submit_job's queue argument;
+# the scripts default to -32gb, and -32vcpu-64gb may be the better production
+# target.  WHAT TO ASK FOR comes from the post-crossover AA transect
+# (howto_MAAP_AA 3b, submitted 2026-09-11); the pre-crossover numbers in
+# AA_cost_results.csv are too low, most of all near the pole.
 
 
 # ===========================================================================
-# S7. [UNTESTED]  Smoke-test ONE sandbox job.   <-- THE GATE ON EVERYTHING ELSE
+# S7. [OK 2026-09-08, ON THE LEGACY PATH -- a record]  Smoke-test ONE job.
 # ===========================================================================
+# >>> A RECORD OF THE LEGACY-PATH SMOKE TEST (maap-py 4.2.0, /api/mas).  Its
+# FINDINGS about the worker stand -- credentials, the symlinked inputs, the
+# sandbox's 600 s limit, exit 143.  Its CALLS do not: submitJob, getJob,
+# getJobResult, getJobMetrics and the queue_name input are gone.  On the OGC
+# path one tile is submitted like this (the call submit_AA_queue.py makes,
+# with the process found by name and version -- howto_MAAP_ogc F9, O5):
+#   import sys; sys.path.insert(0, 'scripts/maap')
+#   from maap.maap import MAAP
+#   from ogc_jobs import find_process, load_config
+#   maap = MAAP(maap_host='api.maap-project.org')
+#   cfg = load_config()
+#   pid = find_process(maap, cfg['algorithm_name'], cfg['algorithm_version'])['processID']
+#   maap.submit_job(pid, {'x0': '1260000', 'y0': '-2620000', 'step': 'prelim',
+#                         'args_file': 's3://maap-ops-workspace/ben_smith/ATL1415/'
+#                                      'run_args/rel006/north/IS/input_args_IS.txt'},
+#                   'maap-dps-worker-32gb', dedup=False, tag='ATL1415_smoke')
+# and its logs are found as in howto_MAAP_ogc QD: our container's output is
+# in _stderr.txt, not _stdout.txt.  The legacy calls below are kept as written. <<<
+#
 # Steps 5-7 of every region howto are unwritable in final form until this has
 # been done once.
 #

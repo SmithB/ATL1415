@@ -33,8 +33,8 @@ no credentials on a worker -- so unset means no tile here can read ATL11.
 VERDICTS (exit status):
   0  MATCH     image == cwl, and maap_pgt=set.  Proceed.
   1  MISMATCH  image != cwl: the image is not what the service built (the
-               2026-09-09 failure).  Do NOT revive on_s3_v2 -- move to an
-               immutable per-build tag (8aad07d).
+               2026-09-09 failure).  Re-register; if it recurs, take it to
+               MAAP support (howto_MAAP_ogc O11).
   1  NO STAMP  the image predates the build stamp, so it is stale by
                definition: every build since 2026-09-10 writes one.
   1  NO NSIDC  maap_pgt=unset, whatever the commits say.
@@ -104,8 +104,8 @@ def verdict(fields, want, origin, image_label='image'):
     elif want and got != want:
         lines.append(f'VERDICT: MISMATCH\n  {image_label:6} {got}\n  built  {want}\n'
                      '  The image is not the commit the build service says it'
-                     ' built -- an image reused under the tag.  Do NOT revive'
-                     ' on_s3_v2; move to an immutable per-build tag (8aad07d).')
+                     ' built -- an image reused under the tag.  Re-register;'
+                     ' if it recurs, take it to MAAP support.')
         status = 1
     elif want:
         lines.append(f'VERDICT: MATCH -- the image is {got}, the commit the build'

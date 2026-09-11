@@ -48,20 +48,13 @@ s3_out=s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/north/GL
 
 
 # ===========================================================================
-# 0. [ADE] [UNTESTED]  Rebuild the DPS image if any code has changed.
+# 0. [ADE] [OK 2026-09-11]  Rebuild the DPS image if any code has changed.
 # ===========================================================================
-# DPS DOES NOT RUN THIS WORKING COPY.  It clones repository_url at
-# algorithm_version (on_s3) FROM GITHUB at build time and bakes the result into
-# a container, so anything uncommitted, unpushed, or committed since the last
-# build is simply not on the worker -- and nothing in a job log says so.  A
-# stale image fails as a wrong-looking runtime error, not as a version error.
-#
-#   git -C ~/git_repos/ATL1415 status --short                     # nothing uncommitted
-#   git -C ~/git_repos/ATL1415 log --oneline origin/on_s3..on_s3  # empty
-#
-# If either is non-empty, push, then re-register and wait for the build to go
-# green before submitting anything -- staging S5, which carries the rule and
-# the record of the one rebuild this has already forced.
+# DPS DOES NOT RUN THIS WORKING COPY: a build clones on_s3 from GitHub.  Push,
+# register, and check the image -- staging S5 and S5b carry the rule, and
+# howto_MAAP_ogc O3-O6 the detail:
+/srv/conda/envs/notebook/bin/python register_algorithm.py           # refuses unpushed work
+/srv/conda/envs/notebook/bin/python scripts/maap/check_build_id.py  # must say MATCH
 
 
 # ===========================================================================
@@ -131,9 +124,13 @@ make_ATL1415_queue.py prelim $region_dir/input_args_GL.txt --xy_out GL_prelim_xy
 # before one has been shown to work.
 #
 # Policy the submitter needs (Q11): --max_in_flight (poll and top up), --rate,
-# and record-and-continue on a submitJob error with the failure in the ledger.
+# and record-and-continue on a submit_job error with the failure in the ledger.
 # No account limits are known; for testing they are not yet a problem.  The
 # ~10 jobs/hr public-queue throttle IS a problem for production -- see S6.
+# THE OGC CALLS ARE ALREADY WRITTEN, for one region: scripts/maap/
+# submit_AA_queue.py (submit_job, dedup=False, a tag per tile, the same
+# ledger columns) and scripts/maap/ogc_jobs.py (process lookup, log reading).
+# Build this submitter from those rather than from scratch (howto_MAAP_ogc O7).
 submit_MAAP_jobs.py --xy_file GL_prelim_xy.txt --step prelim \
     --args_url $s3_run/input_args_GL.txt \
     --out_prefix $s3_out/prelim \

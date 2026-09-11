@@ -30,9 +30,8 @@
 #   a. it is submitted as TWO HALVES on a 400 km line, and stays that way on
 #      DPS (Q7).  The halves differ in tile geometry, not just in extent.
 #   b. the two halves should target DIFFERENT QUEUES (Q22): the near-pole
-#      south tiles are the expensive ones.  This is exactly what the
-#      `queue_name` input on the registered algorithm is for -- a per-job
-#      override, no re-registration.
+#      south tiles are the expensive ones.  On the OGC path the queue is
+#      submit_job's own argument, chosen per job -- no re-registration.
 #   c. between the tile solves and the mosaic there are three extra ADE
 #      stages: 200 km tiles, the four sectors, and per-sector mosaic jobs.
 #   d. it is ~20 GiB of previous product across A1-A4, which is why the
@@ -85,20 +84,13 @@ s3_out_44=s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/south/AA_44k
 
 
 # ===========================================================================
-# 0. [ADE] [UNTESTED]  Rebuild the DPS image if any code has changed.
+# 0. [ADE] [OK 2026-09-11]  Rebuild the DPS image if any code has changed.
 # ===========================================================================
-# DPS DOES NOT RUN THIS WORKING COPY.  It clones repository_url at
-# algorithm_version (on_s3) FROM GITHUB at build time and bakes the result into
-# a container, so anything uncommitted, unpushed, or committed since the last
-# build is simply not on the worker -- and nothing in a job log says so.  A
-# stale image fails as a wrong-looking runtime error, not as a version error.
-#
-#   git -C ~/git_repos/ATL1415 status --short                     # nothing uncommitted
-#   git -C ~/git_repos/ATL1415 log --oneline origin/on_s3..on_s3  # empty
-#
-# If either is non-empty, push, then re-register and wait for the build to go
-# green before submitting anything -- staging S5, which carries the rule and
-# the record of the one rebuild this has already forced.
+# DPS DOES NOT RUN THIS WORKING COPY: a build clones on_s3 from GitHub.  Push,
+# register, and check the image -- staging S5 and S5b carry the rule, and
+# howto_MAAP_ogc O3-O6 the detail:
+/srv/conda/envs/notebook/bin/python register_algorithm.py           # refuses unpushed work
+/srv/conda/envs/notebook/bin/python scripts/maap/check_build_id.py  # must say MATCH
 
 
 # ===========================================================================
@@ -200,8 +192,7 @@ aws s3 cp $region_dir_44/input_args_AA_44km.txt $s3_run/
 # ---------------------------------------------------------------------------
 # 3b-i. [OK, 2026-09-11]  VERIFY THE CROSSOVER READ FIRST, on two tiles, not sixteen.
 # ---------------------------------------------------------------------------
-# >>> BLOCKED 2026-09-10 on docs/howto_MAAP_ogc.sh: submit_AA_queue.py uses
-# submitJob, gone in maap-py 5.x.  This step is OGC step O8. <<<
+# This step is also howto_MAAP_ogc O8, where its full record is.
 #
 # DECIDED 2026-09-10 (Ben): before re-measuring cost, just establish that
 # ATL11XO is read on a worker at all.  Two tiles near the pole hole answer it,
@@ -275,9 +266,9 @@ scripts/maap/collect_AA_queue.py ~/ATL14_processing/maap_ledgers/AA_transect_ab8
 #
 # The collector joins each job's status to the peak RSS and elapsed time the
 # job reports about ITSELF (scripts/run_with_rusage.py, one line per fit /
-# error / matched step), plus N_ATL11 and N_fit parsed from its log.  It does
-# not rely on getJobMetrics, which returned an empty dict for the one job that
-# has succeeded so far.
+# error / matched step), plus N_ATL11 and N_fit parsed from its log.  It uses
+# get_job_metrics only for the wall clock: its machine and memory fields come
+# back null.
 #
 # EXPECT SOME TO FAIL, and that is a result too: a tile that OOMs on
 # maap-dps-worker-32gb has told us that its class needs a bigger queue, which

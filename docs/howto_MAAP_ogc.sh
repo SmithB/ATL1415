@@ -15,7 +15,7 @@
 # the legacy path via the ATL14 env's maap-py 4.2.0, migrate, or both in
 # sequence -- BEN CHOSE TO MIGRATE: "New path, CWL + prebuilt image".
 #
-# Steps are numbered O1..O10 so they can be cited ("OGC step 3").  Status
+# Steps are numbered O1..O12 so they can be cited ("OGC step 3").  Status
 # tags: [OK] done and verified, [UNTESTED] ready but not run, [NEEDS CODE: x].
 # Where each runs: [ADE] this workspace, [DPS] a worker, [BEN] needs you.
 #
@@ -500,11 +500,31 @@
 
 
 # ===========================================================================
-# O9. [NEEDS CODE: docs]  Point everything that described the old path here.
+# O9. [OK, 2026-09-11]  Point everything that described the old path here.
 # ===========================================================================
 # howto_MAAP_staging.sh S5/S5b, howto_MAAP_AA 3b-i, Transition_to_maap.md,
 # and the four region howtos' step 0.  Replace, do not duplicate, so two
 # copies of the procedure cannot drift.
+# DONE.  The rule applied: a PROCEDURE is replaced by the OGC one or a pointer
+# here; a dated RECORD stays as written, marked as the legacy path where it
+# could be mistaken for current.
+#   - staging S5: the two commands, the rebuild rule restated for OGC (and
+#     that register_algorithm.py now enforces the push checks), and the
+#     legacy registrations as a dated history.  S5b: the OGC check_build_id,
+#     its verdicts, and where the report is (_stderr.txt, build_id.txt).
+#   - staging S6: the queue is submit_job's argument; sizing waits on the
+#     post-crossover transect.  S7 kept as the legacy record, with a banner
+#     giving the OGC submit call (checked up to the submit: finds 64).
+#   - step 0 of GL, AA and the Arctic: register, then check_build_id, and a
+#     pointer to S5/S5b.  (Three region howtos have a step 0; the fourth
+#     howto, staging, is S5.)
+#   - AA: the queue_name input, the 3b-i "BLOCKED" banner, getJobMetrics.
+#     GL step 5 points at the OGC calls already written (O7).
+#   - Transition_to_maap.md: the smoke test, crossover, build-id and OGC items
+#     brought up to date; the fromfile and build-command items and the
+#     Registration log marked legacy; the rebuild note restated.
+#   - and the O11 leftovers the sweep found: check_build_id's MISMATCH advice
+#     and algorithm_config.yml's comment no longer ask for a per-build tag.
 
 
 # ===========================================================================
