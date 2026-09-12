@@ -333,7 +333,7 @@ echo "  working dir : ${PWD}"
 echo "=========================================================="
 # EVERY TILE RECORDS ITS OWN BUILD, so a run can be audited after the fact
 # (howto_MAAP_ogc O11): a build_id job only vouches for the worker it lands
-# on.  collect_AA_queue.py reports it per tile.  maap_py=unchecked: reading it
+# on.  collect_jobs.py reports it per tile.  maap_py=unchecked: reading it
 # costs a conda start, and the build_id job reports it.
 build_id_summary unchecked
 echo "=========================================================="

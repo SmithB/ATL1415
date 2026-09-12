@@ -2,6 +2,15 @@
 """
 Status, time, memory, input size and CROSSOVER COUNT for every job in a ledger.
 
+REGION-GENERIC, and named so since 2026-09-12.  It was collect_jobs.py --
+the name was the only AA-specific thing about it; it has always read whatever
+ledger it was handed, and the AA records in howto_MAAP_ogc O7/O8 and
+howto_MAAP_AA were written under the old name and still describe this file.
+
+IT READS ABOUT TILES; IT DOES NOT MOVE THEM.  Copying the solved .h5 files out
+of DPS output and into the region tree is fetch_tiles.py -- its sibling, and
+the other half of what the howtos call "collect" (docs/plan_IS_run.sh QI3).
+
 OGC SYSTEM, since 2026-09-10 (docs/howto_MAAP_ogc.sh O7).  maap-py 5.x
 dropped getJob/getJobResult/getJobMetrics; this uses get_job_status,
 get_job_result and get_job_metrics, and reads the job's logs with
@@ -32,8 +41,10 @@ get_job_metrics() is used only for the wall clock, because its machine and
 memory fields come back null.
 
 Usage:
-  collect_AA_queue.py [ledger.csv]
-      ledger  default AA_queue_jobs.csv, the submitter's default
+  collect_jobs.py <ledger.csv>
+      ledger  the CSV the submitter wrote.  Required: defaulting it invited a
+              run against the wrong region's ledger, which reads as a table of
+              jobs that inexplicably will not advance.
 """
 import csv
 import os
@@ -45,7 +56,10 @@ from maap.maap import MAAP
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ogc_jobs import read_logs  # noqa: E402
 
-LEDGER = sys.argv[1] if len(sys.argv) > 1 else 'AA_queue_jobs.csv'
+if len(sys.argv) != 2 or sys.argv[1].startswith('-'):
+    print(__doc__.strip().rsplit('Usage:', 1)[-1], file=sys.stderr)
+    sys.exit(2)
+LEDGER = sys.argv[1]
 
 N_RE   = re.compile(r'decimate_data: N_target:[^,]+, N=(\d+)')
 XO_RE  = re.compile(r'Decimate_data: N_AT=(\d+), N_XO=(\d+)')

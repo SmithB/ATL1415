@@ -1,6 +1,6 @@
 """
 Shared helpers for the ATL1415 scripts that talk to MAAP's OGC job system:
-check_build_id.py, submit_AA_queue.py and collect_AA_queue.py.
+check_build_id.py, submit_AA_queue.py and collect_jobs.py.
 
 One copy, because each of these facts was learned the hard way and a second
 copy would drift: where a job's log is (_stderr.txt, not _stdout.txt, under
@@ -101,7 +101,7 @@ def normalize_s3(uri):
 
     It arrives as s3://s3-us-west-2.amazonaws.com:80/maap-ops-workspace/... --
     host:port first, bucket second -- and `aws s3 cp` reads the first element
-    after the scheme as the bucket.  Same fix as collect_AA_queue.py.
+    after the scheme as the bucket.  Same fix as collect_jobs.py.
     """
     rest = uri[len('s3://'):]
     head, _, tail = rest.partition('/')

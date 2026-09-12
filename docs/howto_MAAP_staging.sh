@@ -181,7 +181,7 @@ EOF
 # The third is yours to remember: re-register after any change to code the
 # worker runs, algorithm_config.yml, build-env.sh, run.sh or environment.yml.
 # A missed rebuild is visible afterwards: every tile job logs the build that
-# ran it, and collect_AA_queue.py shows it per tile (howto_MAAP_ogc O11).
+# ran it, and collect_jobs.py shows it per tile (howto_MAAP_ogc O11).
 #
 # HISTORY -- the legacy path (/api/mas, maap-py 4.2.0), a record and not a
 # procedure.  The legacy script and config are in git at f3d5049; howto_MAAP_ogc

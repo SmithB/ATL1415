@@ -1221,7 +1221,7 @@ Listed in the order they block the sequence above.
     rule and band selection are still open -- see Q16, all three of which change the tile set.
 
 [ ] scripts/submit_MAAP_jobs.py and scripts/check_MAAP_jobs.py.  THE OGC CALLS EXIST for
-    one region: scripts/maap/submit_AA_queue.py, collect_AA_queue.py and ogc_jobs.py
+    one region: scripts/maap/submit_AA_queue.py, collect_jobs.py and ogc_jobs.py
     (howto_MAAP_ogc O7) -- build these from them.  The submitter loops the xy list, applies a rate /
     max-in-flight policy (Q11), and writes the ledger; the monitor is the
     slurm_run_status.py analogue (Q10).  This is the biggest new piece and the one that

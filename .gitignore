@@ -155,6 +155,10 @@ firn_run*
 
 # region files don't need to go in the archive (these are mostly obsolete, and were mostly for test runs)
 region_files/*
+# ...but a FROZEN TILE LIST is the opposite of obsolete: it is the definition
+# of which tiles a release solved, and it has to be versioned to mean
+# anything (Q6, and docs/plan_IS_run.sh QI1/I1).
+!region_files/*_xy.txt
 
 
 # misc

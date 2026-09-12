@@ -19,7 +19,7 @@ OGC SYSTEM, since 2026-09-10 (docs/howto_MAAP_ogc.sh O7).  maap-py 5.x
 dropped submitJob; this finds the deployed process by name and version and
 submits with submit_job(process_id, inputs, queue, dedup=False, tag=...).
 The inputs are the CWL's -- strings, bound onto run.sh as --x0/--y0/--step/
---args_file -- and the ledger is unchanged, so collect_AA_queue.py reads old
+--args_file -- and the ledger is unchanged, so collect_jobs.py reads old
 and new ledgers alike.
 
 dedup=False, EXPLICITLY, as in check_build_id.py: a tile resubmitted after a

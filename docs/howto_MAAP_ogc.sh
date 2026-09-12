@@ -423,7 +423,17 @@
 
 # ===========================================================================
 # O7. [OK, 2026-09-10 -- all REAL: dry-runs, the collector on 12 legacy
-#     jobs, and the submitter's first submissions (O8)]  submit_AA_queue.py, collect_AA_queue.py   [ADE]
+#     jobs, and the submitter's first submissions (O8)]  submit_AA_queue.py, collect_jobs.py   [ADE]
+# ===========================================================================
+# RENAMED 2026-09-12: collect_AA_queue.py is now scripts/maap/collect_jobs.py.
+# The name was the only AA-specific thing about it -- it has always read
+# whatever ledger it was handed -- and the IS run needs it under a name that
+# does not claim otherwise.  The dated records in this file and in
+# howto_MAAP_AA were written under the old name and describe this same file.
+# Its sibling, NEW the same day, is scripts/maap/fetch_tiles.py: the collector
+# reads the jobs' logs, the fetcher moves the solved .h5 tiles (plan_IS_run.sh
+# QI3).  Both were called "the collector" until then, which is why they are
+# named apart now.
 # ===========================================================================
 # Same two scripts, new calls: submit_job with inputs as a dict and the
 # queue as an argument (F1, F9); the collector reads the log wherever O6
@@ -441,7 +451,7 @@
 #     format unchanged.  --dry-run, run for real: the full transect routes
 #     16 centers to 17 jobs (E420 is in the 360-440 km overlap, both halves),
 #     the O8 pair to two 44 km jobs.
-#   - collect_AA_queue.py: get_job_status / get_job_metrics (wall clock only;
+#   - collect_jobs.py: get_job_status / get_job_metrics (wall clock only;
 #     its machine fields are null) / get_job_result -> read_logs, and a new
 #     N_AT / N_XO pair of columns from the Decimate_data line.
 #   REAL-DATA CHECK: pointed at the twelve legacy transect jobs of 2026-09-09
@@ -475,7 +485,7 @@
 # Ledger: ~/ATL14_processing/maap_ledgers/AA_xo_check_jobs.csv -- OUTSIDE
 # the checkout on purpose: an untracked file there makes
 # register_algorithm.py refuse.  Read it with
-#   scripts/maap/collect_AA_queue.py ~/ATL14_processing/maap_ledgers/AA_xo_check_jobs.csv
+#   scripts/maap/collect_jobs.py ~/ATL14_processing/maap_ledgers/AA_xo_check_jobs.csv
 # These two were built before per-tile stamping (O11), so their
 # commit column reads '-'.  A cached image cannot fake this test: every
 # image ever built on this system (d401699, 8935494) has the crossover fix.
@@ -557,7 +567,7 @@
 #   - every tile's /meta carries build_commit / build_version /
 #     build_completed, and errors_build_* for the error step (O12a) -- the
 #     copy that outlives the logs;
-#   - collect_AA_queue.py prints each tile's commit and lists the builds a
+#   - collect_jobs.py prints each tile's commit and lists the builds a
 #     ledger's tiles ran.  It does not warn on a mix: a run that reruns
 #     patched tiles mixes builds on purpose, and O12b explains the mix.
 # A commit, not a tag, names the build: on_s3 is a branch every build reuses,

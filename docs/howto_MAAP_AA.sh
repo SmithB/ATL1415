@@ -180,7 +180,7 @@ aws s3 cp $region_dir_44/input_args_AA_44km.txt $s3_run/
 #     RSS and N all rise relative to anything measured before the rebuild.  Do
 #     not mix pre- and post-rebuild rows in the same table.
 # It is also the cheapest confirmation that the fix works on a worker rather
-# than only against CMR: N_XO must now be non-zero.  collect_AA_queue.py
+# than only against CMR: N_XO must now be non-zero.  collect_jobs.py
 # reports it as a column since 2026-09-10 (from the solve's
 # "Decimate_data: N_AT=..., N_XO=..." line), so no hand-run grep is needed.
 # THE BASELINE IS ZERO EVERYWHERE: the ported collector, run over all twelve
@@ -227,7 +227,7 @@ scripts/maap/submit_AA_queue.py scripts/maap/AA_xo_check_xy.txt \
 # ONLY -- two centers, two jobs, not four.
 #
 # WHAT SAYS IT WORKED:
-scripts/maap/collect_AA_queue.py AA_xo_check_jobs.csv
+scripts/maap/collect_jobs.py AA_xo_check_jobs.csv
 # N_XO > 0 on both.  For E220_N20 compare against N_AT=935506, N_XO=0; for
 # E300_N20, N_AT=1256488, N_XO=0 -- both read back 2026-09-10 from the
 # pre-fix jobs by the collector itself.
@@ -251,7 +251,7 @@ scripts/maap/collect_AA_queue.py AA_xo_check_jobs.csv
 scripts/maap/submit_AA_queue.py scripts/maap/AA_queue_xy.txt \
     $s3_run/input_args_AA.txt $s3_run/input_args_AA_44km.txt \
     maap-dps-worker-32gb AA_queue_jobs.csv
-scripts/maap/collect_AA_queue.py AA_queue_jobs.csv
+scripts/maap/collect_jobs.py AA_queue_jobs.csv
 #
 # SUBMITTED 2026-09-11 ~15:50 UTC, the POST-CROSSOVER rerun, on build ab84687
 # (MATCH, maap_pgt=set: howto_MAAP_ogc O6 run 3); queue -32gb.  All 17
@@ -259,7 +259,7 @@ scripts/maap/collect_AA_queue.py AA_queue_jobs.csv
 # outside the checkout so it cannot block register_algorithm.py:
 #   ~/ATL14_processing/maap_ledgers/AA_transect_ab84687_jobs.csv
 # Read it with
-scripts/maap/collect_AA_queue.py ~/ATL14_processing/maap_ledgers/AA_transect_ab84687_jobs.csv
+scripts/maap/collect_jobs.py ~/ATL14_processing/maap_ledgers/AA_transect_ab84687_jobs.csv
 # First run on a build whose tiles print their BUILD_ID and write /meta
 # build_* (howto_MAAP_ogc O11, O12a): the collector's commit column should
 # read ab84687 on every row, and this is the first check of that.  Its rows
