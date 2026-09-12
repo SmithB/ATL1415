@@ -134,31 +134,54 @@ cd ~/git_repos/ATL1415
 # its centers come from a 1 km mask that does not exist (Q6/Q16).
 
 
-# I2. [DPS] [NEEDS CODE: scripts/maap/submit_MAAP_jobs.py]  Fan out prelim.
+# I2. [DPS] [READY -- scripts/maap/submit_MAAP_jobs.py, new 2026-09-12]
+#     Fan out prelim.
 # ===========================================================================
-# DECIDED 2026-09-12 (Ben): GENERALIZE NOW, as scripts/maap/submit_MAAP_jobs.py
-# -- one args file, no halves, --step, the ledger format unchanged.  IS is the
-# cheap place to shake it out and GL needs it next.  Built from
-# submit_AA_queue.py, whose OGC calls are proven (O7 dry-runs; O8 and the
-# 17-tile transect really submitted): submit_job(pid, inputs, queue,
-# dedup=False, tag=identifier), process found by name+version every run.
-# WHAT DOES NOT CARRY OVER: halves_for(), which routes every center to AA's
-# 44 km and/or 60 km half, and check_args()'s demand for two args-file URLs.
-# IS has one geometry and one args file.
-# Q11's --max_in_flight / --rate are optional at 29 jobs; GL's thousands need
-# them, so leave the hooks.
+# ONE TILE FIRST.  -16gb is a queue nothing has run on, and algorithm_config's
+# ram_min is 16: O5 notes a floor at or above what a queue offers risks a job
+# that never schedules.  One job says, and costs one job:
+scripts/maap/submit_MAAP_jobs.py --xy_file region_files/IS_prelim_xy.txt \
+    --step prelim --args_url $s3_run/input_args_IS.txt \
+    --queue maap-dps-worker-16gb --limit 1 \
+    --ledger ~/ATL14_processing/maap_ledgers/IS_smoke_jobs.csv
+scripts/maap/collect_jobs.py ~/ATL14_processing/maap_ledgers/IS_smoke_jobs.csv
+# Wait for 'successful'.  If it will not schedule or dies on memory, -32gb is
+# the fallback and nothing else changes.  THEN the other 28:
+scripts/maap/submit_MAAP_jobs.py --xy_file region_files/IS_prelim_xy.txt \
+    --step prelim --args_url $s3_run/input_args_IS.txt \
+    --queue maap-dps-worker-16gb \
+    --ledger ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv
+# (the smoke tile is submitted again as part of the 29; dedup=False, so it
+# really re-runs.  Simpler than excising one line, and it costs ~1 h.)
 #
-# THE QUEUE: maap-dps-worker-16gb, chosen 2026-09-12 (Ben) over the -32gb
-# everything so far has used, because IS tiles are the furthest from the pole
-# yet measured and should be the cheapest.
-# STATEMENT, the risk that goes with it: algorithm_config.yml's ram_min is 16,
-# and O5 notes a floor at or above what a queue offers risks a job that never
-# schedules.  The first job on this queue is what says.
-# RECOMMENDATION: submit ONE tile to -16gb and let it reach 'successful'
-# before fanning out the other 28.  A center in the middle of the region with
-# real data -- 1260000 -2620000 is the smoke tile and is already known good on
-# the mask.  If it will not schedule or runs out of memory, -32gb is the
-# fallback and costs one job, not 29.
+# DECIDED 2026-09-12 (Ben) per QI2: generalize rather than special-case.
+# submit_AA_queue.py STAYS AS IT IS -- it carries Antarctica's two-width
+# routing (60 km north of the 400 km line, 44 km south, deliberately
+# overlapping so a tile in the band is submitted twice), which is real for AA
+# and for nothing else.  The new script is for one geometry and one args file.
+# Shared through ogc_jobs.py, not copied: the process lookup by name+version,
+# submit_job(pid, inputs, queue, dedup=False, tag=...), the ledger columns.
+#
+# WHAT IT REFUSES, and why each one is there:
+#   - an existing ledger, without --replace.  The ledger is the ONLY record of
+#     what was submitted; overwriting it strands the worker-hours it names.
+#   - --step matched without --tile_prefix (I7), and --tile_prefix at all
+#     while algorithm_config.yml does not declare it.  THE SECOND CHECK IS
+#     OFFLINE ON PURPOSE: the first version asked the deployed CWL and treated
+#     an unreadable one as yes, and repo.maap-project.org duly timed out
+#     during testing -- which would have turned the guard into a pass and cost
+#     one failed job per tile.  The config is consulted first and needs no
+#     network; the CWL is then a cross-check that only ever adds a refusal.
+#   - a queue name that is not maap-dps-*, an args_url that is neither an
+#     s3:// URI nor a file, and any xy line that does not parse (an error, not
+#     a skip: a silently dropped line submits a region short by a tile).
+# A submit that fails is RECORDED in the ledger and the run continues (Q11).
+# Rows are flushed as they are written, so an interrupt still leaves a usable
+# ledger.  --rate (default 2 s) and --max_in_flight are there for GL.
+#
+# TESTED 2026-09-12, all against the real deployed process (processID 64):
+# the 29-center dry-run, --limit 1, and every refusal above.  Not yet run for
+# real -- no IS job has been submitted.
 
 
 # I3. [ADE] [READY]  Watch the 29 jobs.   THE COLLECTOR.

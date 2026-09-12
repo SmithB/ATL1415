@@ -1220,7 +1220,20 @@ Listed in the order they block the sequence above.
     1 km decimation on the fly with gdal_translate and caching it.  Cache location, resampling
     rule and band selection are still open -- see Q16, all three of which change the tile set.
 
-[ ] scripts/submit_MAAP_jobs.py and scripts/check_MAAP_jobs.py.  THE OGC CALLS EXIST for
+[ X ] scripts/maap/submit_MAAP_jobs.py DONE 2026-09-12, for the IS run
+    (docs/plan_IS_run.sh I2, QI2): one args file, no halves, --step, the ledger
+    columns unchanged, Q11's --rate and --max_in_flight present.  Built from
+    submit_AA_queue.py, which STAYS as the AA-only two-width submitter.  Tested
+    against the deployed process; not yet run for real.
+    THE MONITOR IS NOT SEPARATE after all: scripts/maap/collect_jobs.py (the
+    renamed collect_AA_queue.py) already reports status, cost and build per
+    tile from the ledger, which is what check_MAAP_jobs.py was for.  What it
+    does NOT have is --requeue failed|timedout|both; at 29 tiles resubmitting
+    by hand is fine, and GL is where that has to exist.
+    ALSO NEW, and the other half of "collect": scripts/maap/fetch_tiles.py
+    moves the solved .h5 tiles out of DPS output into the region tree (QI3).
+
+[ ] scripts/check_MAAP_jobs.py --requeue, for GL.  THE OGC CALLS EXIST for
     one region: scripts/maap/submit_AA_queue.py, collect_jobs.py and ogc_jobs.py
     (howto_MAAP_ogc O7) -- build these from them.  The submitter loops the xy list, applies a rate /
     max-in-flight policy (Q11), and writes the ledger; the monitor is the
