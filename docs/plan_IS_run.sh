@@ -139,10 +139,20 @@ cd ~/git_repos/ATL1415
 # ===========================================================================
 # ONE TILE FIRST.  -16gb is a queue nothing has run on, and algorithm_config's
 # ram_min is 16: O5 notes a floor at or above what a queue offers risks a job
-# that never schedules.  One job says, and costs one job:
-scripts/maap/submit_MAAP_jobs.py --xy_file region_files/IS_prelim_xy.txt \
+# that never schedules.  One job says, and costs one job.
+#
+# THE SMOKE TILE IS NAMED, NOT THE FIRST LINE OF THE LIST.  region_files/
+# IS_smoke_xy.txt holds 1260000 -2620000 and nothing else -- the tile Ben gave
+# on 2026-09-05 (43K points, an ice-sheet edge tile), which is the one arctic
+# step 2 rasterizes (601x601, 72638 ice cells, 20.1%) and the one staging S7
+# smoke-tested.  It IS in IS_prelim_xy.txt, on line 12.
+# CORRECTED 2026-09-12: the first draft of this step said --limit 1, which
+# takes the FIRST line of the sorted list -- E1020_N-2580, a tile nobody has
+# ever looked at.  --limit stays in the submitter for GL-scale spot checks,
+# but a smoke test should name its tile.
+scripts/maap/submit_MAAP_jobs.py --xy_file region_files/IS_smoke_xy.txt \
     --step prelim --args_url $s3_run/input_args_IS.txt \
-    --queue maap-dps-worker-16gb --limit 1 \
+    --queue maap-dps-worker-16gb \
     --ledger ~/ATL14_processing/maap_ledgers/IS_smoke_jobs.csv
 scripts/maap/collect_jobs.py ~/ATL14_processing/maap_ledgers/IS_smoke_jobs.csv
 # Wait for 'successful'.  If it will not schedule or dies on memory, -32gb is
@@ -153,6 +163,12 @@ scripts/maap/submit_MAAP_jobs.py --xy_file region_files/IS_prelim_xy.txt \
     --ledger ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv
 # (the smoke tile is submitted again as part of the 29; dedup=False, so it
 # really re-runs.  Simpler than excising one line, and it costs ~1 h.)
+#
+# ONCE THE REBUILD OF I7 IS DEPLOYED, add --tile_prefix to both commands so the
+# tiles land in the canonical tree and the matched step can find them:
+#   --tile_prefix s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/north/IS
+# Without it the prelim tiles are only in dps_output, and I4's fetcher is the
+# only way to reach them -- which is fine for prelim and fatal for matched.
 #
 # DECIDED 2026-09-12 (Ben) per QI2: generalize rather than special-case.
 # submit_AA_queue.py STAYS AS IT IS -- it carries Antarctica's two-width
