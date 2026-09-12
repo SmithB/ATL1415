@@ -1150,6 +1150,9 @@ There is no chaining/DAG mechanism -- jobs are independent and couple only throu
 ## OTHER: 
 [ ] There are lfs-tracked files that get overwritten when ATL1415 gets installed.  These should be cleaned up.
     - a DPS build clones fresh every time, so an install that clobbers repo content will bite there
+    - PLAN (tentative, 2026-09-12): docs/plan_remove_lfs.sh -- diagnosis F1-F6, QL1-QL4 answered
+      by Ben 2026-09-12, steps L0-L10.  Not started.  The on_s3 -> main merge is DEFERRED and
+      planned separately in docs/plan_merge_to_main.sh.
 
 ## Porting the howto workflows to MAAP
 Plan written 2026-09-04; revised the same day against the answers in the QUESTIONNAIRE.
