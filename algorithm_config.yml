@@ -106,6 +106,28 @@ inputs:
     label: args_file
     doc: s3:// URI (or local path) of the composed ATL11_to_ATL15 argsfile, input_args_<REGION>.txt
     type: string
+  # THE CANONICAL TILE TREE for this run -- <tile_prefix>/{prelim,matched}/
+  # E<x>_N<y>.h5, the same layout the ADE builds locally.  A prelim job writes
+  # its tile there; a matched job reads its 3x3 neighbourhood from there and
+  # writes its own result back.  ONE input for both roles: two that must always
+  # hold the same string would eventually hold different ones.
+  #
+  # It carries the release, the hemisphere-with-period suffix and the region,
+  # so run.sh never builds that path itself and the quarterly/monthly split
+  # (Q17) costs no code:
+  #   .../ATL14_processing/rel006/north/IS          quarterly
+  #   .../ATL14_processing/rel006/north_monthly/IS  monthly
+  #
+  # A DEFAULT OF '' RATHER THAN A REQUIRED INPUT, so every prelim job that ran
+  # before this existed still describes a valid call: without it a tile is
+  # simply left in dps_output for scripts/maap/fetch_tiles.py to collect.
+  # matched REQUIRES it and run.sh says so.
+  # See docs/plan_IS_run.sh I7, and Transition_to_maap.md Q8/Q9.
+  - name: tile_prefix
+    label: tile_prefix
+    doc: s3:// root of the canonical tile tree, e.g. s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/north/IS -- prelim writes there, matched reads its neighbours there.  Empty to skip the canonical write.
+    type: string
+    default: ""
 
 outputs:
   - name: out

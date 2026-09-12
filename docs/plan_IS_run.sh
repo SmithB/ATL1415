@@ -265,31 +265,68 @@ scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv \
 # reports them as 'no tile'.
 
 
-# I7. [DPS] [NEEDS CODE: run.sh prelim_prefix + a fifth CWL input]
-#     The matched solve.   <-- THE REBUILD GATE
+# I7. [DPS] [CODE WRITTEN 2026-09-12; BLOCKED ON A REBUILD + REGISTRATION]
+#     The matched solve.
 # ===========================================================================
-# DECIDED 2026-09-12 (Ben): ON DPS, implementing Q8 option (a) -- prelim_prefix.
-# The ADE shortcut (option c) was declined: proving the mechanism on the
+# DECIDED 2026-09-12 (Ben) per QI6: ON DPS, implementing Q8 option (a).  The
+# ADE shortcut (option c) was declined -- proving the mechanism on the
 # smallest region is worth the rebuild, and GL cannot use the shortcut.
 #
-# STATEMENT of why it cannot run today: run.sh's matched branch requires
-# input/prelim/ to already hold the tile and its 8 neighbours and exits 2 if
-# the directory is absent (run.sh:393); algorithm_config.yml declares exactly
-# four string inputs (x0, y0, step, args_file), so there is no way to tell a
-# job where its neighbours are.
+# WHAT LANDED, and it is NOT prelim_prefix: the input is tile_prefix, ONE
+# input serving both roles -- where a prelim job WRITES its tile, and where a
+# matched job READS its neighbours.  Two inputs that must always hold the same
+# string would eventually hold different ones.  Say if you want them split.
+#   algorithm_config.yml  a fifth input, tile_prefix, default "" (QI5a).
+#                         Empty rather than required so every prelim job that
+#                         ran before this still describes a valid call.
+#   run.sh                parses it; prelim uploads its tile AFTER the error
+#                         step (--calc_error_for_xy writes back into the same
+#                         file, so an upload in between publishes a
+#                         half-finished tile); matched fetches the 3x3 first
+#                         and uploads its result after.
+#   scripts/s3_tiles.py   NEW, worker-side, s3fs only -- `put` one tile (and
+#                         its field-size report), `get` the 3x3.  Not in
+#                         scripts/maap/: that directory is the ADE's maap-py
+#                         scripts, and a worker has no business talking to the
+#                         job API.
 #
-# WHAT THIS COSTS, and the order it forces:
-#   1. QI5 settled (below) -- the two mechanics are not written down anywhere.
-#   2. an addressable prelim tree on the bucket.  THE TILE FETCHER DOES NOT
-#      PROVIDE ONE: it writes into the LOCAL region tree, and the bucket copy
-#      stays scattered across per-job timestamped prefixes.  A matched job
-#      needs keys it can name.  -> QI4.
-#   3. code: run.sh fetches the 9 keys; algorithm_config.yml gains the input.
-#   4. COMMIT AND PUSH EVERYTHING, then Ben registers.  register_algorithm.py
-#      refuses while the checkout has uncommitted or unpushed work -- which
-#      now includes fetch_tiles.py, collect_jobs.py and this plan.
-#   5. check_build_id.py must say MATCH on the new build before any matched
-#      job runs.
+# THE SPACING IS READ, NOT ASSUMED: run.sh takes --tile_spacing from the
+# composed args file, falling back to -W, which is make_ATL1415_queue.py's own
+# precedence.  AA solves two halves at different widths, and a wrong spacing
+# would fetch eight tiles that exist but are not this tile's neighbours --
+# which no later step could detect.
+#
+# MISSING NEIGHBOURS (QI5b): named in the log, and the solve proceeds.  The
+# tile's OWN prelim file is still required, by the guard run.sh already had --
+# one check in one place rather than two that can disagree.
+#
+# TESTED 2026-09-12, as far as it can be without a rebuild:
+#   - s3_tiles get against a real prefix holding one real tile: 1/9 localized,
+#     the 239 MB tile really downloaded, the 8 absent neighbours named at the
+#     right 60 km offsets, exit 0.
+#   - run.sh --step matched --tile_prefix ...: parses, reads spacing 40000 out
+#     of input_args_IS.txt, fetches (0/9 for a center with nothing there),
+#     then fails the own-tile guard.  exit 2.
+#   - no --tile_prefix and no input/prelim: exit 2 with the new message.
+#     --tile_prefix with no spacing in the args file: exit 2.
+#     --step build_id with a tile_prefix, and with an EMPTY one: exit 0,
+#     unchanged -- which matters, because the CWL will now bind
+#     --tile_prefix "" on EVERY job, build_id and check_build_id included.
+#   NOT TESTED, and untestable here: a real matched solve, and the prelim
+#   upload -- both need the rebuilt image.
+#
+# ONE THING TO WATCH AT REGISTRATION: default: "" on a string input is not
+# something this config has used before, and whether /api/build accepts an
+# empty default is UNVERIFIED.  If it is rejected, the fallbacks are to drop
+# the default (making tile_prefix required, which run.sh already tolerates
+# since it treats an empty value as absent) or to default it to "-" and have
+# run.sh read that as empty.  The build log will say.
+#
+# THEN, in order:
+#   1. commit and push -- register_algorithm.py refuses on unpushed work
+#   2. Ben registers; wait for the build and the deploy
+#   3. scripts/maap/check_build_id.py -- must say MATCH at the new commit
+#   4. ONE matched job before the other 28
 
 
 # I8. [ADE] [READY]  Bring the matched tiles down.

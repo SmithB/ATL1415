@@ -8,11 +8,22 @@
 # /app/dps_wrapper.sh with positionals and localized file inputs into input/;
 # both conventions are accepted (see ARGUMENTS below).
 #
-# Usage: run.sh --x0 <m> --y0 <m> --step <step> --args_file <uri|path>   (OGC)
+# Usage: run.sh --x0 <m> --y0 <m> --step <step> --args_file <uri|path>
+#               [--tile_prefix <s3://...>]                              (OGC)
 #        run.sh <x0> <y0> <step>        (legacy DPS, local runs; args file in input/)
-#   x0, y0     tile center, in meters (polar stereographic; may be negative)
-#   step       prelim | matched | build_id
-#   args_file  s3:// URI or local path of the composed input_args_<REGION>.txt
+#   x0, y0       tile center, in meters (polar stereographic; may be negative)
+#   step         prelim | matched | build_id
+#   args_file    s3:// URI or local path of the composed input_args_<REGION>.txt
+#   tile_prefix  s3:// root of the canonical tile tree for THIS run, e.g.
+#                s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/north/IS
+#                A prelim job writes its tile under <tile_prefix>/prelim/; a
+#                matched job reads its 3x3 neighbourhood from there and writes
+#                under <tile_prefix>/matched/.  ONE input for both roles, on
+#                purpose: two that must always hold the same string would
+#                eventually hold different ones.  Optional for prelim (without
+#                it a tile is left for the ADE to fetch out of DPS output);
+#                REQUIRED for matched, which has no other way to find its
+#                neighbours.  See docs/plan_IS_run.sh I7, QI4 and QI5.
 #
 # step=build_id prints the build stamp and exits 0 without solving anything, so
 # ONE cheap job says which commit the image was built from.  --build-id does the
@@ -196,25 +207,25 @@ done
 # LEGACY, and every local run: positionals, with the args file found in input/
 #     run.sh 220000 20000 prelim
 # Any --x0/--y0/--step/--args_file anywhere in argv selects the first.
-x0= ; y0= ; step= ; args_src=
+x0= ; y0= ; step= ; args_src= ; tile_prefix=
 prefixed=false
 for arg in "$@"; do
     case "$arg" in
-        --x0|--x0=*|--y0|--y0=*|--step|--step=*|--args_file|--args_file=*) prefixed=true ;;
+        --x0|--x0=*|--y0|--y0=*|--step|--step=*|--args_file|--args_file=*|--tile_prefix|--tile_prefix=*) prefixed=true ;;
     esac
 done
 
 if $prefixed; then
     while [ "$#" -gt 0 ]; do
         case "$1" in
-            --x0|--y0|--step|--args_file)
+            --x0|--y0|--step|--args_file|--tile_prefix)
                 if [ "$#" -lt 2 ]; then
                     echo "ERROR: $1 needs a value" >&2; exit 2
                 fi
                 # $2 is taken verbatim, so a negative coordinate is a value,
                 # not mistaken for another option.
                 name=${1#--}; value=$2; shift 2 ;;
-            --x0=*|--y0=*|--step=*|--args_file=*)
+            --x0=*|--y0=*|--step=*|--args_file=*|--tile_prefix=*)
                 name=${1%%=*}; name=${name#--}; value=${1#*=}; shift ;;
             *)
                 echo "run.sh: ignoring unexpected argument '$1'"; shift; continue ;;
@@ -224,6 +235,7 @@ if $prefixed; then
             y0) y0=$value ;;
             step) step=$value ;;
             args_file) args_src=$value ;;
+            tile_prefix) tile_prefix=$value ;;
         esac
     done
 else
@@ -327,6 +339,7 @@ echo "  ATL1415 DPS tile job"
 echo "  step        : ${step}"
 echo "  xy0         : ${x0} ${y0}"
 echo "  args file   : ${args_file}"
+echo "  tile prefix : ${tile_prefix:-<none: tile stays in dps_output>}"
 echo "  threads     : ${threads}"
 echo "  conda env   : ${env_name}"
 echo "  working dir : ${PWD}"
@@ -357,6 +370,29 @@ run_solve () {
         conda run --no-capture-output -n "$env_name" ATL11_to_ATL15.py "${@:2}"
 }
 
+# ---------------------------------------------------------------------------
+# THE CANONICAL TILE TREE.  <tile_prefix>/{prelim,matched}/E<x>_N<y>.h5, the
+# same layout the ADE builds locally (docs/plan_IS_run.sh QI4).  A job writes
+# its own tile there rather than leaving it in the timestamped dps_output
+# prefix the runner chooses, so the next step can address a tile BY NAME --
+# which is the whole reason a matched job can find its neighbours at all.
+# ---------------------------------------------------------------------------
+s3_tiles () {
+    conda run --no-capture-output -n "$env_name" \
+        python "${repo_dir}/scripts/s3_tiles.py" "$@"
+}
+
+# THE CENTER-TO-CENTER SPACING, for naming the 8 neighbours.  It is in the
+# composed args file -- --tile_spacing, or -W if that is absent, which is the
+# same precedence make_ATL1415_queue.py applies.  Read rather than assumed: AA
+# solves two halves at different widths, and a wrong spacing here would fetch
+# eight tiles that exist but are not this tile's neighbours, which no later
+# step could detect.
+tile_spacing=$(sed -n 's/^--tile_spacing=//p' "$args_file" | head -1 | tr -d '[:space:]')
+if [ -z "$tile_spacing" ]; then
+    tile_spacing=$(sed -n 's/^-W=//p' "$args_file" | head -1 | tr -d '[:space:]')
+fi
+
 if [ "$step" = "prelim" ]; then
     # Fit, then the error-calculation companion, mirroring the single queue line
     # that make_ATL1415_queue.py writes for SLURM.  Tiles land in output/prelim/,
@@ -383,6 +419,12 @@ if [ "$step" = "prelim" ]; then
 
     run_solve error --THREADS="${threads}" --xy0 "$x0" "$y0" --prelim \
               "@${args_file}" --base_directory "$base_directory" --calc_error_for_xy
+
+    # AFTER the error step, not before: --calc_error_for_xy writes back into
+    # the same tile, so an upload in between would publish a half-finished one.
+    if [ -n "$tile_prefix" ]; then
+        s3_tiles put "${base_directory}/prelim/${tile_name}" "$tile_prefix" prelim
+    fi
 else
     # --matched reads the tile's own prelim fit AND its neighbours', through
     # prior_edge_include, so a matched job needs the surrounding prelim tiles
@@ -390,15 +432,32 @@ else
     # minimum).  base_directory therefore points at input/, not output/: that is
     # where ATL11_to_ATL15 looks for <base>/prelim/E*_N*.h5.  Only the result is
     # written to output/.
-    if [ ! -d input/prelim ]; then
-        echo "ERROR: --matched needs the prelim tiles for this tile and its" >&2
-        echo "       neighbours localized into input/prelim/ ." >&2
-        exit 2
-    fi
     base_directory="${PWD}/input"
     # Same name ATL11_to_ATL15 builds: 'E%d_N%d.h5' % (x0/1e3, y0/1e3), i.e.
     # kilometers truncated toward zero.  awk int() truncates the same way.
     tile_name=$(awk -v x="$x0" -v y="$y0" 'BEGIN{printf "E%d_N%d.h5", int(x/1000), int(y/1000)}')
+
+    # Fetch the 3x3 from the canonical tree.  A MISSING NEIGHBOUR IS NOT AN
+    # ERROR: on a small coastal region most tiles have fewer than 8, and a
+    # tile with too little data writes none at all, so s3_tiles names what it
+    # could not find and the solve proceeds with the priors it has (QI5b).
+    # The tile's OWN prelim file IS required -- the guard below, unchanged.
+    if [ -n "$tile_prefix" ]; then
+        if [ -z "$tile_spacing" ]; then
+            echo "ERROR: --tile_prefix given but neither --tile_spacing nor -W" >&2
+            echo "       is in ${args_file}; the neighbours cannot be named." >&2
+            exit 2
+        fi
+        mkdir -p input/prelim
+        s3_tiles get "$tile_prefix" prelim "$x0" "$y0" "$tile_spacing" input/prelim
+    fi
+
+    if [ ! -d input/prelim ]; then
+        echo "ERROR: --matched needs the prelim tiles for this tile and its" >&2
+        echo "       neighbours.  Give --tile_prefix so the job can fetch them," >&2
+        echo "       or localize them into input/prelim/ yourself." >&2
+        exit 2
+    fi
     prelim_file="${base_directory}/prelim/${tile_name}"
     if [ ! -f "$prelim_file" ]; then
         echo "ERROR: prelim tile ${prelim_file} not found; localized files are:" >&2
@@ -418,6 +477,10 @@ else
               "@${args_file}" \
               --out_name "${PWD}/output/${tile_name}" \
               --base_directory "$base_directory"
+
+    if [ -n "$tile_prefix" ]; then
+        s3_tiles put "${PWD}/output/${tile_name}" "$tile_prefix" matched
+    fi
 fi
 
 echo "=== tile job complete; output/ contains: ==="
