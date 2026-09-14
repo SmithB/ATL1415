@@ -1,6 +1,7 @@
 """
 Shared helpers for the ATL1415 scripts that talk to MAAP's OGC job system:
-check_build_id.py, submit_AA_queue.py and collect_jobs.py.
+check_build_id.py, submit_MAAP_jobs.py, submit_AA_queue.py, collect_jobs.py
+and fetch_tiles.py -- and register_algorithm.py, for the maap-py guard.
 
 One copy, because each of these facts was learned the hard way and a second
 copy would drift: where a job's log is (_stderr.txt, not _stdout.txt, under
@@ -25,6 +26,48 @@ DEFAULT_QUEUE = 'maap-dps-worker-32gb'
 POLL_S = 15
 # OGC API - Processes job states that do not change again.
 DONE = {'successful', 'failed', 'dismissed', 'deleted'}
+
+# MAAP-PY 5.0 IS THE FLOOR, and below it these scripts FAIL LOUDLY, at import,
+# before doing anything -- so no script that imports this module can forget.
+#   - 4.x has none of the OGC job calls.  Checked 2026-09-14 against 4.2.0 and
+#     5.1.0: list_algorithms, submit_job, get_job_status, get_job_result,
+#     get_job_metrics and list_jobs are all absent from 4.2.0.
+#   - register_algorithm.py is the worse case, and the reason this exists.  It
+#     uses only maap-py's auth header, which 4.2.0 also has, so under 4.2.0 it
+#     did NOT fail -- and a registration made from a hub image whose notebook
+#     env had maap-py 4.2.0 produced a failed rebuild (Ben, 2026-09-14).
+# NO WORKAROUND IS OFFERED, deliberately (Ben, 2026-09-14): "That will only
+# happen when I make a mistake, and I need to know that mistake and fix it."
+# A message suggesting some other interpreter would hide the mistake -- the
+# wrong hub image -- instead of surfacing it.
+MIN_MAAP_PY = (5, 0)
+
+
+def require_maap_py(minimum=MIN_MAAP_PY, exit_code=2):
+    """Return the maap-py version if it is >= minimum; otherwise stop, loudly.
+
+    Compares the leading numbers only, so a pre-release counts as its release:
+    5.1.0a2 is (5, 1) and passes -- the version the OGC port was first written
+    against (howto_MAAP_ogc F1).
+    """
+    import importlib.metadata as md
+    try:
+        found = md.version('maap-py')
+    except md.PackageNotFoundError:
+        found = 'NOT INSTALLED'
+    numbers = tuple(int(n) for n in re.findall(r'\d+', found)[:len(minimum)])
+    if numbers >= minimum:
+        return found
+    rule = '!' * 72
+    print(f"{rule}\n"
+          f"!!  WRONG maap-py: {found}, needs >= {'.'.join(map(str, minimum))}\n"
+          f"!!  interpreter:   {sys.executable}\n"
+          f"!!  Nothing was run.  This is almost certainly the wrong hub image.\n"
+          f"{rule}", file=sys.stderr)
+    sys.exit(exit_code)
+
+
+require_maap_py()
 
 
 def load_config():

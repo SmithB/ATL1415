@@ -24,6 +24,8 @@
 #                it a tile is left for the ADE to fetch out of DPS output);
 #                REQUIRED for matched, which has no other way to find its
 #                neighbours.  See docs/plan_IS_run.sh I7, QI4 and QI5.
+#                "-" means the same as empty: it is the registered default,
+#                because the build form drops an empty one (2026-09-14).
 #
 # step=build_id prints the build stamp and exits 0 without solving anything, so
 # ONE cheap job says which commit the image was built from.  --build-id does the
@@ -249,6 +251,13 @@ else
     if [ "$#" -ge 3 ]; then
         x0=$1; y0=$2; step=$3
     fi
+fi
+
+# "-" is tile_prefix's registered default and means "none".  Normalized HERE,
+# once, so every later test is a plain [ -n "$tile_prefix" ] and cannot
+# mistake the sentinel for a bucket prefix.
+if [ "$tile_prefix" = "-" ]; then
+    tile_prefix=
 fi
 
 if [ -z "$x0" ] || [ -z "$y0" ] || [ -z "$step" ]; then

@@ -292,7 +292,7 @@ scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv \
 # input serving both roles -- where a prelim job WRITES its tile, and where a
 # matched job READS its neighbours.  Two inputs that must always hold the same
 # string would eventually hold different ones.  Say if you want them split.
-#   algorithm_config.yml  a fifth input, tile_prefix, default "" (QI5a).
+#   algorithm_config.yml  a fifth input, tile_prefix, default "-" (QI5a).
 #                         Empty rather than required so every prelim job that
 #                         ran before this still describes a valid call.
 #   run.sh                parses it; prelim uploads its tile AFTER the error
@@ -331,16 +331,24 @@ scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv \
 #   NOT TESTED, and untestable here: a real matched solve, and the prelim
 #   upload -- both need the rebuilt image.
 #
-# ONE THING TO WATCH AT REGISTRATION: default: "" on a string input is not
-# something this config has used before, and whether /api/build accepts an
-# empty default is UNVERIFIED.  If it is rejected, the fallbacks are to drop
-# the default (making tile_prefix required, which run.sh already tolerates
-# since it treats an empty value as absent) or to default it to "-" and have
-# run.sh read that as empty.  The build log will say.
+# THE EMPTY DEFAULT DID NOT SURVIVE REGISTRATION.  Registered 2026-09-14 with
+# default: "", and /api/build accepted it -- but the deployed CWL (deployment
+# 151, s:commitHash 52e27bd) declares tile_prefix as `type: string` with NO
+# default, i.e. REQUIRED.  The build form drops empty fields (howto_MAAP_ogc
+# F6).  check_build_id.py and any prelim job without --tile_prefix omit the
+# input, so they would have been submitted without a required value.
+# FIXED (Ben chose it, 2026-09-14): default "-", read as "none" by run.sh and
+# by submit_MAAP_jobs.py.  A non-empty sentinel cannot be dropped.
+# AFTER RE-REGISTERING, CHECK THE CWL SAYS `default: '-'` under tile_prefix
+# before trusting any job that omits it.
 #
 # THEN, in order:
 #   1. commit and push -- register_algorithm.py refuses on unpushed work
 #   2. Ben registers; wait for the build and the deploy
+#      2026-09-14: registered from the WRONG hub image -- its notebook env had
+#      maap-py 4.2.0 -- and the rebuild failed (Ben).  register_algorithm.py
+#      and every job script now refuse maap-py < 5.0.  Re-register from the
+#      right image before step 3.
 #   3. scripts/maap/check_build_id.py -- must say MATCH at the new commit
 #   4. ONE matched job before the other 28
 

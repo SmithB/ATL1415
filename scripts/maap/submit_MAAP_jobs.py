@@ -160,6 +160,10 @@ def main():
     parser.add_argument('--replace', action='store_true')
     parser.add_argument('--dry-run', action='store_true')
     args = parser.parse_args()
+    # "-" is tile_prefix's registered default and means "none", exactly as in
+    # run.sh -- so `--tile_prefix -` cannot slip past the matched check below.
+    if args.tile_prefix in ('', '-'):
+        args.tile_prefix = None
 
     region = region_of(args.args_url)
     tag = args.tag or (f'{region}_{args.step}' if region else None)

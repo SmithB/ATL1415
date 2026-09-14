@@ -266,6 +266,13 @@
 #     open -- the build pipeline -- then any others, labelled by key path.
 # Works under maap-py 4.2.0 AND 5.x: it uses only the auth header, not
 # either version's algorithm methods.  --dry-run prints the exact JSON.
+# REVERSED 2026-09-14: it now REFUSES maap-py < 5.0, exit 2.  Running under
+# 4.2.0 was the hazard, not a feature: Ben registered from a hub image whose
+# notebook env had 4.2.0, the rebuild failed, and this script said nothing,
+# because nothing in it failed.  The rule lives once, in ogc_jobs.py, and is
+# enforced on import, so every job script refuses too.  The hub image decides
+# which maap-py the notebook env has -- 5.1.0a2 on 2026-09-10, 4.2.0 on the
+# wrong image on 2026-09-14 -- so it is checked on every run.
 # Exit codes: 0 accepted, 1 invalid config or unpushed work, 2 rejected, or
 # accepted with no URL to open.
 #

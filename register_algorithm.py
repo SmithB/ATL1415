@@ -15,8 +15,14 @@ the repo with build-env.sh on maap_base, generates the CWL, and deploys it as
 an OGC process.  So the model is unchanged; only the transport is new.
 
 This script uses maap-py ONLY for its auth header, which has the same
-signature in 4.2.0 and 5.x, so it runs under either -- the notebook env or
-ATL14.  Neither version's algorithm methods are touched.
+signature in 4.2.0 and 5.x -- and that is exactly why it now REFUSES 4.x.
+Running under either used to be described as a feature.  On 2026-09-14 a
+registration made from a hub image whose notebook env had maap-py 4.2.0
+produced a failed rebuild (Ben), and nothing here noticed, because nothing
+here failed.  So it requires maap-py >= 5.0 through the same guard every job
+script imports (scripts/maap/ogc_jobs.py), and exits 2, loudly, before
+reading the config.  It deliberately suggests no other interpreter: the fix
+for the wrong hub image is the right hub image (Ben, 2026-09-14).
 
 WHAT IT KEEPS: REGISTERING TRIGGERS A BUILD THAT CLONES FROM GITHUB.  The
 build clones code_repository at algorithm_version and bakes the result into
@@ -70,13 +76,12 @@ def import_maap():
     try:
         from maap.maap import MAAP
         from maap.utils import algorithm_utils
-        return MAAP, algorithm_utils
     except ImportError as exc:
         print(f"ERROR: 'maap' is not importable under {sys.executable}", file=sys.stderr)
         print(f"       ({type(exc).__name__}: {exc})", file=sys.stderr)
         print(file=sys.stderr)
-        print('Any maap-py works (4.2.0 or 5.x).  The ADE notebook env has it,'
-              ' and so does', file=sys.stderr)
+        print('It needs maap-py >= 5.0.  The notebook env of the right hub image'
+              ' has it, and so does', file=sys.stderr)
         print('an ATL14 env built from environment.yml:', file=sys.stderr)
         print(file=sys.stderr)
         script = os.path.relpath(os.path.realpath(__file__))
@@ -87,6 +92,11 @@ def import_maap():
             # different image the notebook env lives somewhere else.
             print(f'    <notebook-env>/bin/python {script}', file=sys.stderr)
         sys.exit(1)
+    # maap-py >= 5.0, or exit 2.  One copy of the rule, in ogc_jobs.py, which
+    # enforces it on import -- the same import every job script makes.
+    sys.path.insert(0, os.path.join(REPO_DIR, 'scripts', 'maap'))
+    import ogc_jobs  # noqa: F401,E402
+    return MAAP, algorithm_utils
 
 
 def git(*args, check=True):
