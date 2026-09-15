@@ -1,3 +1,7 @@
+# DISCOVER/SLURM ONLY.  There is deliberately NO MAAP counterpart: ATL11 indexing
+# stays on discover (Q1/Q13).  The index is then staged to the bucket -- see
+# docs/howto_MAAP_staging.sh step S3, which is the only per-release handoff.
+
 # make the index for ATL11 indexing for North and South
 make_ATL11_index.py @default_args/discover.txt @default_args/latest_release.txt
 

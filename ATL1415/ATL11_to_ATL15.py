@@ -31,7 +31,6 @@ os.environ['OMP_NUM_THREADS']=N_THREADS
 import numpy as np
 from LSsurf.smooth_fit import smooth_fit
 from LSsurf.calc_sigma_extra import calc_sigma_extra, calc_sigma_extra_on_grid
-from SMBcorr import assign_firn_variable
 import pointCollection as pc
 from ATL1415.lags import infer_dzdt_lags
 
@@ -40,8 +39,11 @@ import sys
 import h5py
 import json
 from ATL1415.make_mask_from_vector import make_mask_from_vector
+from ATL1415.paths import path_or_uri
+from ATL1415.tides import tide_elevations
 from ATL1415.SMB_corr_from_grid import SMB_corr_from_grid
-from ATL1415.read_ATL11 import read_ATL11
+from ATL1415.read_ATL11 import read_ATL11, _lonlat_bounding_box
+from ATL1415.previous_product import find_previous_product_files, previous_product_arg
 
 import pyTMD
 
@@ -131,21 +133,22 @@ def apply_tides(D, xy0, W,
     # extrapolate tide estimate beyond model bounds
     # extrapolation cutoff is in kilometers
     if np.any(is_els.ravel()):
-        D.tide_ocean = np.array(
-            pyTMD.compute.tide_elevations(
-                D.x, D.y, D.delta_time,
-                directory=tide_directory,
-                model=tide_model,
-                infer_minor=True,
-                chunks=chunks,
-                crs=crs,
-                type="drift",
-                epoch=(2018, 1, 1, 0, 0, 0),
-                standard="GPS",
-                method="linear",
-                extrapolate=extrapolate,
-                cutoff=cutoff,
-            )
+        # ATL1415.tides dispatches on tide_directory: a local directory goes to
+        # pyTMD.compute.tide_elevations exactly as before, an s3:// prefix reads
+        # the zarr store pyTMD publishes for the model.
+        D.tide_ocean = tide_elevations(
+            D.x, D.y, D.delta_time,
+            tide_directory=tide_directory,
+            tide_model=tide_model,
+            infer_minor=True,
+            chunks=chunks,
+            crs=crs,
+            type="drift",
+            epoch=(2018, 1, 1, 0, 0, 0),
+            standard="GPS",
+            method="linear",
+            extrapolate=extrapolate,
+            cutoff=cutoff,
         )
     # use a flexure mask to adjust estimated tidal values
     if np.any(is_els.ravel()) and tide_adjustment:
@@ -259,9 +262,44 @@ def set_three_sigma_edit_with_DEM(data, xy0, Wxy, DEM_file, DEM_tol, W_med=None)
             good[ii] &= (np.abs(r_DEM[ii] - np.nanmedian(r_DEM[ii])) < DEM_tol)
     data.three_sigma_edit &= good
 
+def _expand_reference_files(ATL14_reference_file):
+    '''
+    Resolve --ATL14_reference_file into a non-empty list of files.
+
+    It is a glob pattern in the Antarctic, where a tile can overlap several
+    quadrants, and a single file everywhere else.  glob.glob() returns [] for a
+    URI and [] for a pattern that matches nothing, and pc.grid.mosaic().from_list([])
+    then yields an empty reference DEM that silently removes every data point --
+    the same shape of silent failure as Q27 W1, by a different route (W5).
+
+    inputs:
+        ATL14_reference_file (str): a path, a glob pattern, or a URI
+    output:
+        list of files to mosaic
+    '''
+    if pc.io_utils.is_remote_path(ATL14_reference_file):
+        if glob.has_magic(ATL14_reference_file):
+            raise ValueError(
+                f'--ATL14_reference_file={ATL14_reference_file} is a URI containing a '
+                'wildcard, which cannot be expanded: a URI has no directory listing '
+                'here.  Name the granules explicitly, one --ATL14_reference_file each.')
+        # a single remote granule: from_nc() reads a URI directly since
+        # pointCollection PR #53 (Q27 W2), so pass it through unglobbed
+        return [ATL14_reference_file]
+    files = sorted(glob.glob(ATL14_reference_file))
+    if not files:
+        raise RuntimeError(
+            f'--ATL14_reference_file={ATL14_reference_file} matched no files.  The '
+            'reference DEM would be empty and every data point would be edited out.')
+    return files
+
+
 def set_three_sigma_edit_from_previous_product(data, xy0, Wxy,
-                                               previous_product_dirs,
+                                               previous_product,
                                                previous_product_sigma=0.2,
+                                               previous_product_earthaccess=False,
+                                               SRS_proj4=None,
+                                               fs=None,
                                                sigma_extra_bin_spacing=None,
                                                sigma_extra_max=None,
                                                last_epoch=-1,
@@ -273,16 +311,26 @@ def set_three_sigma_edit_from_previous_product(data, xy0, Wxy,
     Computes residuals between data.z and the interpolated previous solution
     (ATL14 z0 + ATL15 delta_h), infers sigma_extra from those residuals using
     LSsurf's calc_sigma_extra strategy, applies a floor of previous_product_sigma,
-    then updates data.three_sigma_edit.  Files are searched across all entries in
-    previous_product_dirs and mosaicked by filling NaN left-to-right (handles
-    Antarctic A1-A4 sectors stored in separate directories).
+    then updates data.three_sigma_edit.  Files are found by
+    previous_product.find_previous_product_files() -- by globbing directories, or
+    by a bounding-box CMR search when previous_product_earthaccess is set -- and
+    mosaicked by filling NaN left-to-right (handles Antarctic A1-A4 sectors,
+    which are separate directories locally and separate granules in the cloud).
 
     inputs:
         data                    (pc.data): input data with x, y, t, z, sigma fields
         xy0                     (list): tile center [x, y]
         Wxy                     (float): tile width
-        previous_product_dirs   (list of str): directories containing ATL14_*.nc / ATL15_*.nc
+        previous_product        (list of str): directories containing ATL14_*.nc /
+                                ATL15_*.nc; or, if previous_product_earthaccess is
+                                set, one '<release>_<cycles>' spec such as '005_0329'
         previous_product_sigma  (float): minimum value for computed sigma_extra (m)
+        previous_product_earthaccess (bool): find the files by CMR search rather
+                                than by globbing directories
+        SRS_proj4               (str): projection of xy0/Wxy, needed to turn the tile
+                                into the lon/lat box of a CMR search (cloud mode only)
+        fs           (s3fs.S3FileSystem): filesystem for the granule reads; built
+                                for the NSIDC DAAC if None (cloud mode only)
         last_epoch              (int) : last epoch of previous ATL15 to use, defaults to -1,
                                         pass None to ignore
         sigma_extra_bin_spacing (float): if set, compute spatially varying sigma_extra
@@ -293,49 +341,75 @@ def set_three_sigma_edit_from_previous_product(data, xy0, Wxy,
     '''
     bounds = [np.array([-0.6, 0.6]) * Wxy + xy for xy in xy0]
 
-    # load ATL14 (z0) — mosaic across all directories and any sector files therein
-    z0_interp = np.full(data.size, np.nan)
-    for directory in previous_product_dirs:
-        for nc_file in glob.glob(os.path.join(directory, 'ATL14_*.nc')):
-            try:
-                g = pc.grid.data().from_nc(nc_file, fields=['h'], bounds=bounds)
-            except IndexError:
-                g = None
-            if g is None or g.shape is None:
-                continue
-            if verbose:
-                print(f'\tset_three_sigma_edit_from_previous_product: read {nc_file}')
-            zi = g.interp(data.x, data.y, field='h')
-            fill = np.isnan(z0_interp) & np.isfinite(zi)
-            z0_interp[fill] = zi[fill]
+    bbox = None
+    if previous_product_earthaccess:
+        if SRS_proj4 is None:
+            raise ValueError('SRS_proj4 is required to search for previous-product '
+                             'granules by bounding box')
+        bbox = _lonlat_bounding_box(bounds, SRS_proj4)
+    ATL14_files, ATL15_files = find_previous_product_files(
+        previous_product, bbox=bbox, earthaccess=previous_product_earthaccess,
+        verbose=verbose)
 
-    # load ATL15 (delta_h) — use 1km files only; mosaic across directories as above
+    # The published granules live in NSIDC's protected bucket, which takes the
+    # DAAC's own temporary credentials -- the worker's AWS credentials get
+    # "PermissionError: Forbidden".  Same filesystem read_ATL11_at builds for
+    # the ATL11 granules.  Block size is left at io_utils' 256 KiB default,
+    # which is the value Q27's measurements settled on.
+    read_args = {}
+    if previous_product_earthaccess:
+        if fs is None:
+            fs = pc.io_utils.get_s3fs(daac='NSIDC')
+        read_args['fs'] = fs
+
+    # load ATL14 (z0) — mosaic across every file found
+    z0_interp = np.full(data.size, np.nan)
+    for nc_file in ATL14_files:
+        try:
+            g = pc.grid.data().from_nc(nc_file, fields=['h'], bounds=bounds,
+                                       **read_args)
+        except IndexError:
+            g = None
+        if g is None or g.shape is None:
+            continue
+        if verbose:
+            print(f'\tset_three_sigma_edit_from_previous_product: read {nc_file}')
+        zi = g.interp(data.x, data.y, field='h')
+        fill = np.isnan(z0_interp) & np.isfinite(zi)
+        z0_interp[fill] = zi[fill]
+
+    # load ATL15 (delta_h) — use 1km files only; mosaic as above
     dz_interp = np.full(data.size, np.nan)
-    for directory in previous_product_dirs:
-        for nc_file in glob.glob(os.path.join(directory, 'ATL15_*1km_*.nc')):
-            try:
-                g = pc.grid.data().from_nc(nc_file, fields=['delta_h'],
-                                           group='delta_h', bounds=bounds)
-                if last_epoch is not None:
-                    g=g[:, :, :last_epoch]
-                    if verbose:
-                        print('\tset_three_sigma_edit_from_previous_product: \n'
-                              f'\t\tprevious ATL15 ends at {g.t[-1]/365.25+2018:2.2f}')
-            except IndexError:
-                g=None
-            if g is None or g.shape is None:
-                continue
-            if verbose:
-                print(f'\tset_three_sigma_edit_from_previous_product: read {nc_file}')
-            g.t = 2018 + g.t/365.25
-            zi = g.interp(data.x, data.y, t=data.time, field='delta_h')
-            fill = np.isnan(dz_interp) & np.isfinite(zi)
-            dz_interp[fill] = zi[fill]
+    for nc_file in ATL15_files:
+        try:
+            g = pc.grid.data().from_nc(nc_file, fields=['delta_h'],
+                                       group='delta_h', bounds=bounds,
+                                       **read_args)
+            if last_epoch is not None:
+                g=g[:, :, :last_epoch]
+                if verbose:
+                    print('\tset_three_sigma_edit_from_previous_product: \n'
+                          f'\t\tprevious ATL15 ends at {g.t[-1]/365.25+2018:2.2f}')
+        except IndexError:
+            g=None
+        if g is None or g.shape is None:
+            continue
+        if verbose:
+            print(f'\tset_three_sigma_edit_from_previous_product: read {nc_file}')
+        g.t = 2018 + g.t/365.25
+        zi = g.interp(data.x, data.y, t=data.time, field='delta_h')
+        fill = np.isnan(dz_interp) & np.isfinite(zi)
+        dz_interp[fill] = zi[fill]
 
     valid = np.isfinite(z0_interp) & np.isfinite(dz_interp)
     if not np.any(valid):
+        # A tile outside the previous product's domain is a normal outcome.  It
+        # is NOT the same as finding no files at all, which is a configuration
+        # error and raises in find_previous_product_files() (Q27 W1) -- say
+        # which files were searched so the two cannot be confused in a log.
         print(f"\tset_three_sigma_edit_from_previous_product: \n"
-              f"\t\tno previous-product coverage for tile {xy0}, skipping")
+              f"\t\tno previous-product coverage for tile {xy0}, skipping\n"
+              f"\t\t({len(ATL14_files)} ATL14 and {len(ATL15_files)} ATL15 files searched)")
         return
 
     # residuals (zero outside valid to keep calc_sigma_extra numerics clean)
@@ -364,7 +438,10 @@ def set_three_sigma_edit_from_previous_product(data, xy0, Wxy,
              f"({np.sum(data.three_sigma_edit[valid])/np.sum(valid)*100:2.1f}%) accepted") 
 
 def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
+            ATL11_earthaccess=False,\
+            ATL11_release=None,\
             ATL11_xover_dir=None,\
+            ATL11xo_version=None,\
             E_RMS={}, \
             t_span=[2019.25, 2020.5], \
             spacing={'z0':2.5e2, 'dz':5.e2, 'dt':0.25},  \
@@ -414,6 +491,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
             write_data_only=False,\
             previous_product=None,\
             previous_product_sigma=0.2,\
+            previous_product_earthaccess=False,\
             THREADS=1):
     '''
     Function to generate DEMs and height-change maps based on ATL11 surface height data.
@@ -421,7 +499,26 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
     Inputs:
         xy0: 2 elements specifying the center of the domain
         Wxy: (float) Width of the domain
-        ATL11_index: (string) Index file (from pointCollection.geoIndex) for ATL11 data
+        ATL11_index: (string) Index file (from pointCollection.geoIndex) for ATL11 data.
+            If ATL11_earthaccess is True, this is instead the root directory
+            of per-granule geoIndex files, and ATL11 granules are found by
+            searching NASA Earthdata Cloud (via earthaccess) for the tile's
+            bounding box and read directly from S3.
+        ATL11_release: (str) the ATL11 generation to read, e.g.
+            '007_cycle_03_31_v04'.  Restricts the earthaccess search to the
+            generation whose per-granule index is staged under ATL11_index.
+            NOTE this is NOT the crossover generation: --ATL11xo_version is
+            normally a different cycle range and version (rel_006_0331 pairs
+            0331_007_04 with 0330_007_03), so the two must never share one
+            value.
+        ATL11_earthaccess: (bool) if True, read ATL11 granules from NASA
+            Earthdata Cloud via earthaccess instead of a single local index
+            file; see ATL11_index.
+        ATL11xo_version: (str) the ATL11 crossover generation, e.g.
+            '007_cycle_03_30_v03'.  With ATL11_earthaccess this turns cloud
+            crossovers on and supplies the release and version in the ATL11XO
+            granule names; in local mode ATL11_xover_dir is the switch and this
+            is unused.  NOT the same value as ATL11_release, see above.
         E_RMS: (dict) dictionary specifying constraints on derivatives of the ice-sheet surface.
         t_span: (2-element list of floats) starting and ending times for the output grids (in years CE)
         spacing: (dict) dictionary specifying the grid spacing for z0, dz, and dt
@@ -449,6 +546,10 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
         avg_scales: (list of floats) scales over which the output grids will be averaged and errors will be calculated
         error_res_scale: (float) If errors are calculated, the grid resolution will be coarsened by this factor
         calc_error_file: (string) Output file for which errors will be calculated.
+        previous_product_earthaccess: (bool) if True, --previous_product names the
+            release and cycle range to search for in NASA Earthdata Cloud
+            ('<release>_<cycles>', e.g. '005_0329') rather than a directory --
+            the same reinterpretation ATL11_earthaccess makes of ATL11_index
         previous_product: (string) Directory containing ATL14/ATL15 .nc files from a
             previous run.  When set, data are pre-filtered against the previous solution
             before the fit using the sigma_extra strategy.
@@ -519,6 +620,23 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
             mask_file=None
         elif mask_file.endswith('.shp') or mask_file.endswith('.db'):
             mask_data=make_mask_from_vector(mask_file, W, ctr, spacing['z0'], srs_proj4=SRS_proj4)
+        else:
+            # NEITHER BRANCH APPLIED, so mask_data is still None and the next
+            # line would fail as "'NoneType' object has no attribute 'z'" --
+            # which says nothing about the cause.  --region is not a label
+            # here, it is the switch that selects the gridded-mask reader, so a
+            # region name that is nearly right ('AA_44km' for the Antarctic
+            # south half) silently skips the mask entirely.  All four 44 km
+            # jobs of the 2026-09-08 cost queue died this way while their 60 km
+            # counterparts at the same tile centers succeeded.
+            raise ValueError(
+                f'--region={region!r} does not select a mask reader: gridded '
+                f"masks are read only for region in ['AA', 'GL'], and "
+                f'--mask_file={mask_file!r} is not a .shp or .db vector mask.  '
+                'A region variant that solves a different footprint (the '
+                'Antarctic south half, say) must keep the parent region name '
+                'and change only its geometry -- see '
+                'scripts/maap/make_AA_44km_args.py.')
 
         # check if mask_data is 2D or 3D
         if len(mask_data.z.shape)==2:
@@ -547,7 +665,11 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
     else:
         data, file_list = read_ATL11(xy0, Wxy, ATL11_index, SRS_proj4,
                                      sigma_geo=sigma_geo, sigma_radial=sigma_radial,
-                                     xover_tile_root=ATL11_xover_dir, hemisphere=hemisphere)
+                                     xover_tile_root=ATL11_xover_dir, hemisphere=hemisphere,
+                                     earthaccess=ATL11_earthaccess,
+                                     ATL11_release=ATL11_release,
+                                     ATL11xo_version=ATL11xo_version,
+                                     verbose=verbose)
         if sigma_tol is not None and data is not None:
             data.index(data.sigma < sigma_tol)
         if data is not None:
@@ -609,6 +731,15 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
                 SMB_corr_from_grid(data,
                     model_file=os.path.join(firn_directory,firn_grid_file))
         else:
+            # SMBcorr is an optional dependency: it is only needed here, when a
+            # firn model is requested without a pre-gridded firn file.
+            try:
+                from SMBcorr.assign_firn_variable import assign_firn_variable
+            except ImportError as exc:
+                raise ImportError(
+                    f'--firn_model={firn_correction} requires SMBcorr, which is not '
+                    'installed.  Install it with "pip install ATL1415[firn]", or supply '
+                    'a pre-gridded firn model with --firn_grid_file instead.') from exc
             assign_firn_variable(data, firn_correction, firn_directory, hemisphere,
                              model_version=firn_version, subset_valid=False)
         # make the correction
@@ -623,6 +754,8 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
         set_three_sigma_edit_from_previous_product(
             data, xy0, Wxy, previous_product,
             previous_product_sigma=previous_product_sigma,
+            previous_product_earthaccess=previous_product_earthaccess,
+            SRS_proj4=SRS_proj4,
             sigma_extra_bin_spacing=sigma_extra_bin_spacing,
             sigma_extra_max=sigma_extra_max, verbose=verbose)
 
@@ -659,7 +792,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
         # overlap multiple quadrants.  Elsewhere, from_list should just read the file.
         # N.B.: for netCDFs, the root group is '' rather than '/'
         ref_dem = pc.grid.mosaic().from_list(
-            glob.glob(ATL14_reference_file),
+            _expand_reference_files(ATL14_reference_file),
             group='', bounds = data.bounds(pad=2.e3), fields=['h','h_sigma'])
         data.assign(z_ref = ref_dem.interp(data.x, data.y, field='h'))
         data.assign(sigma_zref = ref_dem.interp(data.x, data.y, field='h_sigma'))
@@ -700,6 +833,34 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
     S['file_list'] = file_list
     return S
 
+# Which build of this code wrote a tile (docs/howto_MAAP_ogc.sh O12a).  On
+# MAAP, run.sh exports these from the image's build stamp; anywhere else they
+# are unset and the attributes are simply not written.  A production run can
+# end up with tiles from more than one build on purpose -- a bug patched and
+# only the affected tiles rerun -- and the tile is the one record of which is
+# which that outlives the job logs.  attribute name -> environment variable.
+BUILD_PROVENANCE_ENV = {
+    'build_commit': 'ATL1415_BUILD_COMMIT',
+    'build_version': 'ATL1415_BUILD_VERSION',
+    'build_completed': 'ATL1415_BUILD_COMPLETED',
+}
+
+
+def write_build_provenance(group, prefix=''):
+    '''
+    Record the build that is writing into an HDF5 group, as ascii attributes.
+
+    inputs:
+        group: an h5py group -- a tile's /meta
+        prefix: prepended to each attribute name ('errors_' for the error step,
+            which appends into a tile written earlier, possibly by another build)
+    '''
+    for attr, env in BUILD_PROVENANCE_ENV.items():
+        value = os.environ.get(env)
+        if value:
+            group.attrs[prefix + attr] = value.encode('ascii')
+
+
 def save_fit_to_file(S,  filename, dzdt_lags=None, reference_epoch=0):
     if os.path.isfile(filename):
         os.remove(filename)
@@ -717,6 +878,7 @@ def save_fit_to_file(S,  filename, dzdt_lags=None, reference_epoch=0):
             h5f['meta'].attrs['input_files'] = ','.join([os.path.basename(Si) for Si in S['file_list']]).encode('ascii')
         h5f['meta'].attrs['first_delta_time']=np.nanmin(S['data'].delta_time)
         h5f['meta'].attrs['last_delta_time']=np.nanmax(S['data'].delta_time)
+        write_build_provenance(h5f['meta'])
         h5f.create_group('/RMS')
         for key in S['RMS']:
             h5f.create_dataset('/RMS/'+key, data=S['RMS'][key])
@@ -844,6 +1006,7 @@ def save_errors_to_file( S, filename, dzdt_lags=None, reference_epoch=None, grid
             ds.to_h5(filename, group=key.replace('sigma_',''))
 
     with h5py.File(filename,'r+') as h5f:
+        write_build_provenance(h5f.require_group('meta'), prefix='errors_')
         for key in S['E']['sigma_bias']:
             if 'bias/sigma' in h5f and  key in h5f['/bias/sigma']:
                 print(f'{key} already exists in sigma_bias')
@@ -865,8 +1028,29 @@ def parse_args(argv=None):
         description="function to fit ICESat-2 data with a smooth elevation-change model", \
         fromfile_prefix_chars="@")
     parser.add_argument('--xy0', type=float, nargs=2, help="fit center location")
-    parser.add_argument('--ATL11_index', type=lambda p: os.path.abspath(os.path.expanduser(p)), required=True, help="ATL11 index file")
+    parser.add_argument('--ATL11_index', type=path_or_uri, required=True,
+        help="ATL11 index: a local geoIndex file (from pointCollection.geoIndex) covering the "
+             "archive, or -- if --ATL11_earthaccess is set -- the root directory of per-granule "
+             "geoIndex files, one 'ATL11_index_<cycles>_<release>_<version>/<granule>.h5' subtree "
+             "per release combo")
+    parser.add_argument('--ATL11_earthaccess', action='store_true',
+        help="read ATL11 granules from NASA Earthdata Cloud (S3) via earthaccess instead of a "
+             "single local index file -- granules are found by searching earthaccess for the "
+             "tile's bounding box, then --ATL11_index is used as the per-granule geoIndex root")
+    parser.add_argument('--ATL11_release', type=str, default=None,
+        help="ATL11 generation to read, e.g. 007_cycle_03_31_v04.  With --ATL11_earthaccess "
+             "this filters the Earthdata search to the generation whose per-granule index is "
+             "staged under --ATL11_index; without it, setup_ATL1415_region.py consumes it to "
+             "build the local index path.  It is NOT --ATL11xo_version, which names a "
+             "different cycle range and version for the crossovers.")
     parser.add_argument('--ATL11_xover_dir', type=str, help="ATL11 crossover directory.  Tiles should be in cycle_xx subdirectories")
+    parser.add_argument('--ATL11xo_version', type=str, default=None,
+        help="ATL11 crossover generation, e.g. 007_cycle_03_30_v03.  Names the release and "
+             "version of the ATL11XO tiles: with --ATL11_earthaccess this is what turns "
+             "cloud crossovers on, since --ATL11_xover_dir is the local-mode switch and has "
+             "nothing to point at in the cloud.  It is NOT --ATL11_release, which is the "
+             "along-track generation and is normally a different cycle range and version "
+             "(rel_006_0331 pairs 0331_007_04 with 0330_007_03)")
     parser.add_argument('--Width','-W',  type=float, help="Width of grid")
     parser.add_argument('--time_span','-t', type=str, help="time span, first year,last year AD (comma separated, no spaces)")
     parser.add_argument('--grid_spacing','-g', type=str, help='grid spacing:DEM (meters),dh maps xy (meters),dh_maps time (years): comma-separated, no spaces', default='250.,4000.,1.')
@@ -877,7 +1061,7 @@ def parse_args(argv=None):
     parser.add_argument('--matched', action="store_true")
     parser.add_argument('--prior_edge_include', type=float, help='include prior constraints over this width at the edge of each tile')
     parser.add_argument('--prior_sigma_scale', type=float, default=1, help='scale prior error estimates by this value')
-    parser.add_argument('--ATL14_reference_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='if specified, subtract the ATL14 heights from this file')
+    parser.add_argument('--ATL14_reference_file', type=path_or_uri, help='if specified, subtract the ATL14 heights from this file')
     parser.add_argument('--tile_spacing', type=float, default=60000.)
     parser.add_argument('--sigma_extra_bin_spacing', type=float, default=None, help='width over which data are collected to calculate the extra error estimates')
     parser.add_argument('--sigma_extra_max', type=float, default=None, help='maximum value for sigma_extra,')
@@ -885,7 +1069,7 @@ def parse_args(argv=None):
     parser.add_argument('--E_d2zdt2', type=float, default=5000)
     parser.add_argument('--E_d2z0dx2', type=float, default=0.02)
     parser.add_argument('--E_d3zdx2dt', type=float, default=0.0003)
-    parser.add_argument('--E_d2z0dx2_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='file from which to read the expected d2z0dx2 values')
+    parser.add_argument('--E_d2z0dx2_file', type=path_or_uri, help='file from which to read the expected d2z0dx2 values')
     parser.add_argument('--E_d3zdx2dt_scale_file', type=str, help='grid file containing scaling values for the E_d3zdx2dt parameter')
     parser.add_argument('--data_gap_scale', type=float,  default=2500)
     parser.add_argument('--sigma_geo', type=float,  default=6.5)
@@ -895,18 +1079,22 @@ def parse_args(argv=None):
     parser.add_argument('--N_subset', type=int, default=None, help="number of pieces into which to divide the domain for (cheap) editing iterations.")
     parser.add_argument('--max_iterations', type=int, default=6, help="maximum number of iterations used to edit the data.")
     parser.add_argument('--map_dir','-m', type=lambda p: os.path.abspath(os.path.expanduser(p)))
-    parser.add_argument('--DEM_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='DEM file to use with the DEM_tol parameter')
+    parser.add_argument('--DEM_file', type=path_or_uri, help='DEM file to use with the DEM_tol parameter')
     parser.add_argument('--DEM_tol', type=float, default=50, help='points different from the DEM by more than this value will be edited in the first iteration')
     parser.add_argument('--geoid_tol', type=float, help='points closer than this to the geoid will be rejected')
     parser.add_argument('--sigma_tol', type=float, help='points with sigma greater than this value will be edited')
-    parser.add_argument('--mask_file', type=lambda p: os.path.abspath(os.path.expanduser(p)))
-    parser.add_argument('--rock_mask_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='mask indicating exposed rock')
+    parser.add_argument('--mask_file', type=path_or_uri)
+    parser.add_argument('--rock_mask_file', type=path_or_uri, help='mask indicating exposed rock')
     parser.add_argument('--rock_mask_reject_value', type=float, default=1, help='value within the rock mask file that indicates rock')
-    parser.add_argument('--geoid_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help="file containing geoid information")
-    parser.add_argument('--tide_mask_file', type=lambda p: os.path.abspath(os.path.expanduser(p)))
-    parser.add_argument('--tide_directory', type=lambda p: os.path.abspath(os.path.expanduser(p)))
+    parser.add_argument('--geoid_file', type=path_or_uri, help="file containing geoid information")
+    parser.add_argument('--tide_mask_file', type=path_or_uri)
+    parser.add_argument('--tide_directory', type=path_or_uri,
+        help='where to find the tide model: either a local directory of model files, read '
+             'through pyTMD as before, or an s3:// prefix holding the <model>.zarr stores '
+             'pyTMD publishes (e.g. s3://pytmd), which is read by range request and needs '
+             'nothing staged locally')
     parser.add_argument('--tide_adjustment', action="store_true", help="Adjust tides for ice shelf flexure")
-    parser.add_argument('--tide_adjustment_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help="File for adjusting tide and dac values for ice shelf flexure")
+    parser.add_argument('--tide_adjustment_file', type=path_or_uri, help="File for adjusting tide and dac values for ice shelf flexure")
     parser.add_argument('--tide_adjustment_format', type=str, choices=('geotif','h5','nc'), default='h5', help="File format of the scaling factor grid")
     parser.add_argument('--tide_model', type=str)
     parser.add_argument('--firn_directory', type=str, help='directory containing firn model')
@@ -915,19 +1103,33 @@ def parse_args(argv=None):
     parser.add_argument('--firn_grid_file', type=str, help='gridded firn model file that can be interpolated directly.')
     parser.add_argument('--reference_epoch', type=int, help="Reference epoch number, for which dz=0")
     parser.add_argument('--reference_time', type=float, help="time value that will be used to choose the reference epoch if it is not specified")
-    parser.add_argument('--data_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='read data from this file alone')
+    parser.add_argument('--data_file', type=path_or_uri, help='read data from this file alone')
     parser.add_argument('--restart_edit', action='store_true')
-    parser.add_argument('--calc_error_file','-c', type=lambda p: os.path.abspath(os.path.expanduser(p)), help='file containing data for which errors will be calculated')
+    parser.add_argument('--calc_error_file','-c', type=path_or_uri, help='file containing data for which errors will be calculated')
     parser.add_argument('--calc_error_for_xy', action='store_true', help='calculate the errors for the file specified by the x0, y0 arguments')
     parser.add_argument('--error_res_scale','-s', type=str, default="5,2", help='if the errors are being calculated (see calc_error_file), scale the grid resolution in x and y to be coarser.  2-element comma-separated list')
     parser.add_argument('--bias_params', type=str, default="rgt,cycle", help='one bias parameter will be assigned for each unique combination of these ATL11 parameters (comma-separated list with no spaces)')
     parser.add_argument('--region', type=str, help='region for which calculation is being performed')
-    parser.add_argument('--previous_product', type=lambda p: os.path.abspath(os.path.expanduser(p)), action='append', default=None, help='directory containing ATL14/ATL15 .nc files from a previous run; may be repeated for multiple sector directories (e.g. Antarctic A1-A4)')
+    parser.add_argument('--previous_product', type=previous_product_arg, action='append', default=None, help='directory containing ATL14/ATL15 .nc files from a previous run; may be repeated for multiple sector directories (e.g. Antarctic A1-A4)')
+    parser.add_argument('--previous_product_earthaccess', action='store_true',
+                        help='reinterpret --previous_product as the release and cycle range '
+                        "to search for in NASA Earthdata Cloud ('<release>_<cycles>', e.g. "
+                        "'005_0329'), instead of a directory to glob")
     parser.add_argument('--previous_product_sigma', type=float, default=0.2, help='minimum sigma_extra (m) when pre-filtering against the previous product (default 0.2)')
     parser.add_argument('--verbose','-v', action="store_true")
     parser.add_argument('--write_data_only', action='store_true', help='save data without processing')
     parser.add_argument('--THREADS', type=int, default=1, help='number of threads to use in suitesparse calculations')
     args, unknown=parser.parse_known_args(argv[1:])
+    if len(unknown) > 0:
+        # Report, do not raise: the args files are shared between entry points,
+        # so they legitimately carry switches this parser does not define
+        # (--ATL14_root by the queue builders, --cycles/--Release/--version by
+        # ATL14_write2nc.py and ATL15_write2nc.py).  But a
+        # switch that is silently dropped is invisible for a long time --
+        # --ATL11xo_version sat in every composed args file being discarded
+        # here, which is why cloud crossovers were never read.
+        print('ATL11_to_ATL15.parse_args: ignoring unrecognized arguments: '
+              + ' '.join(unknown))
     if args.THREADS == 1 and int(N_THREADS) > 1:
         args.THREADS = int(N_THREADS)
     return args
@@ -1053,7 +1255,10 @@ def resolve_run_config(args):
 
 def build_fit_kwargs(args, cfg):
     return dict(ATL11_index=args.ATL11_index,\
+           ATL11_earthaccess=args.ATL11_earthaccess,\
+           ATL11_release=args.ATL11_release,\
            ATL11_xover_dir=args.ATL11_xover_dir,\
+           ATL11xo_version=args.ATL11xo_version,\
            Wxy=args.Width, E_RMS=cfg['E_RMS'], t_span=args.time_span, spacing=cfg['spacing'], \
            E_d3zdx2dt_scale_file=args.E_d3zdx2dt_scale_file,\
            bias_params=args.bias_params,\
@@ -1099,6 +1304,7 @@ def build_fit_kwargs(args, cfg):
            write_data_only=args.write_data_only,
            previous_product=args.previous_product,
            previous_product_sigma=args.previous_product_sigma,
+           previous_product_earthaccess=args.previous_product_earthaccess,
            THREADS=args.THREADS)
 
 def main():

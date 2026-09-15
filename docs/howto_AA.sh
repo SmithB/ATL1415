@@ -1,3 +1,6 @@
+# DISCOVER/SLURM variant.  The MAAP/DPS counterpart is docs/howto_MAAP_AA.sh.
+# This file remains the production path; the MAAP one is still tentative.
+
 # see howto_ATL11.sh for indexing
 
 # setup Antarctica:

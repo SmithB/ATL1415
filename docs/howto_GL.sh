@@ -1,3 +1,6 @@
+# DISCOVER/SLURM variant.  The MAAP/DPS counterpart is docs/howto_MAAP_GL.sh.
+# This file remains the production path; the MAAP one is still tentative.
+
 # Run the indexing commands from howto_ATL11.txt
 
 # Update default_args/latest_release.txt and default_args/GL_latest.txt.  Each should be a symbolic link to a file containing release-specific details
