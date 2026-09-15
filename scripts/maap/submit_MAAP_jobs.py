@@ -12,8 +12,15 @@ Decided 2026-09-12, docs/plan_IS_run.sh QI2.
 WHAT IT SHARES WITH THE AA SUBMITTER, deliberately and through ogc_jobs.py:
 the process lookup by name+version (never a hard-coded processID -- it changes
 on every redeploy), submit_job(pid, inputs, queue, dedup=False, tag=...), and
-the ledger columns.  collect_jobs.py and fetch_tiles.py read the ledger this
-writes without knowing which submitter wrote it.
+the ledger columns -- plus ONE MORE here, tile_prefix, appended last.
+collect_jobs.py and fetch_tiles.py read columns by name (csv.DictReader), so
+they read the ledger this writes, and the AA submitter's, and ledgers written
+before the column existed, without knowing which is which.
+
+THE tile_prefix COLUMN (added 2026-09-15): QI5a made tile_prefix a job input
+so that where a tile went is written down per job rather than implied by a
+convention -- and the ledger is where it is written down.  "-" means the job
+was sent none, which is the registered default and run.sh's "none".
 
 dedup=False, EXPLICITLY, as everywhere else: a tile resubmitted after a
 rebuild has byte-identical inputs, and a deduplicated job would hand back the
@@ -40,7 +47,8 @@ Usage:
   --tag            identifier prefix; default "<REGION>_<step>", with REGION
                    read out of the args file's name
   --tile_prefix    where the job writes its tile / reads its neighbours.
-                   NOT YET A DEPLOYED INPUT -- see the check in main().
+                   Deployed since the 6978a8a registration; main() still
+                   refuses it if the config or deployed CWL lacks it.
   --limit N        submit only the first N centers.  USE IT: one job on a
                    queue nobody has used before costs one job to find out,
                    and 29 to find out the expensive way.
@@ -65,7 +73,7 @@ from ogc_jobs import (DEFAULT_QUEUE, DONE, POLL_S, find_process,  # noqa: E402
                       job_id_from, load_config)
 
 LEDGER_COLUMNS = ['identifier', 'x0', 'y0', 'step', 'queue', 'args_file',
-                  'job_id', 'submitted_utc']
+                  'job_id', 'submitted_utc', 'tile_prefix']
 
 
 def region_of(args_url):
@@ -261,7 +269,8 @@ def main():
             writer.writerow([ident, x0, y0, args.step, args.queue,
                              args.args_url, job_id,
                              datetime.datetime.now(datetime.timezone.utc)
-                             .isoformat(timespec='seconds')])
+                             .isoformat(timespec='seconds'),
+                             args.tile_prefix or '-'])
             fh.flush()
             print(f'  {n:4}/{len(centers)}  {ident:34} {job_id}')
             if n < len(centers):

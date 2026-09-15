@@ -194,6 +194,15 @@ scripts/maap/submit_MAAP_jobs.py --xy_file region_files/IS_prelim_xy.txt \
 # A submit that fails is RECORDED in the ledger and the run continues (Q11).
 # Rows are flushed as they are written, so an interrupt still leaves a usable
 # ledger.  --rate (default 2 s) and --max_in_flight are there for GL.
+# ADDED 2026-09-15 (Ben): a ninth ledger column, tile_prefix, appended last --
+# the prefix the job was sent, or "-" for none -- so QI5a's "the path is
+# visible in every ledger row" is true of the ledger and not only of the job
+# record.  Readers go by column name, so older ledgers still read.
+# IS_smoke_jobs.csv was written before the column and was BACKFILLED with the
+# prefix its submit command passed (the original is kept beside it as
+# IS_smoke_jobs.csv.pre_tile_prefix).  Tested against a stubbed MAAP: the
+# column holds the prefix with --tile_prefix, "-" without it or with "-",
+# and the inputs sent are unchanged.
 #
 # TESTED 2026-09-12, all against the real deployed process (processID 64):
 # the 29-center dry-run, --limit 1, and every refusal above.  Not yet run for
@@ -349,8 +358,18 @@ scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv \
 #      maap-py 4.2.0 -- and the rebuild failed (Ben).  register_algorithm.py
 #      and every job script now refuse maap-py < 5.0.  Re-register from the
 #      right image before step 3.
-#   3. scripts/maap/check_build_id.py -- must say MATCH at the new commit
-#   4. ONE matched job before the other 28
+#      DONE 2026-09-14: re-registered at 6978a8a.  VERIFIED 2026-09-15 by
+#      reading the deployed CWL (processID 64, modified 2026-09-14T20:34):
+#      s:commitHash 6978a8a, and tile_prefix carries default: '-' on both the
+#      workflow input and the CommandLineTool input.
+#   3. DONE 2026-09-15: scripts/maap/check_build_id.py said VERDICT: MATCH --
+#      image stamp, live git and CWL all 6978a8a, tree_state=clean,
+#      maap_py=5.1.0, maap_pgt=set.  Job 39a8ec02-3940-42b8-8d46-1181558a82b8,
+#      submitted WITHOUT tile_prefix, so the '-' default really binds.
+#      STATEMENT, same day: no IS ledger exists yet, and
+#      s3://.../ATL14_processing/rel006/north/IS/ is empty -- no IS job has run.
+#   4. ONE matched job before the other 28 -- but I2's prelim, WITH
+#      --tile_prefix, has to fill the canonical tree first.
 
 
 # I8. [ADE] [READY]  Bring the matched tiles down.
