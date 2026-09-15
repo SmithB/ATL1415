@@ -156,7 +156,22 @@ scripts/maap/submit_MAAP_jobs.py --xy_file region_files/IS_smoke_xy.txt \
     --ledger ~/ATL14_processing/maap_ledgers/IS_smoke_jobs.csv
 scripts/maap/collect_jobs.py ~/ATL14_processing/maap_ledgers/IS_smoke_jobs.csv
 # Wait for 'successful'.  If it will not schedule or dies on memory, -32gb is
-# the fallback and nothing else changes.  THEN the other 28:
+# the fallback and nothing else changes.
+# DONE 2026-09-15.  STATEMENT, read with collect_jobs.py at 18:15 UTC and
+# `aws s3 ls` on the canonical prefix:
+#   job c5a37da1 (submitted 16:18, WITH --tile_prefix), image 6978a8a:
+#     successful, 2336 s wall (fit 1277 s, error 1038 s), peak 6.55 GiB on
+#     maap-dps-worker-16gb -- it schedules, and fits with room.
+#     N_ATL11 239700, N_AT 239613, N_XO 87 (> 0, so crossovers are read),
+#     N_fit 43789, 3 iterations.
+#   s3://.../ATL14_processing/rel006/north/IS/prelim/E1260_N-2620.h5
+#     20317493 bytes, and prelim/field_sizes/E1260_N-2620_report.json
+#     (dz/dz 61x61x32), both written 17:01:57 -- after the error step, as
+#     run.sh intends.  SO THE PRELIM UPLOAD I7 COULD NOT TEST IS VERIFIED.
+# THE SIZE ESTIMATES ABOVE WERE HIGH.  RECOMMENDATION, one tile only: ~0.65 h
+# per tile (not 0.8-0.9) and ~20 MB (not ~240 MB), so IS prelim is nearer
+# ~19 worker-hours and ~0.6 GB.  An edge tile; interior tiles may differ.
+# THEN the other 28:
 scripts/maap/submit_MAAP_jobs.py --xy_file region_files/IS_prelim_xy.txt \
     --step prelim --args_url $s3_run/input_args_IS.txt \
     --queue maap-dps-worker-16gb \
@@ -205,8 +220,8 @@ scripts/maap/submit_MAAP_jobs.py --xy_file region_files/IS_prelim_xy.txt \
 # and the inputs sent are unchanged.
 #
 # TESTED 2026-09-12, all against the real deployed process (processID 64):
-# the 29-center dry-run, --limit 1, and every refusal above.  Not yet run for
-# real -- no IS job has been submitted.
+# the 29-center dry-run, --limit 1, and every refusal above.  RUN FOR REAL
+# 2026-09-15: the smoke tile, above.  The 29-tile fan-out has not been.
 
 
 # I3. [ADE] [READY]  Watch the 29 jobs.   THE COLLECTOR.
@@ -339,6 +354,8 @@ scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv \
 #     --tile_prefix "" on EVERY job, build_id and check_build_id included.
 #   NOT TESTED, and untestable here: a real matched solve, and the prelim
 #   upload -- both need the rebuilt image.
+#   2026-09-15: THE PRELIM UPLOAD IS NOW VERIFIED by the I2 smoke tile.  The
+#   matched solve is still untested.
 #
 # THE EMPTY DEFAULT DID NOT SURVIVE REGISTRATION.  Registered 2026-09-14 with
 # default: "", and /api/build accepted it -- but the deployed CWL (deployment
@@ -370,6 +387,8 @@ scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv \
 #      s3://.../ATL14_processing/rel006/north/IS/ is empty -- no IS job has run.
 #   4. ONE matched job before the other 28 -- but I2's prelim, WITH
 #      --tile_prefix, has to fill the canonical tree first.
+#      2026-09-15: I2's smoke tile is in the canonical tree (see I2).  The
+#      fan-out of the rest is next; a matched job needs its neighbours there.
 
 
 # I8. [ADE] [READY]  Bring the matched tiles down.
