@@ -178,6 +178,17 @@ scripts/maap/submit_MAAP_jobs.py --xy_file region_files/IS_prelim_xy.txt \
     --ledger ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv
 # (the smoke tile is submitted again as part of the 29; dedup=False, so it
 # really re-runs.  Simpler than excising one line, and it costs ~1 h.)
+# SUBMITTED 2026-09-15 ~18:30 UTC, all 29 WITH --tile_prefix
+#   s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/north/IS
+# (Ben chose all 29 over excising the smoke tile).  29/29 accepted, no failed
+# submit; ledger ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv.
+# GATE, same day: the process had been re-registered at b5fe447 (modified
+# 16:56) after the smoke job went out, so check_build_id.py was re-run first:
+# VERDICT: MATCH, job 29688742 -- stamp, live git and CWL all b5fe447,
+# tree_state=clean, maap_py=5.1.0, maap_pgt=set; the CWL keeps default '-'
+# on both tile_prefix inputs.  b5fe447 differs from 6978a8a (the smoke
+# tile's image) only in submit_MAAP_jobs.py and this file -- nothing a
+# worker runs.
 #
 # ONCE THE REBUILD OF I7 IS DEPLOYED, add --tile_prefix to both commands so the
 # tiles land in the canonical tree and the matched step can find them:
@@ -387,8 +398,9 @@ scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv \
 #      s3://.../ATL14_processing/rel006/north/IS/ is empty -- no IS job has run.
 #   4. ONE matched job before the other 28 -- but I2's prelim, WITH
 #      --tile_prefix, has to fill the canonical tree first.
-#      2026-09-15: I2's smoke tile is in the canonical tree (see I2).  The
-#      fan-out of the rest is next; a matched job needs its neighbours there.
+#      2026-09-15: I2's smoke tile is in the canonical tree (see I2), and
+#      all 29 prelim jobs are submitted (image b5fe447, MATCH).  A matched job
+#      waits for them: it needs its neighbours in the tree.
 
 
 # I8. [ADE] [READY]  Bring the matched tiles down.
