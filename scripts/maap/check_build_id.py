@@ -88,6 +88,26 @@ def parse_build_id_line(text):
                 if '=' in field)
 
 
+def same_commit(got, want):
+    """
+    True when two commit strings name the same commit, allowing an abbreviation.
+
+    --expect is routinely typed as a short sha ("--expect 6b8a2ca") while the
+    build stamp carries the full 40-char hash, and a bare != there reports a
+    MISMATCH whose text tells the reader to RE-REGISTER a perfectly good image
+    -- a false alarm that costs a rebuild.  Git's own rule: an abbreviation of
+    at least 7 hex characters matches if it is a prefix of the full hash.
+    """
+    if got == want:
+        return True
+    if not got or not want:
+        return False
+    short, full = sorted((got, want), key=len)
+    if len(short) < 7 or not all(c in '0123456789abcdef' for c in short.lower()):
+        return False
+    return full.lower().startswith(short.lower())
+
+
 def verdict(fields, want, origin, image_label='image'):
     """
     (exit_status, lines) for the parsed BUILD_ID fields.
@@ -101,7 +121,7 @@ def verdict(fields, want, origin, image_label='image'):
         lines.append('VERDICT: NO STAMP -- the image was built before the build'
                      ' stamp existed, so it is not a fresh build of current code.')
         status = 1
-    elif want and got != want:
+    elif want and not same_commit(got, want):
         lines.append(f'VERDICT: MISMATCH\n  {image_label:6} {got}\n  built  {want}\n'
                      '  The image is not the commit the build service says it'
                      ' built -- an image reused under the tag.  Re-register;'
@@ -115,7 +135,7 @@ def verdict(fields, want, origin, image_label='image'):
                      ' recorded commit to compare it with (no s:commitHash, no'
                      ' --expect).')
         status = 1
-    if origin and got not in ('unknown', origin):
+    if origin and got != 'unknown' and not same_commit(got, origin):
         lines.append(f'  NOTE: origin is now at {origin[:12]}, past this build.'
                      '  Normal after a push; register again to pick it up.')
     pgt = fields.get('maap_pgt', 'unknown')

@@ -464,7 +464,7 @@ scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv \
 
 # ===========================================================================
 # I7a. [DPS] [DECIDED 2026-09-16 (Ben); CODE WRITTEN + TESTED 2026-09-16;
-#            BLOCKED ON I7'S REBUILD + REGISTRATION]
+#            REGISTERED AND DEPLOY-VERIFIED 2026-09-16 -- READY TO SUBMIT]
 #      An uncertainty step with no data must clean up and exit 0.
 #      RIDES I7'S REBUILD -- one rebuild and one registration cover both.
 # ===========================================================================
@@ -608,6 +608,37 @@ scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv \
 # is not sufficient, NOT that coarsening is irrelevant -- it may still be what
 # tips a 327-point tile over.  NOT SETTLED, and deliberately not settled: the
 # scope decision below makes the distinction unnecessary.
+#
+# ===========================================================================
+# DEPLOY VERIFIED 2026-09-16.  VERDICT: MATCH, and I7a rode I7's rebuild.
+# ===========================================================================
+# Ben registered; the image stamp, the live git in the image and the CWL are
+# all 6b8a2ca8703be0f20680975d3126b68dc6198684, tree_state=clean,
+# algorithm_version=on_s3, maap_py=5.1.0, maap_pgt=set.  Build ran
+# 14:44:29Z -> 14:47:32Z, AFTER the 14:41:53Z commit, so it is a real rebuild
+# and not an image reused under the tag.  processID=64, modified
+# 2026-09-16T14:51:50.  build_id job
+# job-atl1415_tile_solve_1786__on_s3-20260916T151658.131427Z, successful.
+# origin/on_s3 is level at the same commit, so nothing is past the build.
+# This is the MATCH the submission gate wants: registration alone would not
+# have been enough (docs/howto_MAAP_ogc.sh, cwlLink is not a deploy).
+#
+# TWO check_build_id.py BUGS FOUND DOING IT.  One fixed, one only recorded:
+#   FIXED: `--expect 6b8a2ca` (a SHORT sha) against the 40-char build stamp
+#   reported VERDICT: MISMATCH, whose text says to RE-REGISTER and then to
+#   take it to MAAP support -- a false alarm that would have cost a second
+#   rebuild of a perfectly good image.  The compare was a bare `!=`.  It now
+#   goes through same_commit(), which accepts an abbreviation of >= 7 hex
+#   chars as a prefix, the way git does.  Tested over 8 cases including
+#   6-char (rejected, too short to trust), a wrong short sha, and a non-hex
+#   value.  The origin-is-past-this-build note uses the same compare now.
+#   NOT FIXED, and it BLOCKED the re-read: `--job <id>` polls get_job_status,
+#   which returns 404 forever for an OGC job id that list_jobs reports as
+#   `successful` (tried the id above; 404 every 15 s until killed).  So after
+#   a timeout, or to re-score a job with a different --expect, THERE IS NO
+#   WORKING RE-READ -- the only paths are a fresh submission or scoring the
+#   BUILD_ID line by hand through verdict(), which is what was done here.
+#   This is the unfinished half of O5 in docs/howto_MAAP_ogc.sh.  [ADE]
 #
 # THEN IT NEEDS A REBUILD AND A REGISTRATION, like any worker-side change, and
 # check_build_id must MATCH the new commit before anything is submitted --

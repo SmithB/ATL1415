@@ -325,8 +325,16 @@
 
 
 # ===========================================================================
-# O5. [OK, 2026-09-10 -- dry-run and log-reading REAL; submit path mocked]
+# O5. [PARTLY DONE -- submit + read REAL since 2026-09-15; --job STILL BROKEN]
 #     Port check_build_id.py to the OGC job calls.   [ADE]
+#     STILL OPEN 2026-09-16: the `--job <id>` re-read path does NOT work for
+#     OGC jobs.  get_job_status() returns 404 indefinitely for a job id that
+#     list_jobs() reports as `successful` -- confirmed against
+#     job-atl1415_tile_solve_1786__on_s3-20260916T151658.131427Z, 404 on every
+#     poll for 15 minutes.  CONSEQUENCE: if the wait times out, or a job needs
+#     re-scoring against a different --expect, there is no way to re-read it;
+#     you must either submit a fresh job or score the BUILD_ID line by hand
+#     through verdict().  The submit-and-wait path itself is fine.
 # ===========================================================================
 # FIRST, FIND THE PROCESS: submit_job() needs the deployed process's id
 # (F9).  Look it up by name and version from list_algorithms() --
