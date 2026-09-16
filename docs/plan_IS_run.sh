@@ -463,8 +463,8 @@ scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv \
 
 
 # ===========================================================================
-# I7a. [DPS] [DECIDED 2026-09-16 (Ben); CODE WRITTEN + TESTED 2026-09-16;
-#            REGISTERED AND DEPLOY-VERIFIED 2026-09-16 -- READY TO SUBMIT]
+# I7a. [DPS] [DONE 2026-09-16 -- DECIDED, WRITTEN, DEPLOYED AND PROVEN ON DPS
+#            BY RE-RUNNING THE TILE THAT FAILED]
 #      An uncertainty step with no data must clean up and exit 0.
 #      RIDES I7'S REBUILD -- one rebuild and one registration cover both.
 # ===========================================================================
@@ -639,6 +639,41 @@ scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv \
 #   WORKING RE-READ -- the only paths are a fresh submission or scoring the
 #   BUILD_ID line by hand through verdict(), which is what was done here.
 #   This is the unfinished half of O5 in docs/howto_MAAP_ogc.sh.  [ADE]
+#
+# ===========================================================================
+# PROVEN ON DPS 2026-09-16.  The smoke tile IS the tile that failed.
+# ===========================================================================
+# Ben: "submit one tile first".  The tile chosen was E1020_N-2580 itself, not
+# a healthy one: re-running it reproduces the exact no-data condition, so it
+# exercises the NEW branch instead of only showing nothing regressed.  Every
+# parameter was copied from the failed job's own ledger row, so it is a true
+# re-run.  region_files/IS_i7a_xy.txt (new) names the single center rather
+# than relying on --limit 1, per this file's own rule at I2.
+# Job 5cda49fa-41ed-4564-9e23-fba6db0b64cb, ledger IS_i7a_jobs.csv.
+#
+# STATEMENT, read with collect_jobs.py at 16:49 UTC:
+#   IS_prelim_E1020_N-2580  successful  719 s  4.15 GiB  maap-dps-worker-16gb
+#     step fit    697 s  4.15 GiB
+#     step error    6 s  0.23 GiB
+#   N_ATL11 195575, N_AT 195511, N_XO 64, N_fit 327, 3 iterations
+#   commit 6b8a2ca, built 2026-09-16T14:47:32Z
+# THE SAME JOB WAS permanentFail ON 2026-09-15.  It is now successful, and
+# THE UNCERTAINTY STEP STILL DIES IN 6 s AT 0.23 GiB -- identical to the
+# failing run, so it reached the SAME no-data path and simply exits 0 now.
+# N_fit is 327, the same 327 as the failure: the condition reproduced exactly.
+#
+# AND IT WROTE NO TILE, which is the unusual half of the result.  Both
+#   .../rel006/north/IS/prelim/E1020_N-2580.h5
+#   .../rel006/north/IS/prelim/field_sizes/E1020_N-2580_report.json
+# were VERIFIED ABSENT ON S3 BEFORE SUBMITTING and are STILL ABSENT after a
+# successful job.  So the delete fired, run.sh's new -f guard skipped the
+# upload rather than failing on the missing file, and no orphan report was
+# left behind.  That is the whole DPS round trip the local tests could not
+# reach, and it is now closed.
+#
+# THE MATCHED COUNT IS STILL 28.  This tile deliberately produces no prelim
+# tile, so it does not join the matched list and I6/I8 are unaffected.
+# COST: 719 s of worker time to prove it, on the 16gb queue with 4.15 GiB peak.
 #
 # THEN IT NEEDS A REBUILD AND A REGISTRATION, like any worker-side change, and
 # check_build_id must MATCH the new commit before anything is submitted --
