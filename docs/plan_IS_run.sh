@@ -775,18 +775,96 @@ scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_matched_jobs.csv 
 # listing and are IDENTICAL, tile for tile.  All 28 reports read
 # dz/dz [61,61,32] and dz/sigma_dz null -- one shape, no anomalies, and the
 # null sigma is correct (see I7, and Ben 2026-09-16).
-# THIS COMPLETES THE IS RUN as scoped: I9 is out of scope.
+# THIS COMPLETED THE IS RUN AS FIRST SCOPED (prelim + matched).  I9 is next.
 
 
 # ===========================================================================
-# I9. [ADE] [OUT OF SCOPE -- CONFIRMED 2026-09-12 (Ben)]  Mosaic, netCDF, browse.
+# I9. [ADE] [IN SCOPE -- Ben 2026-09-16; was OUT OF SCOPE 2026-09-12]  Mosaic.
 # ===========================================================================
-# You asked for prelim and matched.  Recording the dependency only: arctic
-# step 10 is still [NEEDS CODE: run_queue_local.sh] -- make_mosaic_jobs.py
-# emits queue/task_N plus a slurm_run.sh and there is no sbatch in the ADE.
-# -> QI8 asks whether "IS end to end" (Q21) stops at matched or goes through
-# netCDF, because that decides whether run_queue_local.sh is on this critical
-# path or the next one.
+# TENTATIVE.  Written 2026-09-16 before any of it ran; revise as steps land.
+# Scope is the MOSAIC.  netCDF (I9g) and browse are listed, not planned.
+# Runs in the ADE, not DPS: no submission, no registration, nothing polled.
+# Ben restarted the instance for memory: 16 cores, 124 GiB (101 available).
+region_dir=/home/jovyan/ATL14_processing/rel006/north/IS
+mosaic_run=/home/jovyan/ATL14_processing/runs/IS_mosaic
+
+# I9a. [OK 2026-09-16]  Tiles on disk -- collected at I8, rechecked after the
+#      restart: 28 prelim + 28 matched, the SAME 28 names, 652 + 490 MB.
+#      Matched tiles give the values, prelim tiles give every sigma_* (the
+#      queue globs 'prelim/*.h5' for those), so both directories are inputs.
+
+# I9b. [NEEDS CODE: ATL1415/__init__.py]  A REGRESSION blocks I9c and I9g.
+#      STATEMENT: make_mosaic_jobs.py dies writing slurm_run.sh with
+#        TypeError: 'module' object is not callable
+#      at ATL1415.make_slurm_file(...).  Cause: 0c6ea35 (lazy imports, on_s3
+#      only).  The old __init__ star-imported each submodule, which bound the
+#      FUNCTION over the same-named MODULE; the lazy __getattr__ returns the
+#      module.  Seven names are affected -- make_slurm_file,
+#      make_nc_projection_variable, make_tile_stats_group, read_ATL11,
+#      assign_firn_variable, SMB_corr_from_grid, ATL11_to_ATL15.
+#      Callers that break: make_mosaic_jobs.py, make_200km_tiles.py,
+#      make_200km_to_mosaic_jobs.py, setup_slurm_run.py, setup_ATL1415_run.py
+#      (all ATL1415.make_slurm_file), and ATL14_write2nc.py / ATL15_write2nc.py
+#      (from ATL1415 import make_nc_projection_variable, make_tile_stats_group).
+#      The DPS solve is unaffected: it imports submodules by full path.
+#      FIX: resolve those seven names to the function, as before 0c6ea35, with
+#      a test in tests/ so it cannot regress silently again.
+
+# I9c. [UNTESTED]  Build the queue.
+mkdir -p $(dirname $mosaic_run) && cd $(dirname $mosaic_run)
+make_mosaic_jobs.py -b $region_dir -rr IS -t 2018.75,2026.5 -e ATL14 \
+    --run_name IS_mosaic @/home/jovyan/git_repos/ATL1415/default_args/quarterly.txt
+#      -e ATL14: the default, IS2, is discover's env and does not exist here.
+#      Dry run in scratch (before I9b) gave 41 tasks: z0; for each of 40/20/10 km
+#      the avg_dz grid + 9 avg_dzdt lags; dz; 9 dzdt lags.  Every task writes a
+#      DIFFERENT output file, so tasks are safe to run in parallel.
+#      Lags inferred from -t and -g = 1,2,4,8,12,16,20,24,28, identical to
+#      --dzdt_lags in input_args_IS.txt.  No bounds.txt in $region_dir, so no
+#      crop -- expected, cropping moved to the to_nc step in bacb2ef.
+
+# I9d. [UNTESTED]  Smoke one task: task_1 (z0, the 100 m grid, the biggest).
+cd $mosaic_run
+SLURM_ARRAY_TASK_ID=1 /home/jovyan/git_repos/ATL1415/scripts/run_with_rusage.py \
+    IS_mosaic_task_1 bash slurm_run.sh
+#      slurm_run.sh IS plain bash -- the #SBATCH lines are comments -- so run
+#      locally it does the same queue -> running -> done moves and writes
+#      logs/ and error_logs/ exactly as on discover.  THIS REPLACES
+#      run_queue_local.sh (arctic step 10): no new runner is needed.
+#      Record wall time and peak RSS; they set -P for I9e.
+#      DONE 2026-09-16: exit 0, 41.7 s, peak RSS 0.25 GiB.  z0.h5 is 105 MB,
+#      grid (3001, 4201) at 100 m, x 990..1410 km, y -2650..-2350 km.  All 7
+#      fields present (z0, misfit_rms, misfit_scaled_rms, mask, cell_area,
+#      count, sigma_z0); z0/mask/cell_area/sigma_z0 finite over 49.6% of the
+#      box, count and misfit_* over 0.9% (data cells only).
+#      MEMORY IS NOT THE CONSTRAINT for IS -- the restart was not needed for it.
+
+# I9e. [DONE 2026-09-16]  Run the other 40.
+seq 2 41 | xargs -P 12 -I{} env SLURM_ARRAY_TASK_ID={} bash slurm_run.sh
+#      -P 12 of 16 cores: memory is no limit at 0.25 GiB per task (I9d).
+#      20:16:55Z -> 20:17:54Z, under a minute for all 40.  40/40 exit code 0,
+#      error_logs/ empty, done/ holds 41.  41 files, 178 MiB, in $region_dir.
+
+# I9f. [DONE 2026-09-16, checker in scratch only]  Verify.  EXIT CODES ARE NOT ENOUGH:
+#      - make_mosaic.py returns 0 when pc.grid.mosaic fails (it prints the
+#        message only under -v, and the queue does not pass -v);
+#      - a task file has no `set -e`, so only its LAST line's status counts.
+#      So: error_logs/ empty AND done/ holds 41 AND every -O file named in the
+#      queue exists and holds every -F field under its --in_group.
+#      Also, sigma fields must be present (from prelim) -- a missing sigma_*
+#      is the likeliest silent failure, because its line is never the last.
+#      RESULT: 41 -O files, 131 -F fields, every one present, none all-NaN,
+#      PROBLEMS: 0.  Beyond the checker: within each file every field --
+#      matched values and prelim sigmas alike -- has ONE shape, and the time
+#      axes are consistent: dz (301,421,32) at 1 km; 10/20/40 km grids
+#      (30,42) (14,20) (7,10); dzdt_lagL has 32-L epochs.
+#      The checker parses make_mosaic.py lines out of the task files; it lives
+#      in the session scratchpad and is NOT in the repo.  Promote it to
+#      scripts/ if the other regions should use it.
+
+# I9g. [NOT STARTED, NOT PLANNED]  netCDF: ATL14_write2nc.py, ATL15_write2nc.py
+#      @$region_dir/input_args_IS.txt.  Also blocked by I9b.  Its inputs
+#      (DEM, masks, previous-product paths in the args) not yet checked.
+# I9h. [NOT STARTED, NOT PLANNED]  Browse.
 
 
 # ===========================================================================
