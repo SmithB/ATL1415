@@ -373,9 +373,32 @@ scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv \
 # NOTE for I7: E1020_N-2580's 8 neighbours will each be missing one neighbour.
 # That is the normal case QI5b already decided -- named in the log, solve
 # proceeds -- and needs no action here.
+#
+# CORRECTION 2026-09-16, measured: THAT NOTE IS WRONG IN PRACTICE.  At the
+# tile_spacing the args file actually carries (40000; -W is 60000 and run.sh
+# prefers --tile_spacing), E1020_N-2580 has NO neighbour in the 28-tile set at
+# all -- its 8 neighbour positions are E980/E1020/E1060 x N-2620/N-2580/N-2540,
+# none of which is a center in this region.  So losing it costs NO other tile
+# a neighbour, and nothing in I7 is affected by it.
+#
+# DONE 2026-09-16: region_files/IS_matched_xy.txt, 28 centers, built I6's
+# recommended way -- from the tiles that EXIST rather than from the prelim list
+# minus a hand-kept exclusion.  The S3 prefix and the local tree were listed
+# separately and are IDENTICAL, 28 each; the generated list is exactly the 29
+# prelim centers minus (1020000, -2580000), checked both directions.
+#
+# NEIGHBOUR COVERAGE OF THE 28, measured 2026-09-16 at 40 km, worth knowing
+# before reading I7's results: the region is sparse and many tiles are edge
+# tiles.  Only THREE centers have a full 3x3 (E1300_N-2500, E1340_N-2500,
+# E1340_N-2460).  At the other end, E1020_N-2420 has ZERO neighbours present
+# and E1180_N-2380 has one, so their matched solves will fetch 1/9 and 2/9.
+# THAT IS EXPECTED, not a fault -- QI5b: missing neighbours are named in the
+# log and the solve proceeds, and the tile's OWN prelim file is the only hard
+# requirement.  But it means a 'k/9 localized' line well under 9 is the NORM
+# for this region, and is not evidence of a broken fetch.
 
 
-# I7. [DPS] [CODE WRITTEN 2026-09-12; BLOCKED ON A REBUILD + REGISTRATION]
+# I7. [DPS] [SMOKE DONE 2026-09-16; ALL 28 SUBMITTED 2026-09-16, RESULTS PENDING]
 #     The matched solve.
 # ===========================================================================
 # DECIDED 2026-09-12 (Ben) per QI6: ON DPS, implementing Q8 option (a).  The
@@ -460,6 +483,36 @@ scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv \
 #      2026-09-15: I2's smoke tile is in the canonical tree (see I2), and
 #      all 29 prelim jobs are submitted (image b5fe447, MATCH).  A matched job
 #      waits for them: it needs its neighbours in the tree.
+#      DONE 2026-09-16.  THE MATCHED SOLVE NOW WORKS ON DPS.
+#      Smoke: job 38440138, IS_matched_E1300_N-2500, on 6b8a2ca.
+#        successful, 402 s (step matched 376 s), peak 8.90 GiB on
+#        maap-dps-worker-16gb.  N_fit 245361, 1 iteration.  N_ATL11/N_AT/N_XO
+#        are blank, as they should be: matched reads prelim tiles, not ATL11.
+#        Wrote .../IS/matched/E1300_N-2500.h5 (53643251 bytes) and its
+#        field_sizes report at 18:13:16.  The matched prefix was VERIFIED
+#        EMPTY before submitting.
+#      CHOSEN DELIBERATELY: E1300_N-2500 is one of only THREE centers with a
+#      full 3x3, and all 9 were confirmed on S3 first, so the smoke exercised
+#      the complete s3_tiles get fetch -- the part that had never run.
+#      MEMORY: 8.90 GiB of 16 is the heaviest-neighbour case; prelim peaked at
+#      9.09 GiB on the same queue.  Headroom is adequate but not vast; -32gb
+#      is the fallback if any tile OOMs, and nothing else changes.
+#
+#      NO SIGMA IN A MATCHED TILE, AND THAT IS CORRECT.  The smoke's report
+#      reads {"dz/dz": [61,61,32], "dz/sigma_dz": null} where the prelim
+#      report for the same center has sigma_dz [61,61,32].  CONFIRMED TWICE:
+#      (1) make_ATL1415_queue.py adds the --calc_error_for_xy companion only
+#      in the `if not args.step=='matched'` branch -- the matched branch emits
+#      a single command with no error pass, so run.sh is faithful to it;
+#      (2) Ben, 2026-09-16: "There should be no sigma in a matched result.  We
+#      use the uncertainties calculated in the prelim step."
+#      DO NOT read a null sigma_dz in matched/field_sizes as a fault, and do
+#      not add an error pass to the matched branch of run.sh.
+#
+#      THEN ALL 28, submitted 2026-09-16 to IS_matched_jobs.csv, queue
+#      maap-dps-worker-16gb, WITH --tile_prefix.  28/28 accepted.  The smoke
+#      center is re-run as part of the 28 (dedup=False, so it really re-runs)
+#      -- the same choice I2 made for prelim, and it costs ~400 s.
 
 
 # ===========================================================================
