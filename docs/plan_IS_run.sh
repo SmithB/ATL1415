@@ -398,7 +398,7 @@ scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv \
 # for this region, and is not evidence of a broken fetch.
 
 
-# I7. [DPS] [SMOKE DONE 2026-09-16; ALL 28 SUBMITTED 2026-09-16, RESULTS PENDING]
+# I7. [DPS] [DONE 2026-09-16 -- 28/28 SUCCESSFUL]
 #     The matched solve.
 # ===========================================================================
 # DECIDED 2026-09-12 (Ben) per QI6: ON DPS, implementing Q8 option (a).  The
@@ -513,6 +513,30 @@ scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv \
 #      maap-dps-worker-16gb, WITH --tile_prefix.  28/28 accepted.  The smoke
 #      center is re-run as part of the 28 (dedup=False, so it really re-runs)
 #      -- the same choice I2 made for prelim, and it costs ~400 s.
+#
+#      STATEMENT 2026-09-16, collect_jobs.py at 19:16 UTC: 28/28 SUCCESSFUL,
+#      NO FAILURES.  All 28 on ONE build, 6b8a2ca -- no repeat of the split
+#      build that the prelim fan-out saw (I3).  Every tile 1 iteration.
+#        wall     153 .. 724 s   (E1300_N-2620 fastest, E1340_N-2460 slowest)
+#        peak RSS 3.64 .. 8.99 GiB on the 16 GiB queue
+#        N_fit    158 .. 271556
+#      N_ATL11/N_AT/N_XO are blank on every row, correctly: matched reads
+#      prelim tiles, not ATL11.
+#      THE MEMORY HEADROOM HELD: the worst tile, E1340_N-2460, peaked at 8.99
+#      GiB of 16 -- close to the 9.09 GiB prelim high-water mark, and under.
+#      -32gb was NOT needed.  RECOMMENDATION for GL, which is far bigger: the
+#      top three tiles (8.15-8.99 GiB) are all high-N_fit full-3x3 centers, so
+#      memory tracks N_fit, not neighbour count alone; size the queue off the
+#      largest expected N_fit rather than off this region's comfortable fit.
+#
+#      A COINCIDENCE THAT LOOKS LIKE A BUG, CHECKED AND CLEARED: E1180_N-2380
+#      and E1180_N-2420 both report N_fit 158 exactly.  They are NOT duplicate
+#      output -- the tiles differ in size (4273533 vs 4244558 bytes), as do
+#      their prelim inputs (8189115 vs 8184013).  Two adjacent sparse edge
+#      tiles genuinely fitting the same number of points.
+#
+#      28 .h5 and 28 field_sizes reports on S3 under .../IS/matched/.
+#      Sizes 4244558 .. 58624350 bytes.
 
 
 # ===========================================================================
@@ -736,12 +760,22 @@ scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv \
 
 
 # ===========================================================================
-# I8. [ADE] [READY]  Bring the matched tiles down.
+# I8. [ADE] [DONE 2026-09-16 -- 28 fetched, verified against S3]
 # ===========================================================================
 scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_matched_jobs.csv \
     $region_dir --step matched
 # The fetcher already tries the top-of-prefix layout matched uses.  If I7 runs
 # in the ADE this step disappears.
+#
+# DONE 2026-09-16 into /home/jovyan/ATL14_processing/rel006/north/IS/matched/:
+# 28 fetched, 0.48 GiB transferred, 490 MB on disk, plus 28 field_sizes
+# reports.  Every tile came down at the top-of-prefix layout, as the comment
+# above predicts -- no fallback path was needed.
+# VERIFIED, not just counted: the 28 local sizes were diffed against the S3
+# listing and are IDENTICAL, tile for tile.  All 28 reports read
+# dz/dz [61,61,32] and dz/sigma_dz null -- one shape, no anomalies, and the
+# null sigma is correct (see I7, and Ben 2026-09-16).
+# THIS COMPLETES THE IS RUN as scoped: I9 is out of scope.
 
 
 # ===========================================================================
