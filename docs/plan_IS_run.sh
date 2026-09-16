@@ -844,7 +844,7 @@ seq 2 41 | xargs -P 12 -I{} env SLURM_ARRAY_TASK_ID={} bash slurm_run.sh
 #      20:16:55Z -> 20:17:54Z, under a minute for all 40.  40/40 exit code 0,
 #      error_logs/ empty, done/ holds 41.  41 files, 178 MiB, in $region_dir.
 
-# I9f. [DONE 2026-09-16, checker in scratch only]  Verify.  EXIT CODES ARE NOT ENOUGH:
+# I9f. [DONE 2026-09-16]  Verify.  EXIT CODES ARE NOT ENOUGH:
 #      - make_mosaic.py returns 0 when pc.grid.mosaic fails (it prints the
 #        message only under -v, and the queue does not pass -v);
 #      - a task file has no `set -e`, so only its LAST line's status counts.
@@ -857,9 +857,13 @@ seq 2 41 | xargs -P 12 -I{} env SLURM_ARRAY_TASK_ID={} bash slurm_run.sh
 #      matched values and prelim sigmas alike -- has ONE shape, and the time
 #      axes are consistent: dz (301,421,32) at 1 km; 10/20/40 km grids
 #      (30,42) (14,20) (7,10); dzdt_lagL has 32-L epochs.
-#      The checker parses make_mosaic.py lines out of the task files; it lives
-#      in the session scratchpad and is NOT in the repo.  Promote it to
-#      scripts/ if the other regions should use it.
+check_mosaic_outputs.py $mosaic_run --values
+#      The checker parses make_mosaic.py lines out of the task files.  It is
+#      now ATL1415/scripts/check_mosaic_outputs.py, an installed entry point
+#      (re-run `pip install -e .` for the command to appear), and is in every
+#      howto's mosaic step, discover and MAAP.  METADATA ONLY BY DEFAULT
+#      (1.5 s on IS); --values reads the data to flag all-NaN fields (7.4 s on
+#      IS, minutes for AA) -- Ben 2026-09-16.  The result above is --values.
 
 # I9g. [NOT STARTED, NOT PLANNED]  netCDF: ATL14_write2nc.py, ATL15_write2nc.py
 #      @$region_dir/input_args_IS.txt.  Also blocked by I9b.  Its inputs

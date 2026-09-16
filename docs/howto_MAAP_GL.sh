@@ -208,6 +208,9 @@ aws s3 sync $s3_out/matched/ $region_dir/matched/
 make_mosaic_jobs.py -b $region_dir -rr GL -t 2018.75,2026.5 \
     --run_name GL_mosaic @default_args/quarterly.txt
 run_queue_local.sh GL_mosaic -P 8
+# [OK on IS 2026-09-16, docs/plan_IS_run.sh I9f]  Check the outputs: exit
+# codes are not enough.  Metadata only; --values also flags all-NaN fields.
+check_mosaic_outputs.py -q GL_mosaic
 
 
 # ===========================================================================

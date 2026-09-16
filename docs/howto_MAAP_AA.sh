@@ -439,6 +439,10 @@ for sector in A1 A2 A3 A4; do
         -rr $sector -t 2018.75,2026.5
     run_queue_local.sh ${sector}_mosaic -P 8
 done
+# [OK on IS 2026-09-16, docs/plan_IS_run.sh I9f]  Check the outputs: exit
+# codes are not enough.  Metadata only; --values also flags all-NaN fields.
+# make_200km_to_mosaic_jobs.py has no --run_name: its run dir is mosaic_run_<sector>.
+for sector in A1 A2 A3 A4; do echo $sector; check_mosaic_outputs.py -q mosaic_run_$sector; done
 
 
 # ===========================================================================
