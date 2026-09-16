@@ -431,8 +431,15 @@ if [ "$step" = "prelim" ]; then
 
     # AFTER the error step, not before: --calc_error_for_xy writes back into
     # the same tile, so an upload in between would publish a half-finished one.
-    if [ -n "$tile_prefix" ]; then
+    # AND ONLY IF THE TILE IS STILL THERE.  The error step DELETES it when it
+    # has no data (ATL11_to_ATL15.py, docs/plan_IS_run.sh I7a) and exits
+    # 0: that is a clean "this center has no tile", not a failure.  Uploading a
+    # file that is deliberately gone would fail the job in a new way, for the
+    # very tile the fix exists to let pass.
+    if [ -n "$tile_prefix" ] && [ -f "${base_directory}/prelim/${tile_name}" ]; then
         s3_tiles put "${base_directory}/prelim/${tile_name}" "$tile_prefix" prelim
+    elif [ -n "$tile_prefix" ]; then
+        echo "no tile to upload for ${tile_name} (removed: no data for the uncertainty step)"
     fi
 else
     # --matched reads the tile's own prelim fit AND its neighbours', through

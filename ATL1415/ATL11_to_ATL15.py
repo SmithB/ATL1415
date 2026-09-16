@@ -933,6 +933,30 @@ def save_field_size_report(filename):
     with open(report_file, 'w') as fh:
         json.dump(report, fh)
 
+def remove_tile_and_report(filename, why):
+    """
+    delete a tile and its field-size report, for a tile that cannot be completed
+
+    Used when the uncertainty calculation has no data to work with -- either no
+    valid data at all, or none left after masking: the fit that ran before it DID
+    have data and wrote a file, but no errors can ever be added to it, so
+    publishing it would put a tile with no sigma fields into the mosaic.  The report goes with it -- fetch_tiles.py collects
+    prelim/field_sizes/*_report.json, and a report naming a deleted tile would
+    outlive the tile and be counted against it.
+    """
+    report_file = os.path.join(os.path.dirname(filename), 'field_sizes',
+                               os.path.basename(filename).replace('.h5', '_report.json'))
+    for target in [filename, report_file]:
+        try:
+            os.remove(target)
+            print(f"removed {target} ({why})")
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            # the cleanup is not the job: say what happened and carry on, so a
+            # permission problem cannot turn a normal no-data tile into a failure
+            print(f"could not remove {target}: {e}")
+
 def mask_components_by_time(dz):
     """
     identify the connected components in the data, mark unconstrained epochs as invalid
@@ -1344,6 +1368,28 @@ def main():
             S['E'][field] = interp_ds( S['E'][field], args.error_res_scale[1] )
         save_errors_to_file(S, args.out_name, dzdt_lags=args.dzdt_lags, reference_epoch=args.reference_epoch)
         save_field_size_report(args.out_name)
+        status=0
+    elif args.calc_error_file is not None and (
+            S.get('data') is None or S['data'].size == 0):
+        # THE UNCERTAINTY STEP HAS NO DATA TO WORK WITH.  smooth_fit has TWO
+        # no-data exits and BOTH land here, because the cause does not matter:
+        # a tile whose uncertainty step finds no data is not critical (Ben,
+        # 2026-09-16), so too-few-data and the coarse-resolution mask edge
+        # cases get the same treatment and we do not try to tell them apart.
+        #   * smooth_fit.py:485  `not np.any(valid_data)` -> data is None
+        #   * smooth_fit.py:513  `data.size == 0` after masking -> data empty
+        # Either way smooth_fit RETURNS NORMALLY with an empty E, so nothing is
+        # saved and the branch above cannot fire.  Left alone, status stays 1
+        # and the whole DPS job fails for a tile that simply has no data --
+        # which at a fan-out of thousands buries the real failures, the same
+        # argument run.sh already makes for a fit that writes nothing.
+        # So: drop the tile the fit wrote, and exit cleanly.
+        # STILL BOUNDED BY 'NO DATA', ON PURPOSE.  This is not "any uncertainty
+        # failure is fine": a genuine error-propagation failure -- a solver
+        # error, an OOM, anything that raises -- never reaches this line and
+        # still exits 1.  Silencing those would turn a visible failed job into
+        # a silently missing tile, which is worse than the bug being fixed.
+        remove_tile_and_report(args.out_name, 'no data for the uncertainty step')
         status=0
 
     print(f"done with {args.out_name}")

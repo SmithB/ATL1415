@@ -252,6 +252,26 @@ scripts/maap/collect_jobs.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv
 # refuse (O8).
 # EXPECT N_XO > 0 on every tile.  If N_XO == 0 across the board, crossovers
 # are not being read for this region and I7 should not start.
+#
+# RUN 2026-09-16 02:20 UTC, ~8 h after the 18:24 submission.  ALL 29 FINISHED.
+# STATEMENT: 28 successful, 1 failed -- IS_prelim_E1020_N-2580, which is I7a.
+# STATEMENT: THE N_XO GATE PASSES.  N_XO is 48..116 across the 29, never 0, so
+# crossovers ARE being read for IS and I7 is not blocked on this.  N_ATL11 is
+# 233k..326k, N_AT within ~100 of it every time.
+# STATEMENT: cost, for sizing the production queue -- wall clock 1169..4260 s
+# (median ~2000), peak RSS 4.16..9.09 GiB self-measured.  The 16 GiB queue
+# (QI7) is right: the worst tile used 9.09 GiB, and nothing came near 16.
+#
+# STATEMENT, AND IT LOOKED LIKE A PROBLEM BUT IS NOT: the collector reports
+# TWO builds ran this set -- b5fe447 for 24 tiles, a46ad52 for 5.  The 29 were
+# submitted at 18:24 against b5fe447, and a46ad52 was built at 18:48, WHILE
+# THEY WERE STILL QUEUED, so the later starters picked it up.
+# `git diff --stat b5fe447..a46ad52` is docs/plan_IS_run.sh ONLY (+34 -3).
+# THE CODE IS IDENTICAL; only this file differs.  The 29 tiles are one run.
+# RECOMMENDATION: do not re-run anything over this.  But note the mechanism --
+# committing and rebuilding while a fan-out is queued silently splits which
+# build runs it, and only the collector's per-tile commit column shows it.
+# A docs-only commit made it harmless HERE; a code commit would not have been.
 
 
 # ===========================================================================
@@ -297,12 +317,39 @@ scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv \
 # said.  Keep the fetcher regardless: it is the only way to reach the tiles
 # already solved on the current image, and the only one that works if a job's
 # canonical write ever fails.
+#
+# RUN 2026-09-16, dry-run first, then for real.  28 FETCHED, 0.64 GiB, one row
+# NOT FETCHED: IS_prelim_E1020_N-2580, reported as FAILED (I7a).  Local tree
+# /home/jovyan/ATL14_processing/rel006/north/IS/prelim/ now holds 28 .h5
+# (652 MB on disk) and field_sizes/ holds 28 _report.json.  The prelim layout
+# <prefix>/prelim/E<x>_N<y>.h5 held for all 28, as VERIFIED at I2.
+#
+# STATEMENT, AND IT CONTRADICTS WHAT THIS STEP EXPECTED: there were ZERO
+# 'no tile' rows.  "Expect some among IS's 29" was wrong -- every job that
+# exited 0 wrote a tile.  The one center that produced nothing did so by
+# FAILING, not by the tidy exit-0 path, which is exactly the I7a bug: IS does
+# have a center with too little data, and the current code cannot express that
+# outcome once the fit has already written a file.  After the I7a fix the
+# 'no tile' row this step was written for is the one E1020_N-2580 will produce.
 
 
 # I5. [ADE] [READY]  Look at the tile sizes.   (arctic step 8's ADE half)
 # ===========================================================================
 # ATL11_to_ATL15 writes the field-size report itself; the JSON above is it.
 # Inspect with check_tiles.ipynb.
+#
+# QUESTION (2026-09-16): check_tiles.ipynb DOES NOT EXIST.  Not in the repo,
+# and `find /home/jovyan -name 'check_tiles*'` returns nothing at all.  Is it
+# unwritten, or is it on discover / another machine?  Nothing else in this
+# plan depends on it -- the mechanical half is done below -- so this is not
+# blocking, but the step as written cannot be followed.
+#
+# THE MECHANICAL HALF, RUN 2026-09-16 over the 28 fetched reports:
+# every one carries both fields and both are [61, 61, 32] -- 61x61 grid cells,
+# 32 epochs -- with no zero, empty or missing value anywhere.  The tiles are
+# uniform, which is what a 40 km tile at this spacing should give.
+# STATEMENT: this checks SHAPE, not content.  A tile can be the right shape
+# and still be wrong; that is what the notebook was presumably for.
 
 
 # ===========================================================================
@@ -314,6 +361,18 @@ scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv \
 # little data (run.sh:379 exits 0 on that path), so some centers will have no
 # prelim tile to match.  Drop those rows from the matched ledger after I4
 # reports them as 'no tile'.
+#
+# STATEMENT 2026-09-16: the list is 28, not 29, and the dropped center is
+# E1020_N-2580 -- but it was dropped for the WRONG REASON, a failed job rather
+# than a clean 'no tile' (I7a).  The count is the same either way: that center
+# has no data inside the mask, so after the I7a fix it will still write no
+# tile and still be dropped.  I6 therefore does NOT wait on I7a.
+# RECOMMENDATION: build the matched ledger from what I4 actually fetched --
+# the 28 .h5 on disk -- rather than from IS_prelim_xy.txt minus a hand-kept
+# exclusion, so the list cannot disagree with the tiles that exist.
+# NOTE for I7: E1020_N-2580's 8 neighbours will each be missing one neighbour.
+# That is the normal case QI5b already decided -- named in the log, solve
+# proceeds -- and needs no action here.
 
 
 # I7. [DPS] [CODE WRITTEN 2026-09-12; BLOCKED ON A REBUILD + REGISTRATION]
@@ -403,6 +462,161 @@ scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv \
 #      waits for them: it needs its neighbours in the tree.
 
 
+# ===========================================================================
+# I7a. [DPS] [DECIDED 2026-09-16 (Ben); CODE WRITTEN + TESTED 2026-09-16;
+#            BLOCKED ON I7'S REBUILD + REGISTRATION]
+#      An uncertainty step with no data must clean up and exit 0.
+#      RIDES I7'S REBUILD -- one rebuild and one registration cover both.
+# ===========================================================================
+# THE SYMPTOM: IS_prelim_E1020_N-2580 was the one failure of the 29 (I3).  Its
+# FIT step succeeded -- 753 s, 4.16 GiB, 3 QR iterations, sigma_hat 2.90, tile
+# written.  Its UNCERTAINTY step then died in 6 s at 0.23 GiB with
+#     READING MASK DATA
+#         smooth_fit.py: after masking, no data found
+# and the job went permanentFail.  N_fit was 327, against thousands to
+# hundreds of thousands on every other tile: this is the far-corner center,
+# with enough data to fit and essentially nothing inside the ice mask.
+#
+# DECIDED 2026-09-16 (Ben): THE FAILED TILE IS NOT RECOVERABLE, and the fix is
+# a code change -- if the uncertainty calculation has too few data to complete,
+# DELETE THE FIT'S RESULTS AND EXIT 0.  Not a re-run, not a retry: that center
+# legitimately has no tile, and the run must be able to SAY so.
+#
+# WHY IT IS UNRECOVERABLE, verified 2026-09-16: a failed OGC job gets no
+# dps_output prefix at all.  get_job_result returns only the triaged_job tree
+# (logs and JSON, no .h5 -- listed it), so the fit's 6th-of-an-hour of work is
+# gone even though it succeeded.  Logs copied to
+# ~/tmp/triaged_job-job-atl1415_tile_solve_1786__on_s3-20260915T182431.921562Z_task-3f76222d-dae9-4c21-8a99-1de1ea4da8ae/
+#
+# ROOT CAUSE, read from the source 2026-09-16.  THREE FACTS, and the third is
+# the one that makes this a bug rather than bad luck:
+#   1. LSsurf/LSsurf/smooth_fit.py:513-516 -- on data.size == 0 after masking
+#      it PRINTS the message and RETURNS A NORMAL-LOOKING DICT, with 'data'
+#      empty and TOC/R/RMS empty.  It does not raise and does not exit.
+#   2. ATL1415/ATL11_to_ATL15.py:1334-1350 -- status defaults to 1 and is set
+#      to 0 by exactly two branches: the fit branch (len(S['m']) > 0) and the
+#      error branch (len(S['E']) > 0).  With no data BOTH are empty, so
+#      neither fires, status stays 1, and :1356 sys.exit(1)s.  The "done with"
+#      at :1349 prints BEFORE the return, which is why the log shows a tidy
+#      "done with ...h5" immediately followed by failure AND NO TRACEBACK.
+#      The exit-1 is silent by construction; nothing in it says what is wrong.
+#   3. run.sh:425-428 guards only the case where THE FIT WROTE NOTHING:
+#         if [ ! -f "${base_directory}/prelim/${tile_name}" ]; then exit 0
+#      Here the fit DID write, so the guard passed and the error step ran.
+#      The guard's own comment states the intent this defeats -- "Running the
+#      error calculation on it would then exit 1 and mark the whole DPS job
+#      failed, which at a fan-out of thousands of tiles would bury the real
+#      failures."  That is precisely what happened, one tile in 29.
+# AND WHY ONLY THE ERROR STEP READS THE MASK: ATL11_to_ATL15.py:582-586 sets
+# read_mask_file = calc_error_file when data_file is None, so "READING MASK
+# DATA" (:596) happens on the --calc_error_for_xy pass and not on the fit.
+#
+# THE CHANGE, TWO PLACES:
+#   A. ATL11_to_ATL15.py, the status block -- a third branch: an
+#      error-calculation run with NO DATA removes args.out_name, removes its
+#      field-size report, says so, and sets status = 0.
+#      THE TEST COVERS BOTH OF smooth_fit'S NO-DATA EXITS, because per Ben
+#      (2026-09-16, below) THE CAUSE DOES NOT MATTER:
+#          S.get('data') is None  or  S['data'].size == 0
+#      catching smooth_fit.py:485 (`not np.any(valid_data)`, returns
+#      data=None) and smooth_fit.py:513 (`data.size == 0` after masking).
+#      IT IS STILL NOT "E came back empty".  Treating every empty E as success
+#      would swallow a genuine error-propagation failure -- the thing LSsurf
+#      49f55db's error handling exists to surface -- and turn it into a silent
+#      missing tile, which is worse than the bug being fixed: a failed job is
+#      at least visible in the collector.  A solver error, an OOM or anything
+#      that raises never reaches this branch and still exits 1.
+#      DELETE THE REPORT TOO, not just the tile: the fit step wrote
+#      <dir>/field_sizes/<tile>_report.json (:913, :932), fetch_tiles.py pulls
+#      prelim/field_sizes/*_report.json, and an orphan report would describe a
+#      tile that does not exist.  I5 counts reports against tiles.
+#   B. run.sh -- the `s3_tiles put` after the error step is UNCONDITIONAL.
+#      With the tile deleted it would fail on a missing file and re-fail the
+#      job in a NEW way, so it must be guarded on the file still existing.
+#
+# WHAT IT MUST NOT DO: make a real failure exit 0.  Only the no-data-after-
+# masking case is silenced, and it is silenced LOUDLY -- it prints why, and
+# the job shows up in I4 as a 'no tile' row, which is a reported outcome.
+#
+# ===========================================================================
+# THE SCOPE DECISION, 2026-09-16 (Ben) -- THIS CLOSED THE OPEN QUESTION.
+# ===========================================================================
+# Ben: "Assume that tiles that fail on the uncertainty step are not critical."
+# That settles what three options were circling.  The earlier instruction was
+# to exit 0 for too-few-data BUT NOT for the coarse-resolution mask edge cases,
+# and both causes reach the SAME line with the SAME message, so no test could
+# separate them without new machinery.  Declaring the tiles not critical makes
+# the separation unnecessary: BOTH causes get the same treatment.
+# WHAT THIS BOUGHT: all three options are dropped.  No LSsurf change, no
+# pre/post-mask count threshold, no uncoarsened retry pass.  The fix is one
+# widened condition in ATL11_to_ATL15.py and one guard in run.sh.
+# WHAT IT DOES NOT MEAN: "any uncertainty failure is fine".  The branch is
+# still bounded by NO DATA.  Anything that raises -- solver error, OOM -- does
+# not reach it and still fails the job loudly.  If those should be silenced too
+# that is a separate, bigger decision and it has NOT been made.
+#
+# HOW IT WAS TESTED, 2026-09-16, and the honest limit.  The failing tile is
+# gone and cannot be fetched, so the end-to-end path was NOT exercised.
+# WHAT WAS ACTUALLY RUN:
+#   1. remove_tile_and_report against a real tile + report on disk: both
+#      removed, and a second call on the already-deleted pair does not raise
+#      (the FileNotFoundError path), so a partial cleanup cannot fail a job.
+#   2. The status elif-chain, evaluated over six cases:
+#        err run, :513 no data after masking      -> TILE REMOVED, exit 0
+#        err run, :485 no valid data (data=None)  -> TILE REMOVED, exit 0
+#        err run, data present but E empty        -> exit 1 (FAILED)  <-- kept
+#        err run, normal success                  -> errors saved, exit 0
+#        fit run, normal success                  -> fit saved, exit 0
+#        fit run, no data                         -> exit 1, as before,
+#                                                    guarded by run.sh:425
+# STILL UNTESTED, say so plainly: the real DPS round trip, i.e. that a tile
+# deleted on the worker makes run.sh skip the upload and the job report a
+# success.  That cannot be checked until the rebuild lands.
+#
+# ---------------------------------------------------------------------------
+# TWO TRACE ITEMS RESOLVED 2026-09-16 (read from source + measured locally).
+# Both informed the scope decision below; the question they were raised
+# against is now CLOSED (see THE SCOPE DECISION).
+#
+# STATEMENT (traced, smooth_fit.py:495 + fd_grid.py:224-253): on the IS
+# uncertainty pass it is validate_by_dz_mask THAT RUNS, NOT setup_mask.  The
+# branch is `if args['mask_file'] is not None and grids['dz'].mask_3d is None`.
+# IS does pass --mask_file (the RGI .db), so the first half is true -- but the
+# error pass reads mask_data out of the prelim tile (:582-596), the tile's dz
+# mask is 3-D (VERIFIED: dz/mask is (61,61,32) in every fetched tile, z0/mask
+# is (601,601)), and a 3-D mask_data makes fd_grid set mask_3d, so mask_3d is
+# NOT None and the branch goes to the else.  Note fd_grid.setup_mask also sets
+# self.mask_file=None whenever mask_data is given: on this pass the RGI file is
+# read for nothing.  CONSEQUENCE: option (a) below costs a change in
+# validate_by_dz_mask (grid_functions.py:344-372), not in setup_mask.
+#
+# STATEMENT (measured 2026-09-16 over all 28 fetched tiles): COARSENING THE dz
+# MASK DOES NOT BY ITSELF EMPTY THE MASK, so it is not sufficient on its own to
+# explain data.size == 0.  Re-running fd_grid's own recipe -- interpolate the
+# tile's dz mask onto 2x-coarser centers, threshold > 0.5 -- against the 1/4 of
+# native cells you would expect: worst loss 31.6% (E1140_N-2500), median ~4%,
+# and the two smallest-mask tiles (E1180_N-2380 / N-2420, 192 native cells)
+# LOSE NOTHING, gaining 33% over the naive expectation.  NO TILE GOES TO ZERO,
+# and a tile with only ~2 surviving mask cells per epoch still completed.
+# READING: the scarce quantity is DATA POINTS, not mask cells.  E1020_N-2580
+# had N_fit = 327 against thousands-to-hundreds-of-thousands elsewhere, and
+# validate_by_dz_mask culls DATA where the interpolated mask is <= 0.5, so a
+# handful of points against a few coarse mask cells can plausibly cull to zero
+# while the mask itself stays populated.
+# HONEST LIMIT: this is measured on the 28 tiles THAT SUCCEEDED; the failing
+# tile's mask cannot be measured because the tile is gone.  It shows coarsening
+# is not sufficient, NOT that coarsening is irrelevant -- it may still be what
+# tips a 327-point tile over.  NOT SETTLED, and deliberately not settled: the
+# scope decision below makes the distinction unnecessary.
+#
+# THEN IT NEEDS A REBUILD AND A REGISTRATION, like any worker-side change, and
+# check_build_id must MATCH the new commit before anything is submitted --
+# a cwlLink commit does not prove a deploy (docs/howto_MAAP_ogc.sh).  Fold it
+# into I7's rebuild rather than spending a second one.
+# THE 28 GOOD TILES ARE UNAFFECTED and are not re-run.
+
+
+# ===========================================================================
 # I8. [ADE] [READY]  Bring the matched tiles down.
 # ===========================================================================
 scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_matched_jobs.csv \
