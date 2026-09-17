@@ -46,8 +46,9 @@
 # come back empty.
 # DECIDED (Ben 2026-09-17, AL1): "After the current round of code changes are
 # complete we will transision to cycles 03-32."  So the transition follows
-# this work rather than gating it, and gets its OWN plan document, written
-# when Ben asks -- index staging, the args changes, and what re-runs.
+# this work rather than gating it.  ITS PLAN IS docs/plan_cycles_03_32.sh,
+# written 2026-09-17; the 0332_007_05 index is already staged there (T1), and
+# L6's smoke tile is that plan's T6.
 # THEREFORE: L1-L5 (all the code) proceed now; L6 and L7, which need a tile
 # that can actually be solved, wait for that transition.
 #

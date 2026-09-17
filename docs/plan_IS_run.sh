@@ -930,7 +930,7 @@ check_mosaic_outputs.py $mosaic_run --values
 #          PLANNED 2026-09-17: docs/plan_lineage_at_solve_time.sh.
 #          Lands before the IS re-run -- which is ALSO blocked: CMR now lists
 #          ATL11 0332_007_05 only, not the 0331_007_04 IS ran on (that plan,
-#          top, and its QL1).
+#          top).  That transition is docs/plan_cycles_03_32.sh.
 #        - TODAY: the tiles carry none of them, so those attributes are
 #          invalid.  IS will be RE-RUN COMPLETELY once more issues are fixed,
 #          so these netCDFs are for getting the step working, not for release.
