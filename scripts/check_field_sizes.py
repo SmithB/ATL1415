@@ -19,13 +19,19 @@ reports -- never the tiles -- and checks, per docs/plan_check_field_sizes.sh:
              basename.  The report's "file" value is a path inside the DPS
              worker and is never used.
 
-The args file is REQUIRED: with no derived shape there is nothing to check
+-W and -t are REQUIRED: with no derived shape there is nothing to check
 check 1 against, and whether tiles should instead be compared with each other
 is an open question for Ben (plan C1).  AA's two halves are separate step
 directories with separate args files, so each gets its own derived shape.
 
 Usage:
-  check_field_sizes.py <step_dir> --args_file <input_args.txt> [--step prelim|matched]
+  check_field_sizes.py <step_dir> @<input_args.txt> [--step prelim|matched]
+  check_field_sizes.py <step_dir> -W=60000 -g=100,1000,0.25 -t=2018.75,2026.5
+
+@file is read the way the solver reads it (argparse fromfile, '@' includes
+followed), with the solver's names, aliases and -g default.  Every other line
+of the file is ignored; an unknown option typed on the command line itself is
+an error, so a mistyped --step cannot vanish into the ignored lines.
 
 --step defaults to the step directory's name when that is literally 'prelim'
 or 'matched'; otherwise it is required.
@@ -33,8 +39,8 @@ or 'matched'; otherwise it is required.
 Exit status:
   0  every check passed
   1  at least one check failed (one line per problem, then a summary)
-  2  the check did not happen: no such directory, no reports, an args file
-     that does not give a shape, or a step that cannot be determined
+  2  the check did not happen: no such directory, no reports, arguments
+     that do not give a shape, or a step that cannot be determined
 """
 import argparse
 import glob
@@ -59,37 +65,22 @@ def _count(span, spacing, what):
     return int(round(n)) + 1
 
 
-def expected_shape(args_file):
+def expected_shape(Width, time_span, grid_spacing):
     """
-    Derive the dz shape [nx, ny, nt] from an args file.
-
-    The three flags are read with the solver's own names, aliases and -g
-    default (ATL11_to_ATL15.parse_args), and '@' includes are followed the same
-    way, so the checker reads the file the way the solver did.
+    Derive the dz shape [nx, ny, nt] from the solver's -W, -t and -g values.
 
     Returns (shape, derivation text).
     """
-    if not os.path.isfile(args_file):
-        raise CannotCheck(f'args file {args_file} not found')
-    parser = argparse.ArgumentParser(fromfile_prefix_chars='@', allow_abbrev=False, add_help=False)
-    parser.add_argument('--Width', '-W', type=float)
-    parser.add_argument('--time_span', '-t', type=str)
-    parser.add_argument('--grid_spacing', '-g', type=str, default='250.,4000.,1.')
+    if Width is None or time_span is None:
+        raise CannotCheck('-W and -t are both required (pass @<input_args file>)')
     try:
-        args, _ = parser.parse_known_args(['@' + args_file])
-    except (SystemExit, ValueError, OSError) as e:
-        raise CannotCheck(f'could not parse {args_file}: {e}')
-    if args.Width is None or args.time_span is None:
-        raise CannotCheck(f'{args_file} does not give both -W and -t')
-    try:
-        t0, t1 = [float(t) for t in args.time_span.split(',')]
-        _, dz_spacing, dt = [float(g) for g in args.grid_spacing.split(',')]
+        t0, t1 = [float(t) for t in time_span.split(',')]
+        _, dz_spacing, dt = [float(g) for g in grid_spacing.split(',')]
     except ValueError:
-        raise CannotCheck(f'{args_file}: cannot read -t={args.time_span} '
-                          f'and -g={args.grid_spacing}')
-    nxy = _count(args.Width, dz_spacing, '-W / dz spacing')
+        raise CannotCheck(f'cannot read -t={time_span} and -g={grid_spacing}')
+    nxy = _count(Width, dz_spacing, '-W / dz spacing')
     nt = _count(t1 - t0, dt, '-t span / dt')
-    derivation = (f'-W={args.Width:g} / {dz_spacing:g} + 1 = {nxy};  '
+    derivation = (f'-W={Width:g} / {dz_spacing:g} + 1 = {nxy};  '
                   f'-t={t0:g},{t1:g}: ({t1:g} - {t0:g}) / {dt:g} + 1 = {nt}')
     return [nxy, nxy, nt], derivation
 
@@ -125,14 +116,14 @@ def check_report(report, step, shape):
     return problems
 
 
-def check_step_dir(step_dir, args_file, step=None):
+def check_step_dir(step_dir, shape, derivation, step=None):
     """
-    Run all four checks.  Returns (problems, summary lines); raises CannotCheck.
+    Run all four checks against an expected dz shape.
+    Returns (problems, summary lines); raises CannotCheck.
     """
     if not os.path.isdir(step_dir):
         raise CannotCheck(f'step directory {step_dir} not found')
     step = infer_step(step_dir, step)
-    shape, derivation = expected_shape(args_file)
 
     tiles = {os.path.basename(f)[:-len('.h5')]
              for f in glob.glob(os.path.join(step_dir, '*.h5'))}
@@ -168,24 +159,40 @@ def check_step_dir(step_dir, args_file, step=None):
 
     names = tiles | reports
     summary = [f'step {step}: {step_dir}',
-               f'expected dz/dz {shape}  ({derivation}; from {args_file})',
+               f'expected dz/dz {shape}  ({derivation})',
                f'expected dz/sigma_dz ' + ('== dz/dz' if step == 'prelim' else 'null'),
                f'{len(reports)} reports, {len(tiles)} tiles, '
                f'{len(names) - len(bad_tiles)} of {len(names)} passed, {len(problems)} problems']
     return problems, summary
 
 
-def main(argv=None):
+def parse_args(argv=None):
+    if argv is None:
+        argv = sys.argv[1:]
     parser = argparse.ArgumentParser(
-        description='Check the per-tile field-size reports of a prelim or matched directory.')
+        description='Check the per-tile field-size reports of a prelim or matched directory.',
+        fromfile_prefix_chars='@', allow_abbrev=False)
     parser.add_argument('step_dir')
-    parser.add_argument('--args_file', required=True,
-                        help="the run's input_args file; -W, -g and -t set the expected shape")
     parser.add_argument('--step', choices=STEPS,
                         help="default: the step directory's name, if prelim or matched")
-    args = parser.parse_args(argv)
+    # the solver's names, aliases and -g default (ATL11_to_ATL15.parse_args)
+    parser.add_argument('--Width', '-W', type=float, help='tile width (m)')
+    parser.add_argument('--time_span', '-t', type=str, help='first year,last year')
+    parser.add_argument('--grid_spacing', '-g', type=str, default='250.,4000.,1.',
+                        help='z0 spacing,dz spacing,dt')
+    args, unknown = parser.parse_known_args(argv)
+    # the rest of an @file is expected; anything typed directly is a mistake
+    typed = [arg for arg in unknown if arg in argv]
+    if typed:
+        parser.error(f'unrecognized arguments: {" ".join(typed)}')
+    return args
+
+
+def main(argv=None):
+    args = parse_args(argv)
     try:
-        problems, summary = check_step_dir(args.step_dir, args.args_file, args.step)
+        shape, derivation = expected_shape(args.Width, args.time_span, args.grid_spacing)
+        problems, summary = check_step_dir(args.step_dir, shape, derivation, args.step)
     except CannotCheck as e:
         print(f'check_field_sizes.py: CHECK NOT DONE: {e}', file=sys.stderr)
         return 2

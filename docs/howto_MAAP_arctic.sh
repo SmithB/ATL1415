@@ -227,7 +227,7 @@ scripts/maap/fetch_tiles.py $ledgers/${reg}_prelim_jobs.csv $region_dir --step p
 # Check the tiles' field-size reports: dz/dz of the shape -W, -g and -t give,
 # prelim sigma_dz == dz/dz, and a report for every tile.  Exit 0 OK, 1
 # problems, 2 the check did not happen.  [OK on IS 2026-09-17, plan I5]
-scripts/check_field_sizes.py $region_dir/prelim --args_file $region_dir/input_args_$reg.txt
+scripts/check_field_sizes.py $region_dir/prelim @$region_dir/input_args_$reg.txt
 
 
 # ===========================================================================
@@ -244,7 +244,7 @@ scripts/maap/submit_MAAP_jobs.py --xy_file region_files/${reg}_matched_xy.txt \
     --tag ${reg}_rel006_matched --ledger $ledgers/${reg}_matched_jobs.csv
 scripts/maap/collect_jobs.py $ledgers/${reg}_matched_jobs.csv
 scripts/maap/fetch_tiles.py $ledgers/${reg}_matched_jobs.csv $region_dir --step matched
-scripts/check_field_sizes.py $region_dir/matched --args_file $region_dir/input_args_$reg.txt
+scripts/check_field_sizes.py $region_dir/matched @$region_dir/input_args_$reg.txt
 # Matched tiles have NO sigma_dz, by design: the uncertainties come from the
 # prelim tiles.  IS matched peaked at 8.99 GiB; memory tracks N_fit.
 

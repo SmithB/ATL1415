@@ -75,9 +75,12 @@
 # QUESTION FOR BEN, do not guess: should a tile whose shape merely DISAGREES
 # with its neighbours (but matches no derived expectation, e.g. because no
 # args file was passed) be an error, or is the derived check the only one?
-# STILL OPEN.  AS WRITTEN: --args_file is REQUIRED, so there is always a
-# derived shape and no neighbour comparison exists.  The flags are parsed
-# with the solver's names, aliases, -g default and '@' handling.
+# STILL OPEN.  AS WRITTEN: -W and -t are REQUIRED, so there is always a
+# derived shape and no neighbour comparison exists.  They are given as the
+# solver takes them -- @<input_args file> (Ben 2026-09-17: a python fromfile,
+# not an --args_file option) or directly -- with the solver's names, aliases
+# and -g default.  The file's other lines are ignored; an unknown option
+# typed on the command line is still an error.
 #
 #
 # ===========================================================================
@@ -106,7 +109,7 @@
 #
 #
 # ===========================================================================
-# C3. [DONE 2026-09-17, one change: --args_file required, see C1]  Shape of the tool.
+# C3. [DONE 2026-09-17, one change: @args_file, -W/-t required, see C1]  Shape of the tool.
 # ===========================================================================
 # RECOMMENDATION, and the agent may argue with it:
 #   PATH   scripts/check_field_sizes.py, executable, python3.

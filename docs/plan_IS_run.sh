@@ -345,8 +345,8 @@ scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv \
 # ===========================================================================
 # ATL11_to_ATL15 writes the field-size report itself; the JSON above is it.
 # Check the reports with the field-size checker (docs/plan_check_field_sizes.sh):
-scripts/check_field_sizes.py $region_dir/prelim --args_file $region_dir/input_args_IS.txt
-scripts/check_field_sizes.py $region_dir/matched --args_file $region_dir/input_args_IS.txt
+scripts/check_field_sizes.py $region_dir/prelim @$region_dir/input_args_IS.txt
+scripts/check_field_sizes.py $region_dir/matched @$region_dir/input_args_IS.txt
 # RESULT 2026-09-17: both OK -- expected dz/dz [61, 61, 32] derived from -W,
 # -g and -t; prelim sigma == dz/dz, matched sigma null; 28 reports, 28 tiles,
 # 28 of 28 passed, 0 problems, each.

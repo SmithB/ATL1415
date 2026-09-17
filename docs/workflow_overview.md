@@ -112,10 +112,11 @@ tile job now writes its own report as it writes its tile
 
 The CHECKER reads those reports, never the tiles:
 ```
-scripts/check_field_sizes.py <region_dir>/prelim  --args_file <region_dir>/input_args_GL.txt
-scripts/check_field_sizes.py <region_dir>/matched --args_file <region_dir>/input_args_GL.txt
+scripts/check_field_sizes.py <region_dir>/prelim  @<region_dir>/input_args_GL.txt
+scripts/check_field_sizes.py <region_dir>/matched @<region_dir>/input_args_GL.txt
 ```
-It checks that `dz/dz` has the shape the args file gives (`-W`, `-g`, `-t`),
+It reads `-W`, `-g` and `-t` from the `@` args file the way the solver does
+(the file's other lines are ignored), and checks that `dz/dz` has that shape,
 that prelim `dz/sigma_dz` equals `dz/dz`, that matched `dz/sigma_dz` is null
 (matched tiles carry no sigma by design), and that every tile has a report and
 every report a tile.  Exit 0 pass, 1 problems, 2 the check did not happen.
