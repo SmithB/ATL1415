@@ -158,6 +158,9 @@ def attributes_for_ATL11_file(file):
         fa['version'] = m.groups()
         #start_region, end_region, start_orbit, end_orbit are not defined for an ATL11xo file
         fa['end_region'] = fa['start_region']
+        # an along-track granule covers one rgt, the one in its name.  NOT for
+        # ATL11XO, whose start_rgt and end_rgt differ (e.g. 238 and 1381)
+        fa['end_rgt'] = fa['start_rgt']
         this_format='along-track'
     else:
         m = rx_xo.search(file)
@@ -170,10 +173,6 @@ def attributes_for_ATL11_file(file):
         fa['version'] = m.groups()
         fa['end_cycle'] = fa['start_cycle']
         this_format='xo'
-
-    # N.B. this overwrote the end_rgt read from an ATL11XO granule too; kept as
-    # it was until the granule attributes come back (plan_IS_run.sh I9g2)
-    fa['end_rgt'] = fa['start_rgt']
 
     return fa, this_format
 
