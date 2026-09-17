@@ -226,11 +226,24 @@ aws s3 cp $region_dir/input_args_$reg.txt $s3_run/
 #
 #
 # ===========================================================================
-# T5. [DPS] [NOT STARTED]  Rebuild, register, MATCH.
+# T5. [DPS] [DONE 2026-09-17 -- VERDICT: MATCH at 61a19af]
+#     Rebuild, register, MATCH.
 # ===========================================================================
 # This carries the lineage code (plan_lineage_at_solve_time.sh L1-L5, d2960d5)
 # as well.  Push, Ben registers, then:
-scripts/maap/check_build_id.py     # must say MATCH before any job
+scripts/maap/check_build_id.py \
+    s3://maap-ops-workspace/ben_smith/ATL1415/run_args/rel006/north/IS/input_args_IS.txt \
+    maap-dps-worker-16gb --expect 61a19af        # must say MATCH before any job
+# RESULT 2026-09-17, Ben registered and the check was run with the IS args:
+#   image stamp, live git in the image and the CWL are all
+#   61a19af58e2fcdd4528edd891eea70c87e632d81, tree_state=clean,
+#   algorithm_version=on_s3, maap_py=5.1.0, maap_pgt=set;
+#   build_started 19:40:55Z, build_completed 19:43:57Z -- AFTER the 19:39:27Z
+#   commit, so it is a real rebuild and not a stale image;
+#   processID=64, job fa3e0679-e1e1-4eb8-97b0-b9b581214af0, successful in
+#   ~4.5 min ([[cwl-link-is-registration-not-deploy]]: only this proves it).
+# SO THE DEPLOYED IMAGE CARRIES BOTH the lineage work (L1-L5) and nothing that
+# contradicts the 0332 args -- the args are an input, not part of the image.
 #
 #
 # ===========================================================================
