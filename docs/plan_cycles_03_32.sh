@@ -174,7 +174,7 @@ aws s3 cp $region_dir/input_args_$reg.txt $s3_run/
 #
 #
 # ===========================================================================
-# T4. [ADE+bucket] [DECIDED 2026-09-17, AT3: "Delete the old files"]
+# T4. [ADE+bucket] [DONE 2026-09-17 -- deleted, and T3 re-run]
 #     Clear the 0331 outputs first.
 # ===========================================================================
 # STATEMENT, and it is the trap in this transition: the region directory
@@ -204,6 +204,25 @@ aws s3 cp $region_dir/input_args_$reg.txt $s3_run/
 # IRREVERSIBLE: ~19 worker-hours of prelim tiles and the products made from
 # them.  The deletion is a deliberate instruction (AT3), so run it once, with
 # the paths in front of you, and not from inside a loop over regions.
+#
+# DONE 2026-09-17.  WHAT WAS THERE, listed before deleting anything:
+#   local  ~/ATL14_processing/rel006/north/IS, 1.4 GB -- 28 prelim and 28
+#          matched tiles with their field_sizes reports, the 41 mosaic files,
+#          the five 0331 netCDFs, and input_args_IS.txt;
+#   bucket s3://.../ATL14_processing/rel006/north/IS/, 112 objects,
+#          1196364704 bytes (the 56 tiles and their reports).
+# Both are now EMPTY: the bucket prefix lists 0 objects, and rel006/north/ has
+# no IS directory until setup recreates it.
+# KEPT ON PURPOSE, and none of it is in the delete paths:
+#   ~/ATL14_processing/maap_ledgers/IS_*.csv   the only record of the 0331 jobs
+#   ~/ATL14_processing/runs/IS_mosaic, IS_nc   the 0331 run directories and logs
+#   region_files/IS_*_xy.txt                   in the repo, and still correct
+#   s3://.../ATL1415/run_args/rel006/north/IS/ the published args, a different
+#                                              prefix -- verified still there
+# T3 WAS THEN RE-RUN, as this step requires: the region directory exists again
+# and holds input_args_IS.txt (969 bytes), byte-identical to the published
+# copy on the bucket.  The region directory now holds THAT FILE AND NOTHING
+# ELSE, which is the clean starting point T6 and T7 need.
 #
 #
 # ===========================================================================
