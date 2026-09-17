@@ -927,7 +927,10 @@ check_mosaic_outputs.py $mosaic_run --values
 #          tile metadata at solve time, when it has every granule open.  The
 #          netCDF step reads them from the tiles and never opens ATL11.  An
 #          attribute the tiles do not carry is marked INVALID in the output.
-#          Not planned in detail yet; lands before the IS re-run.
+#          PLANNED 2026-09-17: docs/plan_lineage_at_solve_time.sh.
+#          Lands before the IS re-run -- which is ALSO blocked: CMR now lists
+#          ATL11 0332_007_05 only, not the 0331_007_04 IS ran on (that plan,
+#          top, and its QL1).
 #        - TODAY: the tiles carry none of them, so those attributes are
 #          invalid.  IS will be RE-RUN COMPLETELY once more issues are fixed,
 #          so these netCDFs are for getting the step working, not for release.
