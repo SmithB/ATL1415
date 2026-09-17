@@ -134,7 +134,8 @@
 #
 #
 # ===========================================================================
-# T3. [ADE] [NOT STARTED]  Recompose and republish the args.
+# T3. [ADE] [DONE 2026-09-17 -- RE-RUN IT AFTER T4, see below]
+#     Recompose and republish the args.
 # ===========================================================================
 # As arctic howto steps 3 and 4.  The composed file is what DPS reads, and
 # nothing reconciles it with default_args:
@@ -142,9 +143,34 @@ setup_ATL1415_region.py default_args/MAAP_dps.txt default_args/latest_release.tx
     default_args/$reg.txt default_args/quarterly.txt --Hemisphere=1
 aws s3 cp $region_dir/input_args_$reg.txt $s3_run/
 # CHECK, not just run: the new input_args_IS.txt must show --cycles=0332,
-# --ATL11_release=007_cycle_03_32_v05, the new -t and --t_crop, and an
+# --ATL11_release=007_cycle_03_32_v05, the new --version and --t_crop, and an
 # UNCHANGED --ATL11_index (the root; the generation subdirectory comes from
 # --ATL11_release) and --ATL11xo_version.
+#
+# DONE 2026-09-17 for IS.  The recomposed file is 969 bytes (was 970) and
+# differs from the 0331 composition in EXACTLY the four lines T2 changed:
+# --cycles=0332, --version=02, --ATL11_release=007_cycle_03_32_v05,
+# --t_crop=2019,2026.5.  Everything else is byte-identical, including
+# --ATL11_earthaccess, --ATL11_index (the root), --ATL11xo_version
+# (007_cycle_03_30_v03), --previous_product_earthaccess/=005_0329, the Iceland
+# .db mask, -W, -g and -t.
+# CONSEQUENCES CHECKED, not assumed: the tile shape the args imply is still
+# [61, 61, 32] (scripts/check_field_sizes.py derives it from -W, -g, -t), and
+# --t_crop=2019,2026.5 gives 31 netCDF epochs against the 0331 run's 30.
+# PUBLISHED to
+#   s3://maap-ops-workspace/ben_smith/ATL1415/run_args/rel006/north/IS/input_args_IS.txt
+# and the bucket copy was read back and diffed against the local file:
+# identical.
+#
+# THE BUCKET NOW SAYS 0332 WHILE THE TILES ON IT ARE STILL 0331.  Nothing
+# reads the args by itself, so this is inert until a job is submitted -- but
+# it is one more reason T4 has to happen before any submission.
+#
+# RE-RUN THIS STEP AFTER T4.  T4 deletes the region directory, and
+# input_args_IS.txt lives in it, so the local copy goes with it; the bucket
+# copy survives (different prefix).  Re-running setup_ATL1415_region.py
+# recreates both the directory and the file, and republishing is then a
+# no-op-but-harmless upload of the same bytes.
 #
 #
 # ===========================================================================
@@ -164,7 +190,10 @@ aws s3 cp $region_dir/input_args_$reg.txt $s3_run/
 #   local:  rm -r ~/ATL14_processing/rel006/north/IS
 #   bucket: aws s3 rm --recursive s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/north/IS/
 #           (delete with the CLI, not through the mountpoint-s3 mount)
-# then let T3 recreate the region directory.
+# then RE-RUN T3, which recreates the region directory and the composed args
+# file that the local delete takes with it.  The published args under
+# .../ATL1415/run_args/... are a DIFFERENT prefix and are not touched by the
+# delete above -- do not widen the delete to reach them.
 # DO IT BEFORE ANY 0332 JOB IS SUBMITTED.  A half-overwritten tree -- some
 # tiles 0331, some 0332, all the same names -- is the outcome nobody could
 # untangle afterwards, and NOTHING WOULD CATCH IT: -t is unchanged (AT1), so
