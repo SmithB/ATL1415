@@ -167,8 +167,10 @@ aws s3 sync $s3_out/prelim/ $region_dir/prelim/
 # 8. [ADE] [OK]  Look at the tile sizes.
 # ===========================================================================
 # ATL11_to_ATL15.py now writes the field-size report itself, so
-# make_field_size_report.py is no longer needed.  Inspect with the
-# check_tiles.ipynb notebook in ATL1415.
+# make_field_size_report.py is no longer needed.  Check the reports with
+# scripts/check_field_sizes.py (check_tiles.ipynb is not in the repo, and
+# this replaces it).  [OK on IS 2026-09-17, plan_IS_run.sh I5]
+scripts/check_field_sizes.py $region_dir/prelim --args_file $region_dir/input_args_GL.txt
 
 
 # ===========================================================================

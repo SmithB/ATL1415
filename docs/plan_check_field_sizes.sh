@@ -1,7 +1,9 @@
 #! /usr/bin/env bash
 # ===========================================================================
 # PLAN: a checker for the per-tile field-size reports.
-# Written 2026-09-16 as an ASSIGNMENT BRIEF for an agent.  NO CODE YET.
+# Written 2026-09-16 as an ASSIGNMENT BRIEF for an agent.
+# STATUS 2026-09-17: WRITTEN -- scripts/check_field_sizes.py (f4850ed),
+# tests/test_check_field_sizes.py.  C1-C5 DONE; C1's QUESTION stays open.
 # ===========================================================================
 # THE ASK (Ben, 2026-09-16): "there should be a script that checks the field
 # size reports written by each tile job and makes sure that the outputs are
@@ -9,7 +11,7 @@
 # size."  check_tiles.ipynb is explicitly NOT needed (same message), so this
 # replaces it rather than restoring it.
 #
-# READ THE STATUS TAG ON EVERY STEP.  Nothing below is written yet.
+# READ THE STATUS TAG ON EVERY STEP.
 # Provenance is marked per claim: VERIFIED = checked in this repo or against
 # the real IS outputs on 2026-09-16; DECIDED = Ben said so; RECOMMENDATION =
 # mine, and overridable; QUESTION = genuinely open, do not guess.
@@ -45,7 +47,7 @@
 #
 #
 # ===========================================================================
-# C1. [NOT WRITTEN]  What "the right size" is.  DERIVE IT, DO NOT HARD-CODE.
+# C1. [DONE 2026-09-17]  What "the right size" is.  DERIVE IT, DO NOT HARD-CODE.
 # ===========================================================================
 # VERIFIED 2026-09-16, by deriving it and comparing against all 56 real IS
 # reports (28 prelim + 28 matched): the expected dz shape follows from the
@@ -73,10 +75,13 @@
 # QUESTION FOR BEN, do not guess: should a tile whose shape merely DISAGREES
 # with its neighbours (but matches no derived expectation, e.g. because no
 # args file was passed) be an error, or is the derived check the only one?
+# STILL OPEN.  AS WRITTEN: --args_file is REQUIRED, so there is always a
+# derived shape and no neighbour comparison exists.  The flags are parsed
+# with the solver's names, aliases, -g default and '@' handling.
 #
 #
 # ===========================================================================
-# C2. [NOT WRITTEN]  The four checks.
+# C2. [DONE 2026-09-17]  The four checks.
 # ===========================================================================
 # 1. SHAPE.  Every report's "dz/dz" equals the derived [nx,ny,nt].
 # 2. SIGMA IN PRELIM.  For step=prelim, "dz/sigma_dz" MUST be present and
@@ -101,7 +106,7 @@
 #
 #
 # ===========================================================================
-# C3. [NOT WRITTEN]  Shape of the tool.
+# C3. [DONE 2026-09-17, one change: --args_file required, see C1]  Shape of the tool.
 # ===========================================================================
 # RECOMMENDATION, and the agent may argue with it:
 #   PATH   scripts/check_field_sizes.py, executable, python3.
@@ -128,7 +133,7 @@
 #
 #
 # ===========================================================================
-# C4. [NOT WRITTEN]  Tests, and the free gift of real data.
+# C4. [DONE 2026-09-17 -- 23 tests; real IS 28/28 + 28/28 pass]  Tests, and the free gift of real data.
 # ===========================================================================
 # THERE ARE 56 REAL REPORTS ON DISK RIGHT NOW, and they are the best fixture
 # available.  VERIFIED present 2026-09-16:
@@ -152,7 +157,8 @@
 #
 #
 # ===========================================================================
-# C5. [NOT WRITTEN]  Wiring it into the docs, LAST.
+# C5. [DONE 2026-09-17 -- plan_IS_run.sh I5, workflow_overview.md section 5,
+#     howto_MAAP_arctic.sh steps 8-9, howto_MAAP_GL.sh step 8]  Wiring it into the docs, LAST.
 # ===========================================================================
 # Once it passes C4, and not before:
 #   - docs/plan_IS_run.sh I5 currently points at check_tiles.ipynb, which

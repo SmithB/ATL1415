@@ -4,8 +4,8 @@
 # ##  STATUS 2026-09-17: RUN THROUGH netCDF.  prelim 28/29 and matched      ##
 # ##  28/28 on DPS, mosaic 41/41 and all five netCDFs in the ADE -- with   ##
 # ##  lineage INVALID by design (I9g2).  IS WILL BE RE-RUN COMPLETELY once ##
-# ##  more issues are fixed.  Open: I5's checker, I9g6, I9h.  The banner  ##
-# ##  below is the 2026-09-12 original, kept for the record.               ##
+# ##  more issues are fixed.  Open: I9g6, I9h.  The banner below is the  ##
+# ##  2026-09-12 original, kept for the record.                            ##
 # ##                                                                        ##
 # ##  TENTATIVE.  Written 2026-09-12.  No IS tile has been solved on DPS.   ##
 # ##  This is the sequence, the status of each step, and the decisions      ##
@@ -340,15 +340,21 @@ scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv \
 # 'no tile' row this step was written for is the one E1020_N-2580 will produce.
 
 
-# I5. [ADE] [HALF DONE 2026-09-16 -- shapes checked by hand.  check_tiles.ipynb
-#     is NOT NEEDED (Ben 2026-09-16); its replacement, a field-size report
-#     checker, is PLANNED ONLY -- docs/plan_check_field_sizes.sh, no code]
-#     Look at the tile sizes.   (arctic step 8's ADE half)
+# I5. [ADE] [DONE 2026-09-17 -- scripts/check_field_sizes.py, 28/28 prelim and
+#     28/28 matched pass]  Look at the tile sizes.   (arctic step 8's ADE half)
 # ===========================================================================
 # ATL11_to_ATL15 writes the field-size report itself; the JSON above is it.
-# Inspect with check_tiles.ipynb.
+# Check the reports with the field-size checker (docs/plan_check_field_sizes.sh):
+scripts/check_field_sizes.py $region_dir/prelim --args_file $region_dir/input_args_IS.txt
+scripts/check_field_sizes.py $region_dir/matched --args_file $region_dir/input_args_IS.txt
+# RESULT 2026-09-17: both OK -- expected dz/dz [61, 61, 32] derived from -W,
+# -g and -t; prelim sigma == dz/dz, matched sigma null; 28 reports, 28 tiles,
+# 28 of 28 passed, 0 problems, each.
+# check_tiles.ipynb, which this step first named, was NEVER FOUND anywhere
+# under /home/jovyan, and Ben said on 2026-09-16 it is not needed: the checker
+# replaces it.  The question below is kept for the record and is closed.
 #
-# QUESTION (2026-09-16): check_tiles.ipynb DOES NOT EXIST.  Not in the repo,
+# QUESTION (2026-09-16), CLOSED 2026-09-17 (see above): check_tiles.ipynb DOES NOT EXIST.  Not in the repo,
 # and `find /home/jovyan -name 'check_tiles*'` returns nothing at all.  Is it
 # unwritten, or is it on discover / another machine?  Nothing else in this
 # plan depends on it -- the mechanical half is done below -- so this is not
