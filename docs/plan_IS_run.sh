@@ -1,6 +1,12 @@
 # plan_IS_run.sh -- THE ICELAND (IS) RUN: prelim and matched, end to end
 #
 # ############################################################################
+# ##  STATUS 2026-09-17: RUN THROUGH netCDF.  prelim 28/29 and matched      ##
+# ##  28/28 on DPS, mosaic 41/41 and all five netCDFs in the ADE -- with   ##
+# ##  lineage INVALID by design (I9g2).  IS WILL BE RE-RUN COMPLETELY once ##
+# ##  more issues are fixed.  Open: I5's checker, I9g6, I9h.  The banner  ##
+# ##  below is the 2026-09-12 original, kept for the record.               ##
+# ##                                                                        ##
 # ##  TENTATIVE.  Written 2026-09-12.  No IS tile has been solved on DPS.   ##
 # ##  This is the sequence, the status of each step, and the decisions      ##
 # ##  that were NOT recorded anywhere -- not a record of a run.             ##
@@ -72,7 +78,8 @@
 
 
 # ===========================================================================
-# I0. [ADE] [READY]  Confirm the image before spending worker hours.
+# I0. [ADE] [DONE 2026-09-15 -- MATCH at b5fe447, recorded at I2; again at
+#     6b8a2ca for I7]  Confirm the image before spending worker hours.
 # ===========================================================================
 conda activate ATL14
 cd ~/git_repos/ATL1415
@@ -134,7 +141,7 @@ cd ~/git_repos/ATL1415
 # its centers come from a 1 km mask that does not exist (Q6/Q16).
 
 
-# I2. [DPS] [READY -- scripts/maap/submit_MAAP_jobs.py, new 2026-09-12]
+# I2. [DPS] [DONE 2026-09-15 -- smoke tile, then all 29 submitted]
 #     Fan out prelim.
 # ===========================================================================
 # ONE TILE FIRST.  -16gb is a queue nothing has run on, and algorithm_config's
@@ -232,10 +239,10 @@ scripts/maap/submit_MAAP_jobs.py --xy_file region_files/IS_prelim_xy.txt \
 #
 # TESTED 2026-09-12, all against the real deployed process (processID 64):
 # the 29-center dry-run, --limit 1, and every refusal above.  RUN FOR REAL
-# 2026-09-15: the smoke tile, above.  The 29-tile fan-out has not been.
+# 2026-09-15: the smoke tile, then the 29-tile fan-out, both above.
 
 
-# I3. [ADE] [READY]  Watch the 29 jobs.   THE COLLECTOR.
+# I3. [ADE] [DONE 2026-09-16 -- 28 successful, 1 failed (I7a)]  Watch the 29 jobs.   THE COLLECTOR.
 # ===========================================================================
 scripts/maap/collect_jobs.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv
 # THE COLLECTOR READS ABOUT TILES; IT DOES NOT MOVE THEM.  Moving them is the
@@ -275,7 +282,7 @@ scripts/maap/collect_jobs.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv
 
 
 # ===========================================================================
-# I4. [ADE] [READY -- scripts/maap/fetch_tiles.py, new 2026-09-12]
+# I4. [ADE] [DONE 2026-09-16 -- 28 fetched, 652 MB]
 #     THE TILE FETCHER: bring the prelim tiles down.
 # ===========================================================================
 scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv \
@@ -333,7 +340,10 @@ scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv \
 # 'no tile' row this step was written for is the one E1020_N-2580 will produce.
 
 
-# I5. [ADE] [READY]  Look at the tile sizes.   (arctic step 8's ADE half)
+# I5. [ADE] [HALF DONE 2026-09-16 -- shapes checked by hand.  check_tiles.ipynb
+#     is NOT NEEDED (Ben 2026-09-16); its replacement, a field-size report
+#     checker, is PLANNED ONLY -- docs/plan_check_field_sizes.sh, no code]
+#     Look at the tile sizes.   (arctic step 8's ADE half)
 # ===========================================================================
 # ATL11_to_ATL15 writes the field-size report itself; the JSON above is it.
 # Inspect with check_tiles.ipynb.
@@ -353,7 +363,7 @@ scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_prelim_jobs.csv \
 
 
 # ===========================================================================
-# I6. [ADE] [READY]  The matched tile list.
+# I6. [ADE] [DONE 2026-09-16 -- region_files/IS_matched_xy.txt, 28]  The matched tile list.
 # ===========================================================================
 # The same 29 centers -- region_files/IS_prelim_xy.txt serves both steps.
 # STATEMENT: expect the matched list to be SHORTER than 29, and that is not a
@@ -779,10 +789,11 @@ scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_matched_jobs.csv 
 
 
 # ===========================================================================
-# I9. [ADE] [IN SCOPE -- Ben 2026-09-16; was OUT OF SCOPE 2026-09-12]  Mosaic, netCDF.
+# I9. [ADE] [MOSAIC DONE 2026-09-16, netCDF DONE 2026-09-17 with invalid lineage;
+#     browse open.  IN SCOPE -- Ben 2026-09-16; was OUT OF SCOPE 2026-09-12]  Mosaic, netCDF.
 # ===========================================================================
 # TENTATIVE.  Written 2026-09-16 before any of it ran; revise as steps land.
-# Scope: MOSAIC (I9a-f, done) and netCDF (I9g, planned 2026-09-16).  Browse (I9h) is listed, not planned.
+# Scope: MOSAIC (I9a-f, done) and netCDF (I9g1-5 and 7 done; I9g6 open).  Browse (I9h) is listed, not planned.
 # Runs in the ADE, not DPS: no submission, no registration, nothing polled.
 # Ben restarted the instance for memory: 16 cores, 124 GiB (101 available).
 region_dir=/home/jovyan/ATL14_processing/rel006/north/IS
@@ -793,7 +804,8 @@ mosaic_run=/home/jovyan/ATL14_processing/runs/IS_mosaic
 #      Matched tiles give the values, prelim tiles give every sigma_* (the
 #      queue globs 'prelim/*.h5' for those), so both directories are inputs.
 
-# I9b. [NEEDS CODE: ATL1415/__init__.py]  A REGRESSION blocks I9c and I9g.
+# I9b. [DONE 2026-09-16 -- fixed in 2ed36c0, tests/test_lazy_imports.py]
+#      A REGRESSION blocked I9c and I9g.
 #      STATEMENT: make_mosaic_jobs.py dies writing slurm_run.sh with
 #        TypeError: 'module' object is not callable
 #      at ATL1415.make_slurm_file(...).  Cause: 0c6ea35 (lazy imports, on_s3
@@ -810,7 +822,7 @@ mosaic_run=/home/jovyan/ATL14_processing/runs/IS_mosaic
 #      FIX: resolve those seven names to the function, as before 0c6ea35, with
 #      a test in tests/ so it cannot regress silently again.
 
-# I9c. [UNTESTED]  Build the queue.
+# I9c. [DONE 2026-09-16 -- 41 tasks; I9e's done/ holds all 41]  Build the queue.
 mkdir -p $(dirname $mosaic_run) && cd $(dirname $mosaic_run)
 make_mosaic_jobs.py -b $region_dir -rr IS -t 2018.75,2026.5 -e ATL14 \
     --run_name IS_mosaic @/home/jovyan/git_repos/ATL1415/default_args/quarterly.txt
@@ -822,7 +834,7 @@ make_mosaic_jobs.py -b $region_dir -rr IS -t 2018.75,2026.5 -e ATL14 \
 #      --dzdt_lags in input_args_IS.txt.  No bounds.txt in $region_dir, so no
 #      crop -- expected, cropping moved to the to_nc step in bacb2ef.
 
-# I9d. [UNTESTED]  Smoke one task: task_1 (z0, the 100 m grid, the biggest).
+# I9d. [DONE 2026-09-16]  Smoke one task: task_1 (z0, the 100 m grid, the biggest).
 cd $mosaic_run
 SLURM_ARRAY_TASK_ID=1 /home/jovyan/git_repos/ATL1415/scripts/run_with_rusage.py \
     IS_mosaic_task_1 bash slurm_run.sh
@@ -866,7 +878,7 @@ check_mosaic_outputs.py $mosaic_run --values
 #      IS, minutes for AA) -- Ben 2026-09-16.  The result above is --values.
 
 # ---------------------------------------------------------------------------
-# I9g. [ADE] [PLANNED 2026-09-16, TENTATIVE]  netCDF.
+# I9g. [ADE] [I9g1-5, I9g7 DONE 2026-09-17; I9g6 OPEN]  netCDF.
 # ---------------------------------------------------------------------------
 # Ben 2026-09-16: "plan the netCDF step".  Planned from a PROBE, not from
 # reading alone: both writers were run on the real IS mosaics with -b pointing
@@ -987,9 +999,14 @@ ATL15_write2nc.py @$region_dir/input_args_IS.txt
 #      the cheapest science-level check that nothing is shifted or flipped --
 #      the I9f and I9g5 checks are all structural.
 
-# I9g7. [NOT STARTED]  Howtos.  Once I9g3-5 pass, record in
+# I9g7. [DONE 2026-09-17]  Howtos.  Once I9g3-5 pass, record in
 #      docs/howto_MAAP_arctic.sh step 10 (it already names both commands)
 #      that they run directly in the ADE, and which lineage flags they need.
+#      RESULT: arctic step 10 now runs slurm_run.sh directly (no
+#      run_queue_local.sh) and the writers with NO lineage flags, noting the
+#      invalid lineage.  Steps 6-9 were rewritten to the commands IS ran;
+#      step 5 stays NEEDS CODE.  howto_MAAP_GL.sh and howto_MAAP_AA.sh still
+#      cite run_queue_local.sh -- NOT updated, see the commit.
 #
 # QI9.  CLOSED -- Ben 2026-09-17: lineage at solve time, see I9g2 DECISION.
 # QI10. CLOSED -- same decision covers GL/AA.
