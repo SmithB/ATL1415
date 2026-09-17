@@ -114,10 +114,31 @@ def write_atl1415meta(dst,fileout,ncTemplate,args):
     for key, keyval in root_info.items():
         dst.setncattr(key, keyval)
 
-def attributes_for_ATL11_file(file, args):
+# Lineage attributes that only the granule itself can supply.  TEMPORARY
+# (docs/plan_IS_run.sh I9g2): the netCDF step no longer opens ATL11 granules.
+# The prelim step is to record these in the tile metadata at solve time; until
+# it does, they stay 'NOT_SET', marking them invalid in the product.
+FILE_ONLY_LINEAGE_ATTRS = {
+    'along-track': ['uuid', 'start_geoseg', 'end_geoseg', 'start_orbit', 'end_orbit'],
+    'xo': ['uuid', 'start_geoseg', 'end_geoseg', 'start_rgt', 'end_rgt']}
 
+def attributes_for_ATL11_file(file):
+    """
+    Lineage attributes for one ATL11 or ATL11XO file, from its NAME alone.
+
+    Attributes that need the granule opened (FILE_ONLY_LINEAGE_ATTRS) are left
+    'NOT_SET'.
+
+    inputs:
+        file: basename of the ATL11 or ATL11XO file, as in a tile's
+            meta/input_files
+    outputs:
+        fa: dict of lineage attributes
+        this_format: 'along-track' or 'xo'
+    """
     # regular expression for extracting ATL11 parameters
     rx = re.compile(r'(ATL\d{2})_(\d{4})(\d{2})_(\d{2})(\d{2})_(\d{3})_(\d{2}).*?.h5$')
+    rx_xo = re.compile(r'(ATL11XO)_.._E.*_N.*_c(\d\d)_(\d\d\d)_(\d\d).h5$', flags=re.I)
     lineage_attrs=['end_cycle', 'end_geoseg', 'end_orbit', 'end_region', 'end_rgt',
                     'fileName', 'shortName', 'start_cycle', 'start_geoseg',
                     'start_orbit', 'start_region', 'start_rgt',
@@ -126,53 +147,35 @@ def attributes_for_ATL11_file(file, args):
     fa= {attr : 'NOT_SET' for attr in lineage_attrs}
     fa['fileName'] = os.path.basename(file)
     # extract attributes from filename
-    try:
+    m = rx.search(file)
+    if m is not None:
         fa['shortName'], \
         fa['start_rgt'], \
         fa['start_region'],\
         fa['start_cycle'],\
         fa['end_cycle'],\
         fa['release'],\
-        fa['version'] = rx.search(file).groups()
-        atl11path = args.ATL11_lineage_dir
+        fa['version'] = m.groups()
+        #start_region, end_region, start_orbit, end_orbit are not defined for an ATL11xo file
+        fa['end_region'] = fa['start_region']
         this_format='along-track'
-    except Exception:
-        rx=re.compile('(ATL11XO)_.._E.*_N.*_c(\d\d)_(\d\d\d)_(\d\d).h5$', flags=re.I)
+    else:
+        m = rx_xo.search(file)
+        if m is None:
+            raise ValueError(f'attributes_for_ATL11_file: {file} is neither an ATL11 '
+                             'nor an ATL11XO file name')
         fa['shortName'],\
         fa['start_cycle'],\
         fa['release'],\
-        fa['version'] = rx.search(file).groups()
+        fa['version'] = m.groups()
         fa['end_cycle'] = fa['start_cycle']
-        atl11path = os.path.join(args.ATL11_xover_dir, f'cycle_{fa["start_cycle"]}')
-        if not os.path.isfile( os.path.join(atl11path,file) ):
-            # we may be using a tiling schema to point to the file location
-            schema_files = glob.glob(os.path.join(atl11path, '*til*.json'))
-            if not schema_files:
-                raise FileNotFoundError(f"could not find {file}")
-            with open(schema_files[0],'r') as fh:
-                atl11path = json.load(fh)['directory']
         this_format='xo'
 
-    with h5py.File(os.path.join(atl11path,file),'r') as fileID:
-        # extract ATL11 attributes from files
-        fa['uuid'] = fileID['METADATA']['DatasetIdentification'].attrs['uuid'].decode('utf-8')
-        fa['start_geoseg'] = fileID['ancillary_data/start_geoseg'][0]
-        fa['end_geoseg'] = fileID['ancillary_data/end_geoseg'][0]
-        if this_format=='xo':
-            # start_rgt and end_rgt are not in the filename, read them from the file
-            fa['start_rgt'] = fileID['ancillary_data/start_rgt'][0]
-            fa['end_rgt'] = fileID['ancillary_data/end_rgt'][0]
-        else:
-            #start_region, end_region, start_orbit, end_orbit are not defined for an ATL11xo file
-            fa['start_orbit'] = fileID['ancillary_data/start_orbit'][0]
-            fa['end_orbit'] = fileID['ancillary_data/end_orbit'][0]
-            fa['end_region'] = fa['start_region']
-        sdeltatime = fileID['ancillary_data/start_delta_time'][0]
-        edeltatime = fileID['ancillary_data/end_delta_time'][0]
-
+    # N.B. this overwrote the end_rgt read from an ATL11XO granule too; kept as
+    # it was until the granule attributes come back (plan_IS_run.sh I9g2)
     fa['end_rgt'] = fa['start_rgt']
 
-    return fa
+    return fa, this_format
 
 # To recursively step through groups
 def walktree(top):
@@ -182,24 +185,37 @@ def walktree(top):
 
 def set_lineage(dst,root_info,args):
     tilepath = args.tiles_dir
-    atl11path = args.ATL11_lineage_dir
 # list of lineage attributes
     lineage = []
-    ATL11_files=set()
+    ATL11_files={}
     for tile in glob.iglob(os.path.join(tilepath,'*.h5')):
         try:
             with h5py.File(tile,'r') as h5f:
                 inputs=str(h5f['/meta/'].attrs['input_files'])
-                if inputs[0]=='b':
+                if inputs[:1]=='b':
                     inputs=inputs[1:]
-                ATL11_files.update(inputs.replace("'",'').split(','))
+                inputs=inputs.replace("'",'')
         except Exception:
             print("ATL14_attrs_meta.py: failed to open tile file : "+tile)
-    for file in ATL11_files:
-        fa = attributes_for_ATL11_file(file, args)
+            continue
+        # a tile that read no ATL11 (a matched tile) has input_files == ''
+        for file in filter(None, inputs.split(',')):
+            ATL11_files.setdefault(file, tile)
+    invalid={}
+    for file, tile in ATL11_files.items():
+        try:
+            fa, this_format = attributes_for_ATL11_file(file)
+        except ValueError as e:
+            raise ValueError(f'{e} (listed in {tile})') from e
+        invalid.setdefault(this_format, 0)
+        invalid[this_format] += 1
         # add attributes to list, if not already present
         if fa not in lineage:
             lineage.append(fa)
+    for this_format, count in invalid.items():
+        print(f'set_lineage: WARNING: lineage is INVALID for {count} {this_format} files: '
+              f'{", ".join(FILE_ONLY_LINEAGE_ATTRS[this_format])} are NOT_SET '
+              '(not yet recorded in the tiles; plan_IS_run.sh I9g2)')
 
     # reduce to unique lineage attributes (no repeat files)
     #    sorted(set(lineage))

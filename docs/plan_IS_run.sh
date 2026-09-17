@@ -779,10 +779,10 @@ scripts/maap/fetch_tiles.py ~/ATL14_processing/maap_ledgers/IS_matched_jobs.csv 
 
 
 # ===========================================================================
-# I9. [ADE] [IN SCOPE -- Ben 2026-09-16; was OUT OF SCOPE 2026-09-12]  Mosaic.
+# I9. [ADE] [IN SCOPE -- Ben 2026-09-16; was OUT OF SCOPE 2026-09-12]  Mosaic, netCDF.
 # ===========================================================================
 # TENTATIVE.  Written 2026-09-16 before any of it ran; revise as steps land.
-# Scope is the MOSAIC.  netCDF (I9g) and browse are listed, not planned.
+# Scope: MOSAIC (I9a-f, done) and netCDF (I9g, planned 2026-09-16).  Browse (I9h) is listed, not planned.
 # Runs in the ADE, not DPS: no submission, no registration, nothing polled.
 # Ben restarted the instance for memory: 16 cores, 124 GiB (101 available).
 region_dir=/home/jovyan/ATL14_processing/rel006/north/IS
@@ -865,9 +865,134 @@ check_mosaic_outputs.py $mosaic_run --values
 #      (1.5 s on IS); --values reads the data to flag all-NaN fields (7.4 s on
 #      IS, minutes for AA) -- Ben 2026-09-16.  The result above is --values.
 
-# I9g. [NOT STARTED, NOT PLANNED]  netCDF: ATL14_write2nc.py, ATL15_write2nc.py
-#      @$region_dir/input_args_IS.txt.  Also blocked by I9b.  Its inputs
-#      (DEM, masks, previous-product paths in the args) not yet checked.
+# ---------------------------------------------------------------------------
+# I9g. [ADE] [PLANNED 2026-09-16, TENTATIVE]  netCDF.
+# ---------------------------------------------------------------------------
+# Ben 2026-09-16: "plan the netCDF step".  Planned from a PROBE, not from
+# reading alone: both writers were run on the real IS mosaics with -b pointing
+# at a scratch directory of symlinks, so nothing was written into $region_dir.
+# The writers read, besides the mosaics: the prelim tiles (tile_stats and
+# lineage), the package's attrs CSVs and metadata templates, and
+# region_extent_polygons.json.  NOT the DEM, masks, geoid or previous product.
+
+# I9g1. [OK -- PROBED 2026-09-16]  Everything except lineage already works on IS.
+#      STATEMENT.  With set_lineage() stubbed out by a probe script (scratch
+#      only), both writers exit 0:
+#        ATL14_IS_0331_100m_006_01.nc      h (3001, 4201)            12 s
+#        ATL15_IS_0331_3mo_{1,10,20,40}km_006_01.nc                  18 s total
+#          delta_h (30, 301, 421) at 1 km; 30 epochs = t_crop 2019..2026.25
+#          out of the mosaic's 32; groups delta_h + 9 dhdt_NNNmo.
+#      tile_stats reads data/three_sigma_edit, RMS/*, E_RMS/*, bias/* from the
+#      28 prelim tiles -- all present.  The ATL15 attrs CSV names exactly the
+#      files I9e wrote (dz.h5, dz_{res}km.h5, dzdt_lag{lag}.h5,
+#      dzdt_{res}km_lag{lag}.h5).  I9b's fix is what lets both scripts import.
+#      Memory and time are no concern for IS.
+
+# I9g2. [DONE 2026-09-17 -- TEMPORARY FIX; lineage INVALID]  THE BLOCKER.
+#      STATEMENT, from the unstubbed probe:
+#        FileNotFoundError ... 's3://maap-ops-workspace/ben_smith/ATL11_053503_0331_007_04.h5'
+#      set_lineage() collects the ATL11 file names from each prelim tile's
+#      meta.input_files (basenames only -- ATL11_to_ATL15.py:878), then
+#      attributes_for_ATL11_file() OPENS EVERY ONE with h5py by local path.
+#      IS needs 79 files: 69 ATL11 and 10 ATL11XO (5 tiles x cycles 1, 2).
+#      STATEMENT, checked 2026-09-17: the tiles hold the NAMES and nothing
+#      else.  No tile has /meta/sensors (the sensor_N attributes belong to
+#      the old multi-sensor code: LSsurf two_mission_dhdt.py, main's
+#      reread_data_from_fits.py); data/sensor is 0 everywhere.  Matched tiles
+#      carry input_files = '' -- the names are in the PRELIM tiles only.
+#      From the name: shortName, start_rgt/start_region/cycles (along-track),
+#      cycle (XO), release, version.  Only by opening the granule: uuid,
+#      start/end_geoseg, start/end_orbit (along-track), start/end_rgt (XO).
+#
+#      DECISION, Ben 2026-09-17 (closes QI9 and QI10):
+#        - LONG TERM: the prelim step records the granule attributes in the
+#          tile metadata at solve time, when it has every granule open.  The
+#          netCDF step reads them from the tiles and never opens ATL11.  An
+#          attribute the tiles do not carry is marked INVALID in the output.
+#          Not planned in detail yet; lands before the IS re-run.
+#        - TODAY: the tiles carry none of them, so those attributes are
+#          invalid.  IS will be RE-RUN COMPLETELY once more issues are fixed,
+#          so these netCDFs are for getting the step working, not for release.
+#
+#      TEMPORARY FIX:
+#        a. attributes_for_ATL11_file() stops opening files: it fills what the
+#           name gives and leaves every file-only attribute at 'NOT_SET', the
+#           marker the function already initializes with.  The local-path
+#           and XO-schema lookups go, and with them the dead
+#           start/end_delta_time reads.
+#        b. a name matching neither pattern raises, naming the file and the
+#           tile, instead of an AttributeError on None; an empty input_files
+#           (a matched tile) contributes no names rather than a '' name.
+#        c. set_lineage() prints ONE warning line saying how many files have
+#           invalid lineage and which attributes -- visible, not silent.
+#        d. unchanged: end_rgt = start_rgt, including for XO (see below).
+#      TEST: tests/test_lineage.py -- along-track and XO names give the name
+#      attributes and 'NOT_SET' for the rest without touching the filesystem;
+#      a bad name raises; set_lineage on synthetic tiles dedupes, skips '',
+#      and warns.  Then I9g3-4 for real.
+#      NO DPS REBUILD: write2nc runs in the ADE, and the tiles are unchanged.
+#      pre_rel006 (discover) keeps the file-opening code; on_s3 diverges here.
+#      RESULT: tests/test_lineage.py adds 5; the suite is 59 passed, 2 skipped
+#      (conda run -n ATL14 python -m pytest tests -- pytest had to be
+#      reinstalled in ATL14 after the restart).
+#
+#      NOTED, NOT FIXED: attributes_for_ATL11_file() sets end_rgt = start_rgt
+#      AFTER the file read, overwriting the end_rgt it read from each ATL11XO
+#      granule.  Moot while XO rgts are invalid; fix it with the long-term
+#      change.
+
+# I9g3. [DONE 2026-09-17]  ATL14.
+ATL14_write2nc.py @$region_dir/input_args_IS.txt
+#      Output $region_dir/ATL14_IS_0331_100m_006_01.nc.  -b, cycles, release,
+#      version, t_crop, region and the earthaccess flags all come from the args.
+#      RESULT: exit 0, 10 s, 9895823 bytes.  Run as
+#        cd ~/ATL14_processing/runs/IS_nc; conda run -n ATL14 ATL14_write2nc.py @... > ATL14.log 2>&1
+#      Log has the two set_lineage INVALID warnings (69 along-track, 10 xo).
+
+# I9g4. [DONE 2026-09-17]  ATL15 -- one call writes all four resolutions.
+ATL15_write2nc.py @$region_dir/input_args_IS.txt
+#      --avg_scales=40000,20000,10000 in the args makes it loop over
+#      [None, 40000, 20000, 10000]: ATL15_IS_0331_3mo_{1,40,20,10}km_006_01.nc.
+#      No slurm runner: the two commands run directly (30 s together, I9g1).
+#      RESULT: exit 0, 15 s, 4 files (1km 17282097, 10km 879394, 20km 696733,
+#      40km 636317 bytes); ATL15.log has the INVALID warning pair once per file.
+
+# I9g5. [DONE 2026-09-17, by a scratch script]  Verify.
+#      - 5 files, exit 0 each;
+#      - METADATA/Lineage/ATL11 lists 79 files, 69 ATL11 + 10 ATL11XO; the
+#        name attributes are set on every row, and -- TODAY, per I9g2 --
+#        uuid, geoseg, orbit and XO rgt are 'NOT_SET' on every row;
+#      - h, delta_h and each dhdt group have the shapes of I9g1, and time has
+#        30 epochs inside t_crop;
+#      - finite cells of h/delta_h match the finite cells of the mosaic fields
+#        they came from (ice_area masks them, so this checks the masking);
+#      - the files open with netCDF4 and with GDAL (NETCDF:"file":h).
+#      RESULT, all five files:
+#      - lineage 79 = 69 ATL11 + 10 ATL11XO; shortName, cycles, release,
+#        version set on every row; uuid, start/end_geoseg, start_orbit all
+#        'NOT_SET'; start_rgt has 70 values = 69 rgts + 'NOT_SET' for XO.
+#      - ATL14 h (3001, 4201); ATL15 delta_h (30, 301|30|14|7, 421|42|20|10),
+#        time 30 epochs, 365.25..3013.31 days = 2019.0..2026.25; groups
+#        delta_h + dhdt_{003,006,012,024,036,048,060,072,084}mo with 29..2 epochs.
+#      - ATL14 h vs z0.h5 and ATL15 1 km delta_h vs dz.h5: same x/y; finite in
+#        the product == finite in the mosaic AND ice_area > 0, EXACTLY (no
+#        product-only cells); max |difference| 1.2e-4 m (h), 3.1e-5 m (delta_h).
+#      - netCDF4 opens all.  GDAL opens h (4201x3001) and delta_h (421x301x30)
+#        from the NOTEBOOK env only: ATL14's GDAL lacks the netCDF and HDF5
+#        plugins (libgdal-netcdf, libgdal-hdf5 not installed).  Not a file problem.
+
+# I9g6. [RECOMMENDATION, NOT PLANNED IN DETAIL]  Compare against rel005.
+#      The run used --previous_product=005_0329.  Differencing h against
+#      ATL14_IS_0329_100m_005_* (median and spread over common ice cells) is
+#      the cheapest science-level check that nothing is shifted or flipped --
+#      the I9f and I9g5 checks are all structural.
+
+# I9g7. [NOT STARTED]  Howtos.  Once I9g3-5 pass, record in
+#      docs/howto_MAAP_arctic.sh step 10 (it already names both commands)
+#      that they run directly in the ADE, and which lineage flags they need.
+#
+# QI9.  CLOSED -- Ben 2026-09-17: lineage at solve time, see I9g2 DECISION.
+# QI10. CLOSED -- same decision covers GL/AA.
 # I9h. [NOT STARTED, NOT PLANNED]  Browse.
 
 
