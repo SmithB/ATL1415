@@ -1,7 +1,8 @@
 #! /usr/bin/env bash
 # ===========================================================================
 # PLAN: record ATL11 lineage in the prelim tiles at solve time.
-# Written 2026-09-17.  NO CODE YET.  Revise as steps land.
+# Written 2026-09-17.  L1-L5 WRITTEN 2026-09-17; L6-L7 wait on the cycles
+# 03-32 transition (AL1).  Revise as steps land.
 # QL1-QL5 were ANSWERED by Ben on 2026-09-17 (AL1-AL5, at the foot of this
 # file) and are folded into the steps: the layout is settled, the netCDF
 # forces strings, granules are opened a second time, pre_rel006 is untouched,
@@ -125,7 +126,7 @@
 #
 #
 # ===========================================================================
-# L2. [NEEDS CODE: ATL1415/read_ATL11.py]  Read the attributes at solve time.
+# L2. [DONE 2026-09-17]  Read the attributes at solve time.
 # ===========================================================================
 # RECOMMENDATION:
 #   a. one helper, lineage_attributes(h5f) -> dict, reading the L1 set from an
@@ -158,7 +159,7 @@
 #
 #
 # ===========================================================================
-# L3. [NEEDS CODE: ATL1415/ATL11_to_ATL15.py]  Write it into the tile.
+# L3. [DONE 2026-09-17]  Write it into the tile.
 # ===========================================================================
 # In save_fit_to_file(), beside input_files: for each granule in S['lineage'],
 # require_group('/meta/lineage/<basename>') and set its attributes.
@@ -169,7 +170,7 @@
 #
 #
 # ===========================================================================
-# L4. [NEEDS CODE: ATL1415/ATL1415_attrs_meta.py]  Read it in the netCDF step.
+# L4. [DONE 2026-09-17]  Read it in the netCDF step.
 # ===========================================================================
 # Replaces the temporary half of 28b4f72:
 #   a. set_lineage() collects, per granule name, the /meta/lineage/<name>
@@ -202,7 +203,8 @@
 #
 #
 # ===========================================================================
-# L5. [NEEDS CODE: tests/]  Tests, no network.
+# L5. [DONE 2026-09-17 -- 19 tests in tests/test_lineage.py; suite 100 passed,
+#     2 skipped]  Tests, no network.
 # ===========================================================================
 #   - lineage_attributes() against synthetic ATL11- and ATL11XO-shaped .h5
 #     files: all present; XO without orbit; a missing dataset is absent, not
@@ -220,6 +222,23 @@
 #   - OPT-IN NETWORK TEST, like ATL1415_TIDE_NETWORK_TESTS: read the two
 #     probe granules above through the real helper.  RECOMMENDATION: env
 #     ATL1415_NSIDC_NETWORK_TESTS=1.
+#     NOT WRITTEN: the synthetic granules carry the values PROBED from the
+#     real ones, and L6's smoke tile reads the real granules end to end.  Say
+#     if you want the opt-in test as well.
+#
+# WHAT LANDED (L2-L5), all in one commit:
+#   read_ATL11.py     lineage_attributes(h5f), lineage_for_granules(files, fs)
+#                     read_ATL11_at / _xovers / read_ATL11 each return a third
+#                     value, the {granule: attributes} dict
+#   ATL11_to_ATL15.py write_lineage(h5f, lineage), called by save_fit_to_file;
+#                     S['lineage'] beside S['file_list']
+#   attrs_meta.py     lineage_from_tile(), as_lineage_text(),
+#                     attributes_for_ATL11_file(file, stored=None), and
+#                     set_lineage() reading the tiles' groups
+# CHECKED on the real IS tiles (which have no stored lineage, so this is the
+# unchanged-behaviour check): both writers exit 0, 5 files, 79 lineage rows
+# (69 + 10), the INVALID warnings name exactly the missing attributes, and
+# EVERY lineage attribute in the product is now text.
 #
 #
 # ===========================================================================

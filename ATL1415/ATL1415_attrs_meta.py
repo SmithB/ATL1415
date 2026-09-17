@@ -114,24 +114,57 @@ def write_atl1415meta(dst,fileout,ncTemplate,args):
     for key, keyval in root_info.items():
         dst.setncattr(key, keyval)
 
-# Lineage attributes that only the granule itself can supply.  TEMPORARY
-# (docs/plan_IS_run.sh I9g2): the netCDF step no longer opens ATL11 granules.
-# The prelim step is to record these in the tile metadata at solve time; until
-# it does, they stay 'NOT_SET', marking them invalid in the product.
+# Lineage attributes that only the granule itself can supply.  The netCDF step
+# NEVER opens ATL11: the prelim solve records these in each tile's
+# meta/lineage/<granule> group (docs/plan_lineage_at_solve_time.sh), and
+# whatever the tiles do not carry is 'NOT_SET' -- invalid -- in the product.
 FILE_ONLY_LINEAGE_ATTRS = {
     'along-track': ['uuid', 'start_geoseg', 'end_geoseg', 'start_orbit', 'end_orbit'],
     'xo': ['uuid', 'start_geoseg', 'end_geoseg', 'start_rgt', 'end_rgt']}
 
-def attributes_for_ATL11_file(file):
-    """
-    Lineage attributes for one ATL11 or ATL11XO file, from its NAME alone.
+# where a tile keeps them
+TILE_LINEAGE_GROUP = 'meta/lineage'
 
-    Attributes that need the granule opened (FILE_ONLY_LINEAGE_ATTRS) are left
-    'NOT_SET'.
+
+def as_lineage_text(value):
+    """
+    One lineage attribute value as text.
+
+    Ben 2026-09-17: force the lineage attributes to strings, so an attribute's
+    type in the product does not depend on whether some row is invalid --
+    netCDF4 writes a list of ints as an int array but silently stringifies the
+    same list once one 'NOT_SET' is in it.
+    """
+    if isinstance(value, bytes):
+        return value.decode('utf-8')
+    if isinstance(value, np.generic):
+        value = value.item()
+    return str(value)
+
+
+def lineage_from_tile(h5f, granule):
+    """
+    One granule's stored lineage attributes from an open tile, or {}.
+    """
+    group = h5f.get(f'{TILE_LINEAGE_GROUP}/{granule}')
+    if group is None:
+        return {}
+    return {key: as_lineage_text(value) for key, value in group.attrs.items()}
+
+
+def attributes_for_ATL11_file(file, stored=None):
+    """
+    Lineage attributes for one ATL11 or ATL11XO file.
+
+    What the NAME gives (shortName, cycles, release, version, and for an
+    along-track granule its rgt and region) is parsed here; what only the
+    granule can give (FILE_ONLY_LINEAGE_ATTRS) comes from `stored`, which the
+    solve recorded in the tile.  Anything `stored` lacks stays 'NOT_SET'.
 
     inputs:
         file: basename of the ATL11 or ATL11XO file, as in a tile's
             meta/input_files
+        stored: dict of the attributes the tile recorded for this granule
     outputs:
         fa: dict of lineage attributes
         this_format: 'along-track' or 'xo'
@@ -174,6 +207,14 @@ def attributes_for_ATL11_file(file):
         fa['end_cycle'] = fa['start_cycle']
         this_format='xo'
 
+    # the granule's own attributes, where the solve recorded them.  Only the
+    # file-only ones: the name is the authority for everything else, and a
+    # crossover's start_rgt/end_rgt really do differ, so they are NOT squashed
+    # together the way an along-track granule's are above.
+    for attr in FILE_ONLY_LINEAGE_ATTRS[this_format]:
+        if stored and attr in stored:
+            fa[attr] = stored[attr]
+
     return fa, this_format
 
 # To recursively step through groups
@@ -187,6 +228,7 @@ def set_lineage(dst,root_info,args):
 # list of lineage attributes
     lineage = []
     ATL11_files={}
+    stored_attrs={}
     for tile in glob.iglob(os.path.join(tilepath,'*.h5')):
         try:
             with h5py.File(tile,'r') as h5f:
@@ -194,34 +236,54 @@ def set_lineage(dst,root_info,args):
                 if inputs[:1]=='b':
                     inputs=inputs[1:]
                 inputs=inputs.replace("'",'')
-        except Exception:
+                # a tile that read no ATL11 (a matched tile) has input_files == ''
+                for file in filter(None, inputs.split(',')):
+                    ATL11_files.setdefault(file, tile)
+                    this_stored = lineage_from_tile(h5f, file)
+                    if not this_stored:
+                        continue
+                    # THE SAME GRANULE MUST LOOK THE SAME IN EVERY TILE.  Two
+                    # values for one name means the tiles were solved against
+                    # different granules of the same name -- mixed generations
+                    # -- and a product must not average over that.
+                    known, known_tile = stored_attrs.setdefault(
+                        file, (this_stored, tile))
+                    for key, value in this_stored.items():
+                        if known.get(key, value) != value:
+                            raise ValueError(
+                                f'set_lineage: {file} has {key}={known[key]!r} in '
+                                f'{known_tile} but {key}={value!r} in {tile}')
+                        known.setdefault(key, value)
+        except (OSError, KeyError):
+            # unreadable, or written before meta/input_files existed
             print("ATL14_attrs_meta.py: failed to open tile file : "+tile)
             continue
-        # a tile that read no ATL11 (a matched tile) has input_files == ''
-        for file in filter(None, inputs.split(',')):
-            ATL11_files.setdefault(file, tile)
     invalid={}
     for file, tile in ATL11_files.items():
+        stored = stored_attrs.get(file, ({}, None))[0]
         try:
-            fa, this_format = attributes_for_ATL11_file(file)
+            fa, this_format = attributes_for_ATL11_file(file, stored=stored)
         except ValueError as e:
             raise ValueError(f'{e} (listed in {tile})') from e
-        invalid.setdefault(this_format, 0)
-        invalid[this_format] += 1
+        missing = [attr for attr in FILE_ONLY_LINEAGE_ATTRS[this_format]
+                   if fa[attr] == 'NOT_SET']
+        if missing:
+            invalid.setdefault(this_format, []).append((file, missing))
         # add attributes to list, if not already present
         if fa not in lineage:
             lineage.append(fa)
-    for this_format, count in invalid.items():
-        print(f'set_lineage: WARNING: lineage is INVALID for {count} {this_format} files: '
-              f'{", ".join(FILE_ONLY_LINEAGE_ATTRS[this_format])} are NOT_SET '
-              '(not yet recorded in the tiles; plan_IS_run.sh I9g2)')
+    for this_format, files in invalid.items():
+        attrs = sorted({attr for _, missing in files for attr in missing})
+        print(f'set_lineage: WARNING: lineage is INVALID for {len(files)} '
+              f'{this_format} files: {", ".join(attrs)} are NOT_SET '
+              '(not recorded in the tiles; docs/plan_lineage_at_solve_time.sh)')
 
     # reduce to unique lineage attributes (no repeat files)
     #    sorted(set(lineage))
     slineage={ key:[] for key in lineage[0] }
     for l_i in sorted(lineage, key=lambda x: (x['fileName'])):
         for key, val in l_i.items():
-            slineage[key].append(val)
+            slineage[key].append(as_lineage_text(val))
     for field, val in slineage.items():
         dst['METADATA/Lineage/ATL11'].setncattr(field, val)
 
