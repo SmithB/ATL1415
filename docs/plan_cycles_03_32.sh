@@ -1,7 +1,8 @@
 #! /usr/bin/env bash
 # ===========================================================================
 # PLAN: move the rel006 runs from ATL11 cycles 03-31 to cycles 03-32.
-# Written 2026-09-17.  TENTATIVE.  T1 is DONE; the rest is not started.
+# Written 2026-09-17.  T1 is DONE.  QT1-QT5 ANSWERED by Ben the same day
+# (AT1-AT5, at the foot of this file) and folded into the steps below.
 # ===========================================================================
 # WHY NOW (Ben, 2026-09-17, AL1 in docs/plan_lineage_at_solve_time.sh): "After
 # the current round of code changes are complete we will transision to cycles
@@ -21,7 +22,9 @@
 #     the Iceland box); the 007_04 crossovers that exist are cycles 30 and 31
 #     only, which this run does not read ([[xover-cycles-1-2-by-design]]).
 #     --ATL11xo_version=007_cycle_03_30_v03 stays as it is.
-#   - masks, geoid, tides, the previous product (005_0329), the tile centers
+#     DECIDED (Ben, AT5): "Leave these as they are" -- the crossover generation
+#     and the previous product (005_0329) both stay put.
+#   - masks, geoid, tides, the previous product (005_0329, AT5), the tile centers
 #     (region_files/IS_prelim_xy.txt, from the 40 km mask), the queues.
 #   - the code: this is an ARGS and DATA change.  The rebuild in T5 is needed
 #     for the lineage work (plan_lineage_at_solve_time.sh L1-L5), not for this.
@@ -70,8 +73,16 @@
 #      whole-archive index for LOCAL reads, the cloud path never opens it, and
 #      the 0331 staging left it out too.  Both are kept in the staging dir.
 # STILL ON THE ADE: /home/jovyan/ATL11_index_staging/ (2.5 GB, the extracted
-# archive plus the flattened tree).  Delete it once T6 has solved a tile --
-# QT4.  [[maap-bucket-is-mountpoint-s3]]: this was `aws s3 cp`, not the mount.
+# archive plus the flattened tree).
+# DECIDED (Ben, AT4): "Delete once T6 has solved" -- so after T6's smoke tile
+# succeeds, delete BOTH that staging directory and the superseded 0331 index
+# on the bucket:
+#   rm -r /home/jovyan/ATL11_index_staging
+#   aws s3 rm --recursive s3://maap-ops-workspace/ben_smith/ATL11_index/ATL11_index_0331_007_04/
+# NOT BEFORE T6: until a tile has actually been solved on 0332, the 0331 index
+# is the only staged one, and re-staging it would mean a new archive from Ben.
+# The hemisphere_manifest/ files are tiny; leave both generations' manifests.
+# [[maap-bucket-is-mountpoint-s3]]: this was `aws s3 cp`, not the mount.
 #
 #
 # ===========================================================================
@@ -83,22 +94,31 @@
 #     --ATL11_release=007_cycle_03_31_v04      the CMR/index generation filter
 #     -t=2018.75,2026.5        the solved time span; sets the epoch count
 #     --t_crop=2019,2026.25    the span written to the netCDFs
-# RECOMMENDATION: copy it to default_args/rel_006_0332.txt, change those four,
-# and repoint the symlink -- leaving rel_006_0331.txt intact as the record of
-# what the first IS run used.
+# DECIDED (Ben 2026-09-17, AT1 and AT2).  Copy it to
+# default_args/rel_006_0332.txt, change these, and repoint the symlink --
+# leaving rel_006_0331.txt intact as the record of what the first IS run used:
 #     --cycles=0332
 #     --ATL11_release=007_cycle_03_32_v05
-#     -t=2018.75,2026.75       } QT1
-#     --t_crop=2019,2026.5     }
-# WHERE THOSE TWO NUMBERS COME FROM, and they are the one place I will not
-# guess: STATEMENT, read from ATL11_023003_0332_007_05.h5 over NSIDC S3,
-# ancillary_data/end_delta_time = 267933889 s, which by the solver's own
-# conversion (delta_time/24/3600/365.25 + 2018) is 2026.489.  The 0331 pair
-# was -t upper 2026.5 with t_crop upper 2026.25 -- one dt (0.25 yr) of margin
-# between them, and the crop just below the data end.  Carrying that pattern
-# forward gives 2026.75 / 2026.5.  CONFIRM BEFORE RUNNING: -t sets the number
-# of epochs in every tile (nt = (t1-t0)/dt + 1: 32 at 0331, 33 at 2026.75), so
-# it changes every field size and every field-size report.
+#     --version=02                              (AT2 "Use release 02")
+#     -t=2018.75,2026.5        UNCHANGED        } AT1
+#     --t_crop=2019,2026.5     was 2019,2026.25 }
+# WHAT THAT MEANS, so nobody reads a surprise as a fault:
+#   - -t is UNCHANGED, so every tile still has 32 epochs
+#     (nt = (2026.5-2018.75)/0.25 + 1) and every field size and field-size
+#     report stays as it is.  scripts/check_field_sizes.py keeps deriving
+#     [61, 61, 32] for IS.
+#   - --t_crop NOW REACHES THE TOP OF THE SOLVED SPAN.  The netCDFs get 31
+#     epochs rather than the 30 the 0331 products had, and the last of them is
+#     the final solved epoch, at the edge of the fit rather than one dt inside
+#     it.  Edge epochs are the least constrained ones, so expect the last
+#     delta_h slice to be noisier than its neighbours; that is the chosen
+#     trade, not a defect.
+#   - the products become ATL14_IS_0332_100m_006_02.nc and
+#     ATL15_IS_0332_3mo_<res>_006_02.nc.
+#   - STATEMENT, for the record: the data reach 2026.489
+#     (ATL11_023003_0332_007_05.h5, ancillary_data/end_delta_time = 267933889 s
+#     by the solver's conversion delta_time/24/3600/365.25 + 2018), so the
+#     solved span ends essentially at the data.
 #
 #
 # ===========================================================================
@@ -116,7 +136,8 @@ aws s3 cp $region_dir/input_args_$reg.txt $s3_run/
 #
 #
 # ===========================================================================
-# T4. [ADE+bucket] [NEEDS DECISION]  Where the new outputs go.   QT3
+# T4. [ADE+bucket] [DECIDED 2026-09-17, AT3: "Delete the old files"]
+#     Clear the 0331 outputs first.
 # ===========================================================================
 # STATEMENT, and it is the trap in this transition: the region directory
 # carries the RELEASE, not the cycle range --
@@ -126,15 +147,22 @@ aws s3 cp $region_dir/input_args_$reg.txt $s3_run/
 # matched tiles COLLIDE with the ones on disk and on the bucket
 # (s3://.../ATL14_processing/rel006/north/IS/{prelim,matched}/), and so do the
 # mosaics (dz.h5, z0.h5, ...).  Only the netCDFs differ by name (0331 vs 0332).
-# RECOMMENDATION: before anything is submitted, move the 0331 outputs aside
-# rather than letting them be overwritten in place --
-#   local:  mv ~/ATL14_processing/rel006/north/IS ~/ATL14_processing/rel006/north/IS_0331
-#   bucket: aws s3 mv --recursive .../rel006/north/IS/ .../rel006/north/IS_0331/
-#           (a mountpoint-s3 mount cannot rename; use the CLI)
-# and let T3 recreate the region directory.  A half-overwritten tree -- some
-# tiles 0331, some 0332, all the same names -- is the one outcome nobody could
-# untangle afterwards, and the field-size checker would not catch it (the
-# shapes differ only if -t changes, QT1).
+# DECIDED (Ben, AT3): DELETE the 0331 outputs -- do not keep them aside.  They
+# are not releasable (invalid lineage) and 0332 supersedes them.
+#   local:  rm -r ~/ATL14_processing/rel006/north/IS
+#   bucket: aws s3 rm --recursive s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/north/IS/
+#           (delete with the CLI, not through the mountpoint-s3 mount)
+# then let T3 recreate the region directory.
+# DO IT BEFORE ANY 0332 JOB IS SUBMITTED.  A half-overwritten tree -- some
+# tiles 0331, some 0332, all the same names -- is the outcome nobody could
+# untangle afterwards, and NOTHING WOULD CATCH IT: -t is unchanged (AT1), so
+# the old and new tiles have identical field sizes and the field-size checker
+# would pass a mixture.  The only distinguishing mark inside a tile is
+# meta/input_files (0331 vs 0332 granule names) and, for 0332 tiles, the new
+# meta/lineage group.
+# IRREVERSIBLE: ~19 worker-hours of prelim tiles and the products made from
+# them.  The deletion is a deliberate instruction (AT3), so run it once, with
+# the paths in front of you, and not from inside a loop over regions.
 #
 #
 # ===========================================================================
@@ -180,8 +208,11 @@ scripts/maap/check_build_id.py     # must say MATCH before any job
 #   - the lineage must now be COMPLETE: no INVALID warning from either writer
 #     (plan_lineage_at_solve_time.sh L7), a real uuid on all ~79 rows, and
 #     crossover end_rgt different from start_rgt where the granule says so;
-#   - the netCDFs are named ..._0332_..., so they do not overwrite the 0331
-#     files if those were kept (T4);
+#   - the netCDFs are named ATL1[45]_IS_0332_..._006_02.nc (AT2), and the
+#     0331 products are gone by then (T4, AT3);
+#   - EXPECT 31 EPOCHS in ATL15, not the 30 the 0331 products had (AT1's
+#     wider --t_crop), with delta_h (31, 301, 421) at 1 km and the dhdt groups
+#     one longer each.  The mosaic and the tiles still have 32.
 #   - I9g6 is worth more here than it was: differencing h against the rel005
 #     product is the only check that the extra cycle did not shift anything.
 #
@@ -200,21 +231,32 @@ scripts/maap/check_build_id.py     # must say MATCH before any job
 #
 #
 # ===========================================================================
-# QUESTIONS FOR BEN
+# QUESTIONS FOR BEN -- ALL ANSWERED 2026-09-17, in his words (AT*)
 # ===========================================================================
 # QT1. -t and --t_crop for 0332 (T2).  I recommend -t=2018.75,2026.75 and
 #      --t_crop=2019,2026.5, from the granule's end_delta_time (2026.489) and
 #      the margin the 0331 pair used.  Confirm or give the values: -t decides
 #      the epoch count in every tile, so it cannot be adjusted afterwards
 #      without re-solving.
+# AT1: "Use -t=2018.75,2026.5 and --t_crop=2019,2026.5"
+#      So -t is UNCHANGED from 0331 and the recommendation is not taken: the
+#      tiles keep 32 epochs, and the crop now reaches the top of the solved
+#      span instead of stopping one dt below it.  See T2 for what that means.
 # QT2. --version stays 01, or does re-issuing rel006 with a longer cycle range
 #      bump it (ATL14_IS_0332_100m_006_02.nc)?  --Release stays 006 either way.
+# AT2: "Use release 02"
+#      READ AS --version=02 (the '02' in ATL14_IS_0332_100m_006_02.nc), since
+#      --Release stays 006 and 02 is the only field the question offered.
+#      Say if you meant something else -- it renames every product.
 # QT3. The 0331 outputs (T4): move them aside to rel006/north/IS_0331, locally
 #      and on the bucket, or delete them?  They are ~19 worker-hours of prelim
 #      tiles, 1.1 GB local plus the bucket copies, and the products they made
 #      have invalid lineage, so they are not releasable.
+# AT3: "Delete the old files"
 # QT4. The 0331 index on the bucket (2.1 GB) and the ADE staging directory
 #      (2.5 GB): keep, or delete once T6 has solved a tile on 0332?
+# AT4: "Delete once T6 has solved"
 # QT5. Does anything else need to move with the cycle range -- the crossover
 #      generation (I have left it at 007_cycle_03_30_v03, cycles 1-2), or the
 #      previous product (005_0329)?
+# AT5: "Leave these as they are."
