@@ -86,7 +86,7 @@
 #
 #
 # ===========================================================================
-# T2. [ADE] [NEEDS EDIT: default_args]  The release args file.   QT1, QT2
+# T2. [ADE] [DONE 2026-09-17]  The release args file.
 # ===========================================================================
 # STATEMENT: default_args/latest_release.txt is a SYMLINK to rel_006_0331.txt,
 # and that file carries every value this transition touches:
@@ -119,6 +119,18 @@
 #     (ATL11_023003_0332_007_05.h5, ancillary_data/end_delta_time = 267933889 s
 #     by the solver's conversion delta_time/24/3600/365.25 + 2018), so the
 #     solved span ends essentially at the data.
+#
+# DONE 2026-09-17: default_args/rel_006_0332.txt is rel_006_0331.txt with
+# EXACTLY four lines changed (--cycles, --version, --ATL11_release, --t_crop;
+# `diff` shows those and nothing else -- -t, --ATL11xo_version, the E_* terms,
+# the masks and --previous_product_top are untouched), and
+# default_args/latest_release.txt now points at it.  rel_006_0331.txt is kept
+# as the record of the first IS run.
+# ALSO REPOINTED, because they would have put the symlink back: the `ln -sf`
+# line in howto_MAAP_arctic.sh step 1, howto_MAAP_GL.sh step 1 and
+# howto_MAAP_AA.sh step 1.
+# NOT DONE HERE: nothing is recomposed or republished -- that is T3, and until
+# it runs the composed input_args_IS.txt on the bucket is still the 0331 one.
 #
 #
 # ===========================================================================

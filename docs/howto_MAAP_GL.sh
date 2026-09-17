@@ -61,7 +61,7 @@ s3_out=s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/north/GL
 # 1. [ADE] [OK]  Point the release symlinks at this release.
 # ===========================================================================
 # Same as the discover workflow: each is a symlink to the release-specific file.
-ln -sf rel_006_0331.txt default_args/latest_release.txt
+ln -sf rel_006_0332.txt default_args/latest_release.txt
 ln -sf GL_0331.txt      default_args/GL_latest.txt
 
 

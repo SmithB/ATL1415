@@ -64,9 +64,11 @@ s3_out=s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/north/$reg
 
 
 # ===========================================================================
-# 1. [ADE] [OK]  Point the release symlink at this release.
+# 1. [ADE] [OK -- 0332 since 2026-09-17]  Point the release symlink at this release.
 # ===========================================================================
-ln -sf rel_006_0331.txt default_args/latest_release.txt
+ln -sf rel_006_0332.txt default_args/latest_release.txt
+# rel_006_0331.txt is kept as the record of the first IS run.  CMR no longer
+# lists that ATL11 generation, so 0331 cannot be solved (plan_cycles_03_32.sh).
 
 
 # ===========================================================================

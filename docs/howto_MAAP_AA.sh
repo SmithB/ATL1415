@@ -96,7 +96,7 @@ s3_out_44=s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/south/AA_44k
 # ===========================================================================
 # 1. [ADE] [OK]  Point the release symlinks at this release.
 # ===========================================================================
-ln -sf rel_006_0331.txt default_args/latest_release.txt
+ln -sf rel_006_0332.txt default_args/latest_release.txt
 ln -sf AA_0331.txt      default_args/AA_latest.txt
 
 
