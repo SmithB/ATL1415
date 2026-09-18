@@ -2,7 +2,8 @@
 # ===========================================================================
 # PLAN: run the MONTHLY product (dt = 1/12 yr) on MAAP.  IS first.
 # Written 2026-09-18.  STATUS 2026-09-18: M0-M11 DONE FOR IS -- the monthly
-# product is written (four ATL15 files in rel006/north_monthly/IS).  OPEN:
+# product is written (four ATL15 files in rel006/north_monthly/IS, local AND
+# on the bucket since 2026-09-18, M10 PUBLISHED).  OPEN:
 # QM5 (centers with no reference coverage) and QM6 (does it pass Ben's bar).
 # M12 (other regions) not planned.  Every step carries its own status tag.
 # ===========================================================================
@@ -532,6 +533,16 @@ ATL15_write2nc.py @$monthly_dir/input_args_IS.txt > ATL15.log 2>&1
 #      bars -- so the cells are named above if you want to look first.
 #        A. Pass; M11 and done.     B. Hold; look at the 6 cells first.
 # AM6:
+#
+# M10 PUBLISHED 2026-09-18 (Ben: "Please publish the monthly files"; the plan
+#   had not asked for it).  The four ATL15 files went to
+#   s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/north_monthly/IS/,
+#   beside the monthly tiles, as M1 put the quarterly products beside theirs.
+#   The prefix held only matched/ and prelim/ -- nothing overwritten.
+#   VERIFIED: all four listed, every size equal to the local file
+#   (2.5km 9611717, 10km 1596409, 20km 957811, 40km 759464).
+#   Published BEFORE QM6 is answered, at Ben's request; if QM6 comes back B
+#   and the product changes, these objects are replaced, not added to.
 #
 #
 # ===========================================================================
