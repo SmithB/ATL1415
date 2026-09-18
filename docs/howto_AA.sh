@@ -37,6 +37,9 @@ setup_AA_sectors.py ~/shared/ATL14_processing/rel006/south
 
 # then mosaic the tiles:
 for sector in A1 A2 A3 A4; do make_200km_to_mosaic_jobs.py -b /discover/nobackup/projects/icesat2/ATL14_processing/rel006/south/$sector -rr $sector -t 2018.75,2026.5; done
+# once the mosaic jobs finish, check the outputs -- exit codes are not enough, see check_mosaic_outputs.py.
+# Metadata only (fast); add --values to also flag all-NaN fields (slow for big runs).
+for sector in A1 A2 A3 A4; do echo $sector; check_mosaic_outputs.py -q mosaic_run_$sector; done
 
 # make the netCDFs
 scripts/run_antarctic_tonc.sh default_args/latest_release.txt default_args/discover.txt
@@ -62,5 +65,6 @@ make_200km_tiles.py  ~/shared/ATL14_processing/rel006/south_monthly/AA AA -t 201
 setup_AA_sectors.py ~/shared/ATL14_processing/rel006/south_monthly --near_pole_radius 0
 
 for sector in A1 A2 A3 A4; do make_200km_to_mosaic_jobs.py @/discover/nobackup/projects/icesat2/ATL14_processing/rel006/south_monthly/$sector/input_args_$sector.txt  -rr $sector -t 2018.75,2026.5; done
+for sector in A1 A2 A3 A4; do echo $sector; check_mosaic_outputs.py -q mosaic_run_$sector; done
 
 run_antarctic_tonc.sh default_args/latest_release.txt default_args/discover.txt

@@ -36,6 +36,23 @@ _LAZY_SUBMODULES = (
     'ATL11_to_ATL15',
 )
 
+# Submodules that define a function of their own name.  The eager __init__
+# star-imported these, which bound ATL1415.<name> to the FUNCTION and hid the
+# module; callers depend on that (ATL1415.make_slurm_file(...) in the queue
+# builders, `from ATL1415 import make_nc_projection_variable` in the write2nc
+# scripts).  Returning the module instead fails only when called, with
+# "'module' object is not callable".  The module stays reachable by its full
+# path, `import ATL1415.make_slurm_file`.
+_FUNCTION_OVER_MODULE = frozenset((
+    'make_slurm_file',
+    'make_nc_projection_variable',
+    'make_tile_stats_group',
+    'read_ATL11',
+    'assign_firn_variable',
+    'SMB_corr_from_grid',
+    'ATL11_to_ATL15',
+))
+
 
 def _suppress_pytmd_anonymous_reads():
     """
@@ -82,8 +99,9 @@ def __getattr__(name):
         # propagates: the caller wanted this module specifically.
         module = _importlib.import_module('.' + name, __name__)
         _suppress_pytmd_anonymous_reads()
-        globals()[name] = module
-        return module
+        value = getattr(module, name) if name in _FUNCTION_OVER_MODULE else module
+        globals()[name] = value
+        return value
 
     # A submodule that will not import must not take the whole lookup down
     # with it.  In a light environment -- one without the solver toolchain, or

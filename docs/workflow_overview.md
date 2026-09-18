@@ -105,9 +105,22 @@ file per tile (e.g. `E480_N-1360.h5`) under `prelim/` or `matched/`.
 ```
 make_field_size_report.py <region_dir>/prelim GL prelim
 ```
-Summarizes field array shapes for each tile HDF5 into JSON reports, used
-with `notebooks/check_tiles.ipynb` to spot malformed/short tiles before
-mosaicking.
+Summarizes field array shapes for each tile HDF5 into JSON reports under
+`<step_dir>/field_sizes/`.  This is the WRITER, and the older batch pass: each
+tile job now writes its own report as it writes its tile
+(`ATL11_to_ATL15.save_field_size_report`).
+
+The CHECKER reads those reports, never the tiles:
+```
+scripts/check_field_sizes.py <region_dir>/prelim  @<region_dir>/input_args_GL.txt
+scripts/check_field_sizes.py <region_dir>/matched @<region_dir>/input_args_GL.txt
+```
+It reads `-W`, `-g` and `-t` from the `@` args file the way the solver does
+(the file's other lines are ignored), and checks that `dz/dz` has that shape,
+that prelim `dz/sigma_dz` equals `dz/dz`, that matched `dz/sigma_dz` is null
+(matched tiles carry no sigma by design), and that every tile has a report and
+every report a tile.  Exit 0 pass, 1 problems, 2 the check did not happen.
+It replaces `notebooks/check_tiles.ipynb`, which is not in the repo.
 
 ### 6. Repeat for `matched` step
 Same `make_ATL1415_queue.py matched ...` → `setup_slurm_run.py` →

@@ -1,6 +1,11 @@
 # howto_MAAP_arctic.sh -- the arctic regions (RA IS CN CS SV) on MAAP
 #
 # ############################################################################
+# ##  STATUS 2026-09-18: IS HAS RUN STEPS 0-10 at cycles 03-32 with       ##
+# ##  COMPLETE lineage (plan_cycles_03_32.sh T5-T8), AND THE MONTHLY        ##
+# ##  PRODUCT, step 10b (plan_monthly_on_maap.sh).  Steps 5 and 11 are      ##
+# ##  still NEEDS CODE.  The banner below is the 2026-09-05 original.       ##
+# ##                                                                        ##
 # ##  TENTATIVE.  Written 2026-09-05 BEFORE any of it has been run end to   ##
 # ##  end -- no ATL1415 tile has been solved on DPS yet.  This is the plan,  ##
 # ##  not a record of a successful run.  Expect steps to move, split and    ##
@@ -60,9 +65,11 @@ s3_out=s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/north/$reg
 
 
 # ===========================================================================
-# 1. [ADE] [OK]  Point the release symlink at this release.
+# 1. [ADE] [OK -- 0332 since 2026-09-17]  Point the release symlink at this release.
 # ===========================================================================
-ln -sf rel_006_0331.txt default_args/latest_release.txt
+ln -sf rel_006_0332.txt default_args/latest_release.txt
+# rel_006_0331.txt is kept as the record of the first IS run.  CMR no longer
+# lists that ATL11 generation, so 0331 cannot be solved (plan_cycles_03_32.sh).
 
 
 # ===========================================================================
@@ -160,7 +167,7 @@ aws s3 cp $region_dir/input_args_$reg.txt $s3_run/
 
 
 # ===========================================================================
-# 5. [ADE] [NEEDS CODE: make_ATL1415_queue.py --xy_out]  Tile centers.
+# 5. [ADE] [NEEDS CODE: make_ATL1415_queue.py --xy_out; STILL OPEN]  Tile centers.
 # ===========================================================================
 # Same four blockers as GL step 4, but NOT the 1 km mask work (Q6/Q16):
 # CONFIRMED 2026-09-06 that none of it applies here.  make_ATL1415_queue.py's
@@ -177,49 +184,179 @@ aws s3 cp $region_dir/input_args_$reg.txt $s3_run/
 # on a file that is sitting right there.  Line 109 has the same bug for
 # --tide_mask_file.  Both want pc.io_utils.path_exists(), not os.path.isfile.
 make_ATL1415_queue.py prelim $region_dir/input_args_$reg.txt --xy_out ${reg}_prelim_xy.txt
+# IS DODGED THIS (plan_IS_run.sh QI1/I1): its 29 centers were read off the 40 km
+# tif by hand and frozen in region_files/IS_prelim_xy.txt.  The bugs are
+# unfixed, and every region without a frozen list needs them fixed first.
 
 
 # ===========================================================================
-# 6. [DPS] [NEEDS CODE: scripts/submit_MAAP_jobs.py]  Fan out.  (as GL step 5)
+# 6. [DPS] [OK on IS 2026-09-15, plan_IS_run.sh I2]  Fan out.  (as GL step 5)
 # ===========================================================================
-# GATED ON THE SMOKE TEST (staging S7).  IS is small enough that even the
-# ~10 jobs/hr public throttle is survivable -- which is the point of testing here.
-submit_MAAP_jobs.py --xy_file ${reg}_prelim_xy.txt --step prelim \
-    --args_url $s3_run/input_args_$reg.txt --out_prefix $s3_out/prelim \
-    --queue maap-dps-worker-32gb \
-    --tag ${reg}_rel006_prelim --ledger ${reg}_prelim_jobs.csv
+# ONE NAMED SMOKE TILE FIRST, then the whole list (the smoke tile re-runs as
+# part of it; dedup=False).  --tile_prefix makes run.sh write each tile to
+# $s3_out/prelim/ as well as to its dps_output prefix -- the matched step
+# (9) cannot run without it.  -16gb was enough: IS prelim peaked at 9.09 GiB.
+# Keep ledgers OUTSIDE the checkout: an untracked file makes
+# register_algorithm.py refuse.
+ledgers=~/ATL14_processing/maap_ledgers
+scripts/maap/submit_MAAP_jobs.py --xy_file region_files/${reg}_prelim_xy.txt \
+    --step prelim --args_url $s3_run/input_args_$reg.txt \
+    --tile_prefix $s3_out --queue maap-dps-worker-16gb \
+    --tag ${reg}_rel006_prelim --ledger $ledgers/${reg}_prelim_jobs.csv
+# NEVER commit and re-register while a fan-out is queued: IS's 29 silently
+# split across two builds that way (I3).  Only collect_jobs.py's per-tile
+# commit column shows it.
 
 
 # ===========================================================================
-# 7. [DPS] [NEEDS CODE: scripts/check_MAAP_jobs.py]  Watch.
+# 7. [ADE] [OK on IS 2026-09-16, plan_IS_run.sh I3]  Watch.
 # ===========================================================================
-# The MAAP analogue of the discover idiom
-#   for j in RA IS CN CS SV; do echo $j; slurm_run_status.py $j"_prelim"; done
-for j in RA IS CN CS SV; do echo $j; check_MAAP_jobs.py ${j}_prelim_jobs.csv; done
+# The MAAP analogue of `slurm_run_status.py`.  check_MAAP_jobs.py was never
+# written and was not needed: collect_jobs.py reports status, wall clock, peak
+# RSS, N_ATL11/N_AT/N_XO, iterations and the build each tile ran.
+# Gate: N_XO > 0 on every tile, or crossovers are not being read.
+scripts/maap/collect_jobs.py $ledgers/${reg}_prelim_jobs.csv
+# A failed job's tile is unrecoverable -- it gets no dps_output prefix.
 
 
 # ===========================================================================
-# 8. [ADE] [NEEDS CODE: deterministic output prefix]  Collect.  (as GL step 7)
+# 8. [ADE] [OK on IS 2026-09-16, plan_IS_run.sh I4]  Collect.  (as GL step 7)
 # ===========================================================================
-aws s3 sync $s3_out/prelim/ $region_dir/prelim/
+# The deterministic prefix (Q9/QI4) landed as --tile_prefix, so the tiles are
+# at $s3_out/prelim/ too.  IS came down with the ledger-driven fetcher, which
+# also reaches tiles solved without --tile_prefix:
+scripts/maap/fetch_tiles.py $ledgers/${reg}_prelim_jobs.csv $region_dir --step prelim --dry-run
+scripts/maap/fetch_tiles.py $ledgers/${reg}_prelim_jobs.csv $region_dir --step prelim
+# Check the tiles' field-size reports: dz/dz of the shape -W, -g and -t give,
+# prelim sigma_dz == dz/dz, and a report for every tile.  Exit 0 OK, 1
+# problems, 2 the check did not happen.  [OK on IS 2026-09-17, plan I5]
+scripts/check_field_sizes.py $region_dir/prelim @$region_dir/input_args_$reg.txt
 
 
 # ===========================================================================
-# 9. [DPS] [NEEDS CODE: run.sh prelim_prefix input]  Matched.  (as GL step 9)
+# 9. [DPS] [OK on IS 2026-09-16, plan_IS_run.sh I6-I8]  Matched.  (as GL step 9)
 # ===========================================================================
-make_ATL1415_queue.py matched $region_dir/input_args_$reg.txt --xy_out ${reg}_matched_xy.txt
-# ... submit_MAAP_jobs.py --step matched --prelim_prefix $s3_out/prelim ...
-aws s3 sync $s3_out/matched/ $region_dir/matched/
+# The matched list is the prelim tiles that EXIST -- not
+# make_ATL1415_queue.py matched, and not the prelim list minus a hand-kept
+# exclusion.  IS: 29 centers, 28 tiles -> region_files/IS_matched_xy.txt.
+# Each matched job fetches its own and its neighbours' prelim tiles from
+# --tile_prefix; missing neighbours are logged, not fatal.
+scripts/maap/submit_MAAP_jobs.py --xy_file region_files/${reg}_matched_xy.txt \
+    --step matched --args_url $s3_run/input_args_$reg.txt \
+    --tile_prefix $s3_out --queue maap-dps-worker-16gb \
+    --tag ${reg}_rel006_matched --ledger $ledgers/${reg}_matched_jobs.csv
+scripts/maap/collect_jobs.py $ledgers/${reg}_matched_jobs.csv
+scripts/maap/fetch_tiles.py $ledgers/${reg}_matched_jobs.csv $region_dir --step matched
+scripts/check_field_sizes.py $region_dir/matched @$region_dir/input_args_$reg.txt
+# Matched tiles have NO sigma_dz, by design: the uncertainties come from the
+# prelim tiles.  IS matched peaked at 8.99 GiB; memory tracks N_fit.
 
 
 # ===========================================================================
-# 10. [ADE] [NEEDS CODE: run_queue_local.sh]  Mosaic and netCDF.
+# 10. [ADE] [OK on IS 2026-09-16/17, plan_IS_run.sh I9]  Mosaic and netCDF.
 # ===========================================================================
-make_mosaic_jobs.py -b $region_dir -rr $reg -t 2018.75,2026.5 \
-    --run_name ${reg}_mosaic @default_args/quarterly.txt
-run_queue_local.sh ${reg}_mosaic -P 8
-ATL14_write2nc.py @$region_dir/input_args_$reg.txt
-ATL15_write2nc.py @$region_dir/input_args_$reg.txt
+# NO run_queue_local.sh: make_mosaic_jobs.py's slurm_run.sh is plain bash
+# (the #SBATCH lines are comments), so running it with SLURM_ARRAY_TASK_ID
+# set does the same queue -> running -> done bookkeeping as on discover.
+# Build the run directory OUTSIDE the checkout (untracked files block
+# registration).  -e ATL14: the default, IS2, is discover's env.
+# IS: 41 tasks, 0.25 GiB each, under a minute at -P 12.
+cd ~/ATL14_processing/runs
+make_mosaic_jobs.py -b $region_dir -rr $reg -t 2018.75,2026.5 -e ATL14 \
+    --run_name ${reg}_mosaic @$HOME/git_repos/ATL1415/default_args/quarterly.txt
+cd ${reg}_mosaic
+n_tasks=$(ls queue | wc -l)
+seq 1 $n_tasks | xargs -P 12 -I{} env SLURM_ARRAY_TASK_ID={} bash slurm_run.sh
+# Check the outputs: exit codes are not enough.  Metadata only by default;
+# --values also flags all-NaN fields.
+check_mosaic_outputs.py ~/ATL14_processing/runs/${reg}_mosaic --values
+#
+# netCDF: run the two writers directly, in the ADE (IS: 12 s + 18 s; five
+# files).  They need no lineage flags -- as of 28b4f72 they never open
+# ATL11; the prelim tiles carry each granule's attributes (/meta/lineage,
+# since build 61a19af, plan_lineage_at_solve_time.sh).  EXPECT NO INVALID
+# warning.  One is a real fault: a tile solved on an older build.  The
+# only NOT_SET values are on the ATL11XO rows, in start/end_orbit and
+# start/end_region, which the XO granules do not carry -- that is correct.
+mkdir -p ~/ATL14_processing/runs/${reg}_nc && cd ~/ATL14_processing/runs/${reg}_nc
+ATL14_write2nc.py @$region_dir/input_args_$reg.txt > ATL14.log 2>&1
+ATL15_write2nc.py @$region_dir/input_args_$reg.txt > ATL15.log 2>&1
+# ATL15 writes all four resolutions (1, 10, 20, 40 km) in one call.
+# To open the products with GDAL, use the notebook env: ATL14's GDAL has no
+# netCDF or HDF5 plugin.
+
+
+# ===========================================================================
+# 10b. [ADE+DPS] [OK on IS 2026-09-18, plan_monthly_on_maap.sh M0-M10]  Monthly.
+# ===========================================================================
+# The monthly product (dt 1/12 yr): the SAME four steps as 6-10, with
+# default_args/monthly.txt added and the QUARTERLY ATL14 of the same release,
+# cycles and version as a reference DEM.  Only ATL15 is written.
+# PREREQUISITE: steps 0-10 done for this region -- monthly subtracts the
+# quarterly ATL14 from every point.  No rebuild: the solver already takes a
+# reference file by URI.  Check it anyway before the smoke tile (step 0).
+# IS measured: prelim 496-1071 s at 1.3-4.1 GiB, matched 85-307 s at
+# 1.1-3.9 GiB -- ~3x faster and ~2.3x lighter than quarterly (8x fewer
+# unknowns, the same data), so maap-dps-worker-16gb is ample.
+q_dir=$HOME/ATL14_processing/rel006/north/$reg
+s3_q=s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/north/$reg
+ref=ATL14_${reg}_0332_100m_006_02.nc
+
+# a. Publish the quarterly ATL14 beside the quarterly tiles, and read it back
+#    from the URI the way the solver will (plan M1-M2): pc.grid.mosaic()
+#    .from_list(['$s3_q/$ref'], group='', bounds=..., fields=['h','h_sigma'])
+#    against the local file.  Compare with equal_nan=True -- plain
+#    array_equal says False on NaNs, which is not a difference.
+aws s3 cp $q_dir/$ref $s3_q/
+
+# b. Compose and publish the monthly args (plan M4-M5).  They differ from the
+#    quarterly args in exactly four lines: -g, --dzdt_lags,
+#    --ATL14_reference_file and -b.  No --hemi_suffix line is written; it
+#    only sets the directory, rel006/north_monthly/<reg>.
+setup_ATL1415_region.py default_args/MAAP_dps.txt default_args/latest_release.txt \
+    default_args/$reg.txt default_args/monthly.txt --Hemisphere=1 \
+    --ATL14_reference_file=$s3_q/$ref
+m_dir=$HOME/ATL14_processing/rel006/north_monthly/$reg
+s3_run_m=s3://maap-ops-workspace/ben_smith/ATL1415/run_args/rel006/north_monthly/$reg
+s3_out_m=s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/north_monthly/$reg
+aws s3 cp $m_dir/input_args_$reg.txt $s3_run_m/
+
+# c. Smoke ONE prelim tile, then fan out (plan M6-M7), exactly as step 6 with
+#    --args_url $s3_run_m/input_args_$reg.txt --tile_prefix $s3_out_m and a
+#    _monthly_ tag.  Smoke on the quarterly memory high-water tile.
+#    THE GATE THAT MATTERS: N_fit the same order as that tile's quarterly
+#    N_fit.  An unreadable reference does not raise -- it leaves nothing
+#    valid, and _expand_reference_files guards local paths, not URIs.
+#    check_field_sizes.py reads -g=...,1/12 (plan M3): expect
+#    dz/dz [25, 25, 94] for -W 60000.
+#    EXPECT A FAILED JOB for any center the quarterly ATL14 does not cover:
+#    the reference is all NaN there, and the FIT exits 1 with
+#    "smooth_fit: no valid data".  IS: E1020_N-2580, which also writes no
+#    quarterly tile.  It is deterministic -- do not retry it.  Whether to
+#    skip such centers up front is open (plan QM5).
+
+# d. Matched, from the prelim tiles that EXIST (plan M8), as step 9.
+
+# e. Mosaic, as step 10, with monthly.txt in place of quarterly.txt (plan M9).
+#    No z0 task (skip_z0: the z0 spacing is over 1000 m).  IS: 44 tasks,
+#    74 s at -P 12.  INSPECT THE QUEUE before running: make_mosaic_jobs.py
+#    INFERS the dzdt lags from -t and -g rather than reading --dzdt_lags --
+#    they must come out 1,3,6,12,24,36,48,60,72,84.
+cd ~/ATL14_processing/runs
+make_mosaic_jobs.py -b $m_dir -rr $reg -t 2018.75,2026.5 -e ATL14 \
+    --run_name ${reg}_0332_monthly_mosaic @$HOME/git_repos/ATL1415/default_args/monthly.txt
+cat ${reg}_0332_monthly_mosaic/queue/* | grep -oE "lag[0-9]+" | sort -t g -k2 -n -u
+
+# f. netCDF: ATL15 ONLY (plan M10) -- ATL15_<reg>_0332_1mo_{2.5,10,20,40}km_006_02.nc,
+#    91 epochs.
+ATL15_write2nc.py @$m_dir/input_args_$reg.txt > ATL15.log 2>&1
+#    COMPARING WITH QUARTERLY: raw delta_h IS comparable.  Both are 0 at the
+#    2020 reference with sigma 0, and IS's raw median difference is -0.05 m.
+#    Do NOT difference against the first epoch: it spreads that epoch's
+#    errors across every other.  Expect a systematic SEASONAL difference of
+#    a few tenths of a metre (IS: Apr -0.37 m, Oct +0.31 m) -- monthly
+#    resolves a cycle quarterly smooths -- so many values will exceed 3x
+#    sigma without anything being wrong.
 
 
 # ===========================================================================

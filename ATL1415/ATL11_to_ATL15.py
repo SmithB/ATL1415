@@ -648,6 +648,9 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
 
     # initialize file_list to empty in case we're rereading the data
     file_list=[]
+    # granule basename -> lineage attributes, for the tile to record (only a
+    # fresh ATL11 read has any; a matched or error run rereads a tile)
+    lineage={}
 
     constraint_scaling_maps=None
     if E_d3zdx2dt_scale_file is not None:
@@ -663,7 +666,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
         max_iterations=0
         compute_E=True
     else:
-        data, file_list = read_ATL11(xy0, Wxy, ATL11_index, SRS_proj4,
+        data, file_list, lineage = read_ATL11(xy0, Wxy, ATL11_index, SRS_proj4,
                                      sigma_geo=sigma_geo, sigma_radial=sigma_radial,
                                      xover_tile_root=ATL11_xover_dir, hemisphere=hemisphere,
                                      earthaccess=ATL11_earthaccess,
@@ -831,6 +834,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
                       avg_scales=avg_scales,
                       THREADS=THREADS)
     S['file_list'] = file_list
+    S['lineage'] = lineage
     return S
 
 # Which build of this code wrote a tile (docs/howto_MAAP_ogc.sh O12a).  On
@@ -861,6 +865,27 @@ def write_build_provenance(group, prefix=''):
             group.attrs[prefix + attr] = value.encode('ascii')
 
 
+def write_lineage(h5f, lineage):
+    '''
+    Record each input granule's lineage attributes in a tile.
+
+    One group per granule under meta/lineage, holding what was read FROM THE
+    GRANULE in the granule's own types (Ben 2026-09-17;
+    docs/plan_lineage_at_solve_time.sh L1, L3).  The netCDF step reads these
+    instead of opening ATL11, and turns a missing group or attribute into
+    'NOT_SET' -- so nothing is written here for what could not be read.
+
+    inputs:
+        h5f: open h5py.File for the tile
+        lineage: dict of granule basename -> attributes, or None (a matched
+            or error run reads a tile rather than granules, and has none)
+    '''
+    for granule, attrs in (lineage or {}).items():
+        group = h5f.require_group('meta/lineage/' + granule)
+        for key, value in attrs.items():
+            group.attrs[key] = value
+
+
 def save_fit_to_file(S,  filename, dzdt_lags=None, reference_epoch=0):
     if os.path.isfile(filename):
         os.remove(filename)
@@ -876,6 +901,7 @@ def save_fit_to_file(S,  filename, dzdt_lags=None, reference_epoch=0):
         # write out list of ATL11 files so that lineage can be populated in ATL14/15
         if 'file_list' in S:
             h5f['meta'].attrs['input_files'] = ','.join([os.path.basename(Si) for Si in S['file_list']]).encode('ascii')
+        write_lineage(h5f, S.get('lineage'))
         h5f['meta'].attrs['first_delta_time']=np.nanmin(S['data'].delta_time)
         h5f['meta'].attrs['last_delta_time']=np.nanmax(S['data'].delta_time)
         write_build_provenance(h5f['meta'])
@@ -932,6 +958,30 @@ def save_field_size_report(filename):
     report_file = os.path.join(dst_directory, os.path.basename(filename).replace('.h5', '_report.json'))
     with open(report_file, 'w') as fh:
         json.dump(report, fh)
+
+def remove_tile_and_report(filename, why):
+    """
+    delete a tile and its field-size report, for a tile that cannot be completed
+
+    Used when the uncertainty calculation has no data to work with -- either no
+    valid data at all, or none left after masking: the fit that ran before it DID
+    have data and wrote a file, but no errors can ever be added to it, so
+    publishing it would put a tile with no sigma fields into the mosaic.  The report goes with it -- fetch_tiles.py collects
+    prelim/field_sizes/*_report.json, and a report naming a deleted tile would
+    outlive the tile and be counted against it.
+    """
+    report_file = os.path.join(os.path.dirname(filename), 'field_sizes',
+                               os.path.basename(filename).replace('.h5', '_report.json'))
+    for target in [filename, report_file]:
+        try:
+            os.remove(target)
+            print(f"removed {target} ({why})")
+        except FileNotFoundError:
+            pass
+        except OSError as e:
+            # the cleanup is not the job: say what happened and carry on, so a
+            # permission problem cannot turn a normal no-data tile into a failure
+            print(f"could not remove {target}: {e}")
 
 def mask_components_by_time(dz):
     """
@@ -1344,6 +1394,28 @@ def main():
             S['E'][field] = interp_ds( S['E'][field], args.error_res_scale[1] )
         save_errors_to_file(S, args.out_name, dzdt_lags=args.dzdt_lags, reference_epoch=args.reference_epoch)
         save_field_size_report(args.out_name)
+        status=0
+    elif args.calc_error_file is not None and (
+            S.get('data') is None or S['data'].size == 0):
+        # THE UNCERTAINTY STEP HAS NO DATA TO WORK WITH.  smooth_fit has TWO
+        # no-data exits and BOTH land here, because the cause does not matter:
+        # a tile whose uncertainty step finds no data is not critical (Ben,
+        # 2026-09-16), so too-few-data and the coarse-resolution mask edge
+        # cases get the same treatment and we do not try to tell them apart.
+        #   * smooth_fit.py:485  `not np.any(valid_data)` -> data is None
+        #   * smooth_fit.py:513  `data.size == 0` after masking -> data empty
+        # Either way smooth_fit RETURNS NORMALLY with an empty E, so nothing is
+        # saved and the branch above cannot fire.  Left alone, status stays 1
+        # and the whole DPS job fails for a tile that simply has no data --
+        # which at a fan-out of thousands buries the real failures, the same
+        # argument run.sh already makes for a fit that writes nothing.
+        # So: drop the tile the fit wrote, and exit cleanly.
+        # STILL BOUNDED BY 'NO DATA', ON PURPOSE.  This is not "any uncertainty
+        # failure is fine": a genuine error-propagation failure -- a solver
+        # error, an OOM, anything that raises -- never reaches this line and
+        # still exits 1.  Silencing those would turn a visible failed job into
+        # a silently missing tile, which is worse than the bug being fixed.
+        remove_tile_and_report(args.out_name, 'no data for the uncertainty step')
         status=0
 
     print(f"done with {args.out_name}")

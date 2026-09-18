@@ -114,10 +114,64 @@ def write_atl1415meta(dst,fileout,ncTemplate,args):
     for key, keyval in root_info.items():
         dst.setncattr(key, keyval)
 
-def attributes_for_ATL11_file(file, args):
+# Lineage attributes that only the granule itself can supply.  The netCDF step
+# NEVER opens ATL11: the prelim solve records these in each tile's
+# meta/lineage/<granule> group (docs/plan_lineage_at_solve_time.sh), and
+# whatever the tiles do not carry is 'NOT_SET' -- invalid -- in the product.
+FILE_ONLY_LINEAGE_ATTRS = {
+    'along-track': ['uuid', 'start_geoseg', 'end_geoseg', 'start_orbit', 'end_orbit'],
+    'xo': ['uuid', 'start_geoseg', 'end_geoseg', 'start_rgt', 'end_rgt']}
 
+# where a tile keeps them
+TILE_LINEAGE_GROUP = 'meta/lineage'
+
+
+def as_lineage_text(value):
+    """
+    One lineage attribute value as text.
+
+    Ben 2026-09-17: force the lineage attributes to strings, so an attribute's
+    type in the product does not depend on whether some row is invalid --
+    netCDF4 writes a list of ints as an int array but silently stringifies the
+    same list once one 'NOT_SET' is in it.
+    """
+    if isinstance(value, bytes):
+        return value.decode('utf-8')
+    if isinstance(value, np.generic):
+        value = value.item()
+    return str(value)
+
+
+def lineage_from_tile(h5f, granule):
+    """
+    One granule's stored lineage attributes from an open tile, or {}.
+    """
+    group = h5f.get(f'{TILE_LINEAGE_GROUP}/{granule}')
+    if group is None:
+        return {}
+    return {key: as_lineage_text(value) for key, value in group.attrs.items()}
+
+
+def attributes_for_ATL11_file(file, stored=None):
+    """
+    Lineage attributes for one ATL11 or ATL11XO file.
+
+    What the NAME gives (shortName, cycles, release, version, and for an
+    along-track granule its rgt and region) is parsed here; what only the
+    granule can give (FILE_ONLY_LINEAGE_ATTRS) comes from `stored`, which the
+    solve recorded in the tile.  Anything `stored` lacks stays 'NOT_SET'.
+
+    inputs:
+        file: basename of the ATL11 or ATL11XO file, as in a tile's
+            meta/input_files
+        stored: dict of the attributes the tile recorded for this granule
+    outputs:
+        fa: dict of lineage attributes
+        this_format: 'along-track' or 'xo'
+    """
     # regular expression for extracting ATL11 parameters
     rx = re.compile(r'(ATL\d{2})_(\d{4})(\d{2})_(\d{2})(\d{2})_(\d{3})_(\d{2}).*?.h5$')
+    rx_xo = re.compile(r'(ATL11XO)_.._E.*_N.*_c(\d\d)_(\d\d\d)_(\d\d).h5$', flags=re.I)
     lineage_attrs=['end_cycle', 'end_geoseg', 'end_orbit', 'end_region', 'end_rgt',
                     'fileName', 'shortName', 'start_cycle', 'start_geoseg',
                     'start_orbit', 'start_region', 'start_rgt',
@@ -126,53 +180,42 @@ def attributes_for_ATL11_file(file, args):
     fa= {attr : 'NOT_SET' for attr in lineage_attrs}
     fa['fileName'] = os.path.basename(file)
     # extract attributes from filename
-    try:
+    m = rx.search(file)
+    if m is not None:
         fa['shortName'], \
         fa['start_rgt'], \
         fa['start_region'],\
         fa['start_cycle'],\
         fa['end_cycle'],\
         fa['release'],\
-        fa['version'] = rx.search(file).groups()
-        atl11path = args.ATL11_lineage_dir
+        fa['version'] = m.groups()
+        #start_region, end_region, start_orbit, end_orbit are not defined for an ATL11xo file
+        fa['end_region'] = fa['start_region']
+        # an along-track granule covers one rgt, the one in its name.  NOT for
+        # ATL11XO, whose start_rgt and end_rgt differ (e.g. 238 and 1381)
+        fa['end_rgt'] = fa['start_rgt']
         this_format='along-track'
-    except Exception:
-        rx=re.compile('(ATL11XO)_.._E.*_N.*_c(\d\d)_(\d\d\d)_(\d\d).h5$', flags=re.I)
+    else:
+        m = rx_xo.search(file)
+        if m is None:
+            raise ValueError(f'attributes_for_ATL11_file: {file} is neither an ATL11 '
+                             'nor an ATL11XO file name')
         fa['shortName'],\
         fa['start_cycle'],\
         fa['release'],\
-        fa['version'] = rx.search(file).groups()
+        fa['version'] = m.groups()
         fa['end_cycle'] = fa['start_cycle']
-        atl11path = os.path.join(args.ATL11_xover_dir, f'cycle_{fa["start_cycle"]}')
-        if not os.path.isfile( os.path.join(atl11path,file) ):
-            # we may be using a tiling schema to point to the file location
-            schema_files = glob.glob(os.path.join(atl11path, '*til*.json'))
-            if not schema_files:
-                raise FileNotFoundError(f"could not find {file}")
-            with open(schema_files[0],'r') as fh:
-                atl11path = json.load(fh)['directory']
         this_format='xo'
 
-    with h5py.File(os.path.join(atl11path,file),'r') as fileID:
-        # extract ATL11 attributes from files
-        fa['uuid'] = fileID['METADATA']['DatasetIdentification'].attrs['uuid'].decode('utf-8')
-        fa['start_geoseg'] = fileID['ancillary_data/start_geoseg'][0]
-        fa['end_geoseg'] = fileID['ancillary_data/end_geoseg'][0]
-        if this_format=='xo':
-            # start_rgt and end_rgt are not in the filename, read them from the file
-            fa['start_rgt'] = fileID['ancillary_data/start_rgt'][0]
-            fa['end_rgt'] = fileID['ancillary_data/end_rgt'][0]
-        else:
-            #start_region, end_region, start_orbit, end_orbit are not defined for an ATL11xo file
-            fa['start_orbit'] = fileID['ancillary_data/start_orbit'][0]
-            fa['end_orbit'] = fileID['ancillary_data/end_orbit'][0]
-            fa['end_region'] = fa['start_region']
-        sdeltatime = fileID['ancillary_data/start_delta_time'][0]
-        edeltatime = fileID['ancillary_data/end_delta_time'][0]
+    # the granule's own attributes, where the solve recorded them.  Only the
+    # file-only ones: the name is the authority for everything else, and a
+    # crossover's start_rgt/end_rgt really do differ, so they are NOT squashed
+    # together the way an along-track granule's are above.
+    for attr in FILE_ONLY_LINEAGE_ATTRS[this_format]:
+        if stored and attr in stored:
+            fa[attr] = stored[attr]
 
-    fa['end_rgt'] = fa['start_rgt']
-
-    return fa
+    return fa, this_format
 
 # To recursively step through groups
 def walktree(top):
@@ -182,31 +225,65 @@ def walktree(top):
 
 def set_lineage(dst,root_info,args):
     tilepath = args.tiles_dir
-    atl11path = args.ATL11_lineage_dir
 # list of lineage attributes
     lineage = []
-    ATL11_files=set()
+    ATL11_files={}
+    stored_attrs={}
     for tile in glob.iglob(os.path.join(tilepath,'*.h5')):
         try:
             with h5py.File(tile,'r') as h5f:
                 inputs=str(h5f['/meta/'].attrs['input_files'])
-                if inputs[0]=='b':
+                if inputs[:1]=='b':
                     inputs=inputs[1:]
-                ATL11_files.update(inputs.replace("'",'').split(','))
-        except Exception:
+                inputs=inputs.replace("'",'')
+                # a tile that read no ATL11 (a matched tile) has input_files == ''
+                for file in filter(None, inputs.split(',')):
+                    ATL11_files.setdefault(file, tile)
+                    this_stored = lineage_from_tile(h5f, file)
+                    if not this_stored:
+                        continue
+                    # THE SAME GRANULE MUST LOOK THE SAME IN EVERY TILE.  Two
+                    # values for one name means the tiles were solved against
+                    # different granules of the same name -- mixed generations
+                    # -- and a product must not average over that.
+                    known, known_tile = stored_attrs.setdefault(
+                        file, (this_stored, tile))
+                    for key, value in this_stored.items():
+                        if known.get(key, value) != value:
+                            raise ValueError(
+                                f'set_lineage: {file} has {key}={known[key]!r} in '
+                                f'{known_tile} but {key}={value!r} in {tile}')
+                        known.setdefault(key, value)
+        except (OSError, KeyError):
+            # unreadable, or written before meta/input_files existed
             print("ATL14_attrs_meta.py: failed to open tile file : "+tile)
-    for file in ATL11_files:
-        fa = attributes_for_ATL11_file(file, args)
+            continue
+    invalid={}
+    for file, tile in ATL11_files.items():
+        stored = stored_attrs.get(file, ({}, None))[0]
+        try:
+            fa, this_format = attributes_for_ATL11_file(file, stored=stored)
+        except ValueError as e:
+            raise ValueError(f'{e} (listed in {tile})') from e
+        missing = [attr for attr in FILE_ONLY_LINEAGE_ATTRS[this_format]
+                   if fa[attr] == 'NOT_SET']
+        if missing:
+            invalid.setdefault(this_format, []).append((file, missing))
         # add attributes to list, if not already present
         if fa not in lineage:
             lineage.append(fa)
+    for this_format, files in invalid.items():
+        attrs = sorted({attr for _, missing in files for attr in missing})
+        print(f'set_lineage: WARNING: lineage is INVALID for {len(files)} '
+              f'{this_format} files: {", ".join(attrs)} are NOT_SET '
+              '(not recorded in the tiles; docs/plan_lineage_at_solve_time.sh)')
 
     # reduce to unique lineage attributes (no repeat files)
     #    sorted(set(lineage))
     slineage={ key:[] for key in lineage[0] }
     for l_i in sorted(lineage, key=lambda x: (x['fileName'])):
         for key, val in l_i.items():
-            slineage[key].append(val)
+            slineage[key].append(as_lineage_text(val))
     for field, val in slineage.items():
         dst['METADATA/Lineage/ATL11'].setncattr(field, val)
 
@@ -234,7 +311,11 @@ def set_time_range(dst, root_info, args):
     # set time attributes
     root_info.update({'time_coverage_start': sUTCtime})
     root_info.update({'time_coverage_end': eUTCtime})
-    root_info.update({'time_coverage_duration': int((datetime_start-datetime_end).seconds)})
+    # duration must agree with the two attributes just written: end minus the
+    # region-offset start, in whole seconds.  .seconds is the within-day part of
+    # a timedelta and drops the days entirely -- use total_seconds().
+    root_info.update({'time_coverage_duration':
+                      int((datetime_end-datetime_start).total_seconds())})
     dst['/METADATA/Extent'].setncattr('rangeBeginningDateTime',sUTCtime)
     dst['/METADATA/Extent'].setncattr('rangeEndingDateTime',eUTCtime)
 

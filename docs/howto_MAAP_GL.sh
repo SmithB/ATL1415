@@ -61,7 +61,7 @@ s3_out=s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/north/GL
 # 1. [ADE] [OK]  Point the release symlinks at this release.
 # ===========================================================================
 # Same as the discover workflow: each is a symlink to the release-specific file.
-ln -sf rel_006_0331.txt default_args/latest_release.txt
+ln -sf rel_006_0332.txt default_args/latest_release.txt
 ln -sf GL_0331.txt      default_args/GL_latest.txt
 
 
@@ -167,8 +167,10 @@ aws s3 sync $s3_out/prelim/ $region_dir/prelim/
 # 8. [ADE] [OK]  Look at the tile sizes.
 # ===========================================================================
 # ATL11_to_ATL15.py now writes the field-size report itself, so
-# make_field_size_report.py is no longer needed.  Inspect with the
-# check_tiles.ipynb notebook in ATL1415.
+# make_field_size_report.py is no longer needed.  Check the reports with
+# scripts/check_field_sizes.py (check_tiles.ipynb is not in the repo, and
+# this replaces it).  [OK on IS 2026-09-17, plan_IS_run.sh I5]
+scripts/check_field_sizes.py $region_dir/prelim @$region_dir/input_args_GL.txt
 
 
 # ===========================================================================
@@ -208,6 +210,9 @@ aws s3 sync $s3_out/matched/ $region_dir/matched/
 make_mosaic_jobs.py -b $region_dir -rr GL -t 2018.75,2026.5 \
     --run_name GL_mosaic @default_args/quarterly.txt
 run_queue_local.sh GL_mosaic -P 8
+# [OK on IS 2026-09-16, docs/plan_IS_run.sh I9f]  Check the outputs: exit
+# codes are not enough.  Metadata only; --values also flags all-NaN fields.
+check_mosaic_outputs.py -q GL_mosaic
 
 
 # ===========================================================================

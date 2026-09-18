@@ -11,6 +11,79 @@ import os
 import re
 
 
+# The lineage attributes that only the granule itself can supply, which the
+# netCDF step cannot read for itself (docs/plan_lineage_at_solve_time.sh).
+# Along-track granules carry the orbit pair, crossovers the rgt pair; each is
+# read only if the granule has it.
+LINEAGE_ANCILLARY_FIELDS = ('start_geoseg', 'end_geoseg',
+                            'start_orbit', 'end_orbit',
+                            'start_rgt', 'end_rgt')
+
+
+def lineage_attributes(h5f):
+    """
+    Read one granule's lineage attributes from an OPEN h5py file.
+
+    Works for ATL11 and ATL11XO, local or remote, and reads only what the
+    granule has: a crossover granule has no orbit datasets, an along-track one
+    no differing rgts.  A missing value is left OUT of the result -- absence is
+    what the netCDF step turns into 'NOT_SET' (L1), so nothing here invents a
+    sentinel.
+
+    inputs:
+        h5f: open h5py.File for an ATL11 or ATL11XO granule
+    output:
+        dict of attribute name -> value (uuid as str, the rest as the
+        granule's own types, typically int32)
+    """
+    attrs = {}
+    try:
+        uuid = h5f['METADATA/DatasetIdentification'].attrs['uuid']
+        attrs['uuid'] = uuid.decode('utf-8') if isinstance(uuid, bytes) else str(uuid)
+    except KeyError:
+        pass
+    for field in LINEAGE_ANCILLARY_FIELDS:
+        try:
+            attrs[field] = h5f['ancillary_data'][field][0]
+        except KeyError:
+            continue
+    return attrs
+
+
+def lineage_for_granules(files, fs=None):
+    """
+    Open each granule once and read its lineage attributes (L2c).
+
+    Ben 2026-09-17 (AL3): open the files a second time, rather than capturing
+    the attributes inside pointCollection's query.
+
+    A granule that cannot be read is REPORTED AND SKIPPED, not raised: an
+    unreadable attribute is marked invalid in the product (Ben, 2026-09-17),
+    and failing a solve that has already read the data over metadata would
+    cost the tile for nothing.  A systematic failure shows up as the netCDF
+    step's INVALID warning, and in the smoke tile's gate before any fan-out.
+
+    inputs:
+        files: iterable of granule paths or URLs, possibly with geoIndex
+            ':pairN' suffixes and duplicates
+        fs: s3fs.S3FileSystem, optional, for remote granules
+    output:
+        dict of granule basename -> attributes from lineage_attributes()
+    """
+    lineage = {}
+    for name in dict.fromkeys(pc.io_utils.strip_pair_suffix(f) for f in files if f):
+        basename = os.path.basename(name)
+        if basename in lineage:
+            continue
+        try:
+            with pc.io_utils.open_h5(name, fs=fs) as h5f:
+                lineage[basename] = lineage_attributes(h5f)
+        except Exception as e:
+            # includes a local index whose stored paths do not resolve from here
+            print(f'read_ATL11: could not read lineage attributes from {name}: {e}')
+    return lineage
+
+
 def _lonlat_bounding_box(bounds, SRS_proj4):
     '''
     Compute a geographic (lon/lat) bounding box for a projected [x,y] box,
@@ -165,7 +238,7 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, xover_tile_root=None,
 
     bounds = [xy0[0]+np.array([-Wxy/2, Wxy/2]), xy0[1]+np.array([-Wxy/2, Wxy/2])]
 
-    D_at, ATL11_file_list = read_ATL11_at(bounds, index_file, SRS_proj4,
+    D_at, ATL11_file_list, lineage = read_ATL11_at(bounds, index_file, SRS_proj4,
                   sigma_geo=sigma_geo,
                   sigma_radial=sigma_radial,
                   earthaccess=earthaccess, fs=fs, verbose=verbose,
@@ -173,7 +246,7 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, xover_tile_root=None,
 
     # exit if no data returned
     if D_at is None:
-        return None, []
+        return None, [], {}
 
     # Two ways to get crossovers, and each mode has exactly one switch:
     # locally, xover_tile_root names the tile tree setup_ATL11_xover.py built;
@@ -182,16 +255,18 @@ def read_ATL11(xy0, Wxy, index_file, SRS_proj4, xover_tile_root=None,
     # which is a legitimate configuration -- but it used to be the ONLY cloud
     # outcome, silently, because xover_tile_root cannot be set in that mode.
     if xover_tile_root is None and not (earthaccess and ATL11xo_version is not None):
-        return D_at, ATL11_file_list
+        return D_at, ATL11_file_list, lineage
 
     # Otherwise, read the crossover tiles
-    D_xo, xover_file_list = read_ATL11_xovers(bounds, SRS_proj4,
+    D_xo, xover_file_list, xover_lineage = read_ATL11_xovers(bounds, SRS_proj4,
                                               xover_tile_dir = xover_tile_root,
                                               ATL11xo_version = ATL11xo_version,
                                               xover_cycles = xover_cycles,
                                               verbose=verbose, hemisphere=hemisphere,
                                               fs=fs)
-    return pc.data().from_list([D_at, D_xo]), ATL11_file_list + xover_file_list
+    lineage.update(xover_lineage)
+    return (pc.data().from_list([D_at, D_xo]),
+            ATL11_file_list + xover_file_list, lineage)
 
 
 def read_ATL11_at(bounds, index_file, SRS_proj4,
@@ -224,6 +299,8 @@ def read_ATL11_at(bounds, index_file, SRS_proj4,
     output:
         D: data structure
         file_list: list of ATL11 files read
+        lineage: dict of granule basename -> lineage attributes, for the
+            granules that contributed data (see lineage_for_granules)
     '''
 
     field_dict_11={None:['latitude','longitude','delta_time',\
@@ -271,9 +348,9 @@ def read_ATL11_at(bounds, index_file, SRS_proj4,
             D11_list=pc.geoIndex().from_file(index_file).query_xy_box(
                 *bounds, fields=field_dict_11)
         except ValueError:
-            return None, []
+            return None, [], {}
     if D11_list is None:
-        return None, []
+        return None, [], {}
     D_list=[]
 
     if len(D11_list) == 0:
@@ -286,7 +363,7 @@ def read_ATL11_at(bounds, index_file, SRS_proj4,
         # AttributeError.  Returning None instead lets ATL11_to_ATL15 take the
         # insufficient-data path it already has, which is what run.sh's
         # "no fit written ... skipping error calculation" guard expects.
-        return None, []
+        return None, [], {}
 
     D11_files=[]
     for D11 in D11_list:
@@ -332,9 +409,10 @@ def read_ATL11_at(bounds, index_file, SRS_proj4,
     if len(D_list) == 0:
         # Granules intersected the bounding box, but no point survived the
         # in-bounds filter above -- same conclusion, same reason.
-        return None, D11_files
+        return None, D11_files, lineage_for_granules(D11_files, fs=fs)
 
-    return pc.data().from_list(D_list), D11_files
+    return (pc.data().from_list(D_list), D11_files,
+            lineage_for_granules(D11_files, fs=fs))
 
 def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, ATL11xo_version=None,
                       xover_cycles=[1,2], hemisphere=None, verbose=True, fs=None):
@@ -372,6 +450,9 @@ def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, ATL11xo_version=No
         data object containing crossover data.
     xover_files_used : list
         crossover files read.
+    lineage : dict
+        granule basename -> lineage attributes, read from the handle this
+        function already holds open (no extra I/O).
 
     '''
 
@@ -384,6 +465,7 @@ def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, ATL11xo_version=No
     D_d=[]
     D_r=[]
     xover_files_used = []
+    lineage = {}
     for x_cycle in xover_cycles:
         schema = xover_tiling_schema(x_cycle, hemi,
                                      xover_tile_dir=xover_tile_dir,
@@ -396,6 +478,8 @@ def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, ATL11xo_version=No
                      (D_ri.y >= bounds[1][0]) & (D_ri.y <= bounds[1][1])
                 if not np.any(keep):
                     continue
+                # the granule is open here, so its lineage costs no extra read
+                this_lineage = lineage_attributes(h5f)
                 D_ri.index(keep)
                 D_xi = pc.data().from_h5(xover_file, group='crossing_track', h5_f=h5f)
                 D_xi.index(keep)
@@ -409,8 +493,9 @@ def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, ATL11xo_version=No
             D_d += [D_di]
             D_r += [D_ri]
             xover_files_used += [xover_file]
+            lineage[os.path.basename(xover_file)] = this_lineage
     if len(D_x)==0 or not hasattr(D_x[0],'rgt'):
-        return None, []
+        return None, [], {}
     D_x = pc.data().from_list(D_x)
     D_d = pc.data().from_list(D_d)
     D_r = pc.data().from_list(D_r)
@@ -447,4 +532,4 @@ def read_ATL11_xovers(bounds, SRS_proj4, xover_tile_dir=None, ATL11xo_version=No
         'along_track':np.zeros_like(D_r.x, dtype=bool)})
     if verbose:
         print(f"read_ATL11_xovers: read {D_xo.size} crossing_track measurements from {len(xover_files_used)} files")
-    return D_xo, xover_files_used
+    return D_xo, xover_files_used, lineage

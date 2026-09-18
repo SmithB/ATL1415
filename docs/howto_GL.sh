@@ -26,6 +26,9 @@ setup_ATL1415_run.py --run_name GL_matched -q 1415_queue_GL_matched.txt --time 0
 
 # setup the mosaic run:
 make_mosaic_jobs.py -b /discover/nobackup/projects/icesat2/ATL14_processing/rel006/north/GL -rr GL
+# once the mosaic jobs finish, check the outputs -- exit codes are not enough, see check_mosaic_outputs.py.
+# Metadata only (fast); add --values to also flag all-NaN fields (slow for big runs).
+check_mosaic_outputs.py -q mosaic_run_GL
 
 # run the tonc
 
@@ -48,6 +51,7 @@ setup_ATL1415_run.py --run_name GLm_matched -q 1415_queue_GL_matched.txt --time 
 
 
 make_mosaic_jobs.py @GL_monthly/input_args_GL.txt
+check_mosaic_outputs.py -q mosaic_run_GL
 
 
 echo "ATL14_write2nc.py @/discover/nobackup/projects/icesat2/ATL14_processing/rel006/north_monthly/GL/input_args_GL.txt" > GLm_2nc_queue.sh

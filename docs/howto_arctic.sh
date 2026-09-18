@@ -6,6 +6,7 @@
 run_arctic_prelim.sh default_args/latest_release.txt default_args/discover.txt  default_args/quarterly.txt IS
 run_arctic_matched.sh default_args/latest_release.txt default_args/discover.txt  default_args/quarterly.txt IS
 run_arctic_mosaic.sh default_args/latest_release.txt default_args/discover.txt  default_args/quarterly.txt IS
+check_mosaic_outputs.py IS_mosaic
 run_arctic_to_nc.sh default_args/latest_release.txt default_args/discover.txt  default_args/quarterly.txt IS
 
 
@@ -26,6 +27,9 @@ for j in RA IS CN CS SV; do echo $j; slurm_run_status.py $j"_matched"; done
 
 
 bash scripts/run_arctic_mosaic.sh default_args/latest_release.txt default_args/discover.txt  default_args/quarterly.txt
+# once the mosaic jobs finish, check the outputs -- exit codes are not enough, see check_mosaic_outputs.py.
+# Metadata only (fast); add --values to also flag all-NaN fields (slow for big runs).
+for j in RA IS CN CS SV; do echo $j; check_mosaic_outputs.py -q ${j}_mosaic; done
 bash scripts/run_arctic_to_nc.sh default_args/latest_release.txt default_args/discover.txt  default_args/quarterly.txt
 
 
@@ -33,4 +37,5 @@ bash scripts/run_arctic_to_nc.sh default_args/latest_release.txt default_args/di
 run_arctic_prelim.sh default_args/latest_release.txt default_args/discover.txt  default_args/monthly.txt
 run_arctic_matched.sh default_args/latest_release.txt default_args/discover.txt  default_args/monthly.txt 
 run_arctic_mosaic.sh default_args/latest_release.txt default_args/discover.txt  default_args/monthly.txt
+for j in RA IS CN CS SV; do echo $j; check_mosaic_outputs.py -q ${j}_monthly_mosaic; done
 run_arctic_to_nc.sh default_args/latest_release.txt default_args/discover.txt  default_args/monthly.txt
