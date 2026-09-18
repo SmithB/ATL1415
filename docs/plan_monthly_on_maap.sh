@@ -1,0 +1,254 @@
+#! /usr/bin/env bash
+# ===========================================================================
+# PLAN: run the MONTHLY product (dt = 1/12 yr) on MAAP.  IS first.
+# Written 2026-09-18.  TENTATIVE -- NOTHING HERE HAS RUN YET.  Revise as steps
+# land; every step carries its own status tag.
+# ===========================================================================
+# WHY NOW (Ben, 2026-09-18): "Assuming that the differences from the previous
+# product do not indicate > 10m errors or major gaps, move on to the monthly
+# steps.  Develop a plan for running monthly on maap."
+# READ AS: the monthly PRODUCT (docs/howto_arctic.sh lines 36-41, the discover
+# "monthly:" block), not a monthly schedule for the quarterly run.
+#
+# Provenance per claim: STATEMENT = verified 2026-09-18, with how;
+# DECIDED = Ben said so; RECOMMENDATION = mine, overridable;
+# QUESTION = open, for Ben, not guessed.
+# Tags: [ADE] / [DPS] for where a step runs; [NOT STARTED] [NEEDS CODE: x]
+# [BLOCKED: x] [DONE].
+#
+#
+# ===========================================================================
+# OPEN QUESTIONS FOR BEN -- first, because M1-M10 wait on them
+# ===========================================================================
+# QM1. Does the 0332 IS quarterly pass your rel005 bar, so that
+#      ATL14_IS_0332_100m_006_02.nc can be the monthly reference DEM?
+#      (plan_cycles_03_32.sh T8 has the full numbers.)
+#        - gaps: none major (0.11% of rel005 ATL14 cells, 0.09% of ATL15);
+#        - ATL15 1 km delta_h: median -0.03 m, |d|>10 m on 0.05% of cells;
+#        - ATL14 h: |d|>10 m on 3.8% of cells (max 330 m) -- but 99% of those
+#          have data_count 0; where there ARE data it is 0.36% (427 cells).
+#      RECOMMENDATION: pass -- the large differences are interpolation between
+#      tracks, where both products' h_sigma are ~11 m.  The reference is read
+#      only AT DATA POINTS (z_ref = ref_dem.interp(data.x, data.y)), which is
+#      where the two agree best.
+#      A. Pass; M1 onward.            B. Hold; look at the 427 cells first.
+# AM1:
+#
+# QM2. time_coverage_duration is wrong in every product the ADE writes
+#      (ATL1415_attrs_meta.py:314; plan_cycles_03_32.sh T8).  Fix it before
+#      M10, and re-write the five 0332 quarterly files, or leave it for later?
+#      RECOMMENDATION: fix now -- one line plus a test, ADE-only (the writers
+#      run in the ADE; the DPS image does not use attrs_meta), so NO rebuild.
+#      Re-writing the quarterly files takes ~35 s.  Do it BEFORE M1, so the
+#      reference DEM published to the bucket is the final object.
+#      A. Fix now, re-write, then M1.   B. Later; monthly carries the bug too.
+# AM2:
+#
+# QM3. Scope: IS alone first, as the quarterly run did?
+#      RECOMMENDATION: yes.  GL and AA have never run quarterly on MAAP, and a
+#      region's monthly run needs its quarterly ATL14 first (M12).
+#      A. IS only.   B. Name the regions.
+# AM3:
+#
+#
+# ===========================================================================
+# BACKGROUND.  All STATEMENT, 2026-09-18, by reading the code named.
+# ===========================================================================
+# WHAT MONTHLY IS ON DISCOVER (scripts/run_arctic_{prelim,matched,mosaic,to_nc}.sh):
+#   the SAME pipeline -- prelim, matched, mosaic, netCDF -- with two changes:
+#   1. default_args/monthly.txt in place of quarterly.txt:
+#        --hemi_suffix=_monthly        region dir rel006/north_monthly/IS
+#        -g=1250,2500,1/12             z0 1250 m, dz 2500 m, dt one month
+#        --dzdt_lags=1,3,6,12,24,36,48,60,72,84
+#   2. --ATL14_reference_file = the QUARTERLY ATL14 of the same release,
+#      cycles and version:  rel006/north/IS/ATL14_IS_0332_100m_006_02.nc.
+#      The solver subtracts it from every point (z -= z_ref), edits
+#      |z - z_ref| >= DEM_tol (50), and skips the DEM three-sigma edit on the
+#      error pass (ATL11_to_ATL15.py:753, 793-803).
+#   And only ATL15 is written (run_arctic_to_nc.sh: no ATL14_write2nc.py
+#   for monthly).
+#
+# WHAT ALREADY WORKS FOR MAAP, by reading -- none of it RUN for monthly:
+#   - --ATL14_reference_file takes a URI: _expand_reference_files()
+#     (ATL11_to_ATL15.py:265-295) passes a single s3:// name through
+#     unglobbed; pc.grid.mosaic().from_list -> from_nc reads a URI since
+#     pointCollection PR #53 (Transition_to_maap.md Q27 W2).  A URI WITH A
+#     WILDCARD RAISES -- matters for AA (M12), not IS.
+#   - setup_ATL1415_region.py copies --ATL14_reference_file through verbatim
+#     (line 60), builds rel<R>/north_monthly/<region> from --hemi_suffix
+#     (lines 92-93), and does not write --hemi_suffix out (line 195).
+#   - run.sh takes the tile prefix per job and the tile spacing from
+#     --tile_spacing (40000, from IS.txt, unchanged); a grep finds nothing
+#     quarterly-specific in it.  s3_tiles.py's docstring already names
+#     .../rel006/north_monthly/IS as a tile prefix.
+#   - make_mosaic_jobs.py parses '1/12' (line 283) and sets skip_z0 because
+#     the z0 spacing exceeds 1000 m (line 291).
+#   - ATL15_write2nc.py parses '1/12' (line 319), picks '1mo' from delta_t
+#     (line 182), and names the native grid from the dz spacing (lines
+#     170-181): ATL15_IS_0332_1mo_{2.5,10,20,40}km_006_02.nc.
+#   THEREFORE NO DPS REBUILD: build 61a19af carries everything the solve
+#   needs.  RECOMMENDATION: confirm with check_build_id before M6 anyway.
+#
+# WHAT DOES NOT WORK YET:
+#   - check_field_sizes.py reads -g with float() (lines 77-80), so '1/12'
+#     raises CannotCheck.  [NEEDS CODE] -- M3.
+#
+# SIZES, computed from the args (not measured):
+#   tile dz: 60000/2500 + 1 = 25 per side; (2026.5 - 2018.75)*12 + 1 = 94
+#     epochs -> dz/dz [25, 25, 94].  z0 at 1250 m: 49 x 49.
+#   netCDF: --t_crop=2019,2026.5 keeps 91 of the 94 epochs.
+#   Unknowns per tile ~ 2401 + 58750 against quarterly's 361201 + 119072, so
+#   about 8x fewer -- but the DATA are the same points (N_fit up to 273382
+#   on IS).  RECOMMENDATION: expect less memory than quarterly's 9.52 GiB
+#   peak; MEASURE it (M6) before trusting that.
+#
+#
+# ===========================================================================
+# M0. [ADE] [BLOCKED: QM1]  Accept the reference DEM.
+# ===========================================================================
+# Nothing to run.  If AM2 is "fix now", do that first (M0b below), so the
+# file published in M1 is final.
+#
+# M0b. [ADE] [BLOCKED: QM2]  Fix time_coverage_duration.
+#      (datetime_end - datetime_start).total_seconds(), int, plus a test in
+#      tests/ that the duration of a known span comes out right.  Re-run both
+#      writers into ~/ATL14_processing/runs/IS_0332_nc and re-check.
+#
+#
+# ===========================================================================
+# M1. [ADE] [NOT STARTED]  Publish the reference DEM.
+# ===========================================================================
+region_dir=/home/jovyan/ATL14_processing/rel006/north/IS
+s3_out=s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/north/IS
+aws s3 cp $region_dir/ATL14_IS_0332_100m_006_02.nc $s3_out/
+# Beside the quarterly tiles, the same place as on discover.  Check the size
+# against the local file (9915264 bytes today; changes if M0b re-writes).
+# RECOMMENDATION: publish the four ATL15 files too, so the bucket holds the
+# whole quarterly product; only ATL14 is needed for monthly.
+#
+#
+# ===========================================================================
+# M2. [ADE] [NOT STARTED]  Read it back from the bucket the way the solver will.
+# ===========================================================================
+# pc.grid.mosaic().from_list(['<s3_out>/ATL14_IS_0332_100m_006_02.nc'],
+#     group='', bounds=<E1340_N-2460 +/- 32 km>, fields=['h','h_sigma'])
+# and compare with the same read of the local file: identical h and
+# h_sigma.  Seconds in the ADE; it catches a URI-read failure before a DPS job
+# spends its time finding it.  A worker's credentials are not the ADE's, so
+# M6 is still the real test.
+#
+#
+# ===========================================================================
+# M3. [ADE] [NEEDS CODE: check_field_sizes.py fractional -g]
+# ===========================================================================
+# Parse each -g entry as a/b the way make_mosaic_jobs.py and ATL15_write2nc.py
+# already do, and add a test: -W=60000 -g=1250,2500,1/12 -t=2018.75,2026.5
+# gives [25, 25, 94].  The quarterly expectation must stay [61, 61, 32].
+#
+#
+# ===========================================================================
+# M4. [ADE] [NOT STARTED]  Compose the monthly args.
+# ===========================================================================
+setup_ATL1415_region.py default_args/MAAP_dps.txt default_args/latest_release.txt \
+    default_args/IS.txt default_args/monthly.txt --Hemisphere=1 \
+    --ATL14_reference_file=$s3_out/ATL14_IS_0332_100m_006_02.nc
+monthly_dir=/home/jovyan/ATL14_processing/rel006/north_monthly/IS
+# Writes $monthly_dir/input_args_IS.txt.  CHECK, against the quarterly file:
+# the ONLY differences are -g=1250,2500,1/12, the monthly --dzdt_lags,
+# --ATL14_reference_file (an s3:// URI) and -b.  No --hemi_suffix line.
+#
+#
+# ===========================================================================
+# M5. [ADE] [NOT STARTED]  Publish the args.
+# ===========================================================================
+s3_run_m=s3://maap-ops-workspace/ben_smith/ATL1415/run_args/rel006/north_monthly/IS
+aws s3 cp $monthly_dir/input_args_IS.txt $s3_run_m/
+# Then diff the bucket copy against the local one, as in T7.
+#
+#
+# ===========================================================================
+# M6. [DPS] [NOT STARTED -- needs Ben's go]  Smoke one prelim tile.
+# ===========================================================================
+s3_out_m=s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/north_monthly/IS
+echo "1340000 -2460000" > region_files/IS_0332_monthly_smoke_xy.txt
+scripts/maap/submit_MAAP_jobs.py --xy_file region_files/IS_0332_monthly_smoke_xy.txt \
+    --step prelim --args_url $s3_run_m/input_args_IS.txt \
+    --tile_prefix $s3_out_m --queue maap-dps-worker-16gb \
+    --tag IS_rel006_0332_monthly_prelim \
+    --ledger ~/ATL14_processing/maap_ledgers/IS_0332_monthly_smoke_jobs.csv
+# RECOMMENDATION: E1340_N-2460, the quarterly memory high-water tile
+# (N_fit 273382, 9.52 GiB), so the smoke also sizes the queue.
+# GATES:
+#   a. the log names the s3:// reference file and N_fit is the same order as
+#      quarterly's (a missing or empty reference would edit away every point
+#      -- W5, which _expand_reference_files guards locally, not for a URI);
+#   b. field-size report dz/dz [25, 25, 94], sigma_dz the same (M3);
+#   c. /meta/lineage present, as in T6;
+#   d. wall time and peak memory, which set M7's queue.
+#
+#
+# ===========================================================================
+# M7. [DPS] [NOT STARTED]  Prelim fan-out, 29 centers.
+# ===========================================================================
+# region_files/IS_prelim_xy.txt, unchanged -- the centers come from the mask,
+# not the period.  Tag IS_rel006_0332_monthly_prelim, ledger
+# IS_0332_monthly_prelim_jobs.csv.  Then collect_jobs.py, fetch_tiles.py
+# <ledger> $monthly_dir --step prelim, check_field_sizes.py $monthly_dir/prelim
+# @$monthly_dir/input_args_IS.txt.  EXPECT E1020_N-2580 to write no tile again.
+# DO NOT RE-REGISTER while jobs are queued (the split-build trap, I3).
+#
+#
+# ===========================================================================
+# M8. [DPS] [NOT STARTED]  Matched.
+# ===========================================================================
+# The list from the monthly prelim tiles that EXIST, bucket and local
+# agreeing -> region_files/IS_0332_monthly_matched_xy.txt; submit --step
+# matched with the same prefix; collect, fetch, check (--step matched; no
+# sigma, by design).
+#
+#
+# ===========================================================================
+# M9. [ADE] [NOT STARTED]  Mosaic.
+# ===========================================================================
+cd ~/ATL14_processing/runs
+make_mosaic_jobs.py -b $monthly_dir -rr IS -t 2018.75,2026.5 -e ATL14 \
+    --run_name IS_0332_monthly_mosaic @$HOME/git_repos/ATL1415/default_args/monthly.txt
+cd IS_0332_monthly_mosaic
+seq 1 $(ls queue | wc -l) | xargs -P 12 -I{} env SLURM_ARRAY_TASK_ID={} bash slurm_run.sh
+check_mosaic_outputs.py ~/ATL14_processing/runs/IS_0332_monthly_mosaic --values
+# No z0 task (skip_z0).  Check sigma_dzdt coverage against the values, as T8
+# did: the quarterly tiles cover only 44% of the dzdt cells.
+#
+#
+# ===========================================================================
+# M10. [ADE] [NOT STARTED]  netCDF -- ATL15 only.
+# ===========================================================================
+mkdir -p ~/ATL14_processing/runs/IS_0332_monthly_nc && cd ~/ATL14_processing/runs/IS_0332_monthly_nc
+ATL15_write2nc.py @$monthly_dir/input_args_IS.txt > ATL15.log 2>&1
+# EXPECT ATL15_IS_0332_1mo_{2.5,10,20,40}km_006_02.nc, 91 epochs
+# 2019.00..2026.50, no INVALID warning.  Checks as T8: lineage complete (the
+# monthly prelim tiles carry their own), finite product == finite mosaic &
+# ice_area > 0.
+# RECOMMENDATION, the science check: monthly against the 0332 QUARTERLY at
+# 10 km, at the quarterly epochs.  Monthly delta_h is relative to a
+# DIFFERENT surface (the quarterly DEM), so compare delta_h differences
+# between epochs, or add the reference back, rather than raw delta_h.
+# Bar as Ben's: no >10 m errors, no major gaps.
+#
+#
+# ===========================================================================
+# M11. [ADE] [NOT STARTED]  Docs.
+# ===========================================================================
+#   - howto_MAAP_arctic.sh: a monthly section after step 10, citing M1-M10,
+#     like the discover howto's monthly block.
+#   - plan_cycles_03_32.sh T9 and this file: record what ran.
+#
+#
+# ===========================================================================
+# M12. [NOT STARTED, NOT PLANNED]  Other regions.
+# ===========================================================================
+#   - ORDER: a region's monthly run needs its quarterly ATL14 first.
+#   - AA: on discover the reference is a GLOB over quadrants; a URI cannot be
+#     globbed (_expand_reference_files raises), so AA needs every granule
+#     named, one --ATL14_reference_file each -- and setup_ATL1415_region.py
+#     takes a single value today.  [NEEDS CODE] when AA gets there.
