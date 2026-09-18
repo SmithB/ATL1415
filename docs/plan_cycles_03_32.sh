@@ -316,6 +316,13 @@ scripts/maap/check_build_id.py \
 # -- a NEW name; IS_prelim_jobs.csv is the 0331 run's ledger and is kept.
 # DO NOT RE-REGISTER until every one of the 29 has finished (I3's split-build
 # trap); collect_jobs.py's commit column must read 61a19af on all 29.
+# MATCHED IS PRE-AUTHORIZED (Ben 2026-09-18): once all 29 prelim jobs have
+# finished, fetch, check_field_sizes.py, build region_files/IS_0332_matched_xy.txt
+# from the tiles that EXIST (bucket and local listed, must agree), commit and
+# push it, then submit matched (ledger IS_0332_matched_jobs.csv) WITHOUT asking
+# -- UNLESS any prelim job ended failed: then hold matched and report ("Holding
+# matched on a failure is fine").  A successful job that wrote no tile is not a
+# failure.  T8 is not authorized by this.
 #
 #
 # ===========================================================================
