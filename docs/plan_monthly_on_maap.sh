@@ -416,7 +416,7 @@ scripts/maap/submit_MAAP_jobs.py --xy_file region_files/IS_0332_monthly_smoke_xy
 #
 #
 # ===========================================================================
-# M9. [ADE] [NOT STARTED]  Mosaic.
+# M9. [ADE] [DONE 2026-09-18 -- 44/44, PROBLEMS 0]  Mosaic.
 # ===========================================================================
 cd ~/ATL14_processing/runs
 make_mosaic_jobs.py -b $monthly_dir -rr IS -t 2018.75,2026.5 -e ATL14 \
@@ -426,6 +426,28 @@ seq 1 $(ls queue | wc -l) | xargs -P 12 -I{} env SLURM_ARRAY_TASK_ID={} bash slu
 check_mosaic_outputs.py ~/ATL14_processing/runs/IS_0332_monthly_mosaic --values
 # No z0 task (skip_z0).  Check sigma_dzdt coverage against the values, as T8
 # did: the quarterly tiles cover only 44% of the dzdt cells.
+# QUEUE, inspected BEFORE running: 44 tasks = 3 x (avg_dz + 10 avg_dzdt lags)
+#   + dz + 10 dzdt lags, exactly as predicted; NO z0 task (skip_z0 fired on the
+#   1250 m z0 spacing).  make_mosaic_jobs.py INFERS the lags from -t and -g
+#   rather than reading --dzdt_lags (I9c), so they were checked, not assumed:
+#   the queue holds lag1,3,6,12,24,36,48,60,72,84 -- identical to the monthly
+#   --dzdt_lags.  Values read from matched/*.h5, sigmas from prelim/*.h5
+#   (matched carries no sigma, by design).
+# RAN: all 44 at -P 12 in 74 s; xargs exit 0; queue 0, running 0, done 44,
+#   error_logs 0.  Run dir ~/ATL14_processing/runs/IS_0332_monthly_mosaic.
+# check_mosaic_outputs.py --values: 44 files, 136 fields, PROBLEMS 0.
+#   Epoch counts follow nt - lag: lag84 has 10 of 94, lag72 22, lag60 34.
+# SIGMA COVERAGE -- the quarterly gap is ABSENT here.  STATEMENT, from the
+#   --values report:
+#   - all 43 dzdt/avg files: sigma finite fraction == value finite fraction
+#     EXACTLY (native grid 40.1% == 40.1%);
+#   - dz.h5: dz 40.1%, sigma_dz 39.6% (98.8% of value cells have a sigma).
+#     count/misfit_rms are 5.2% -- data-bearing cells only, as expected.
+#   Quarterly 0332 at 1 km: sigma_dzdt 16.9% of the box vs 41.4% for the
+#   values (T8).  HYPOTHESIS, NOT TESTED: the coarser monthly dz grid (2500 m
+#   vs 1000 m) puts more data in each cell, so the error propagation reaches
+#   all of them.  It would bear on the quarterly gap Ben has flagged but not
+#   pursued -- recorded, not chased.
 #
 #
 # ===========================================================================
