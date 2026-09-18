@@ -296,7 +296,7 @@ scripts/maap/check_build_id.py \
 #
 #
 # ===========================================================================
-# T7. [DPS+ADE] [NOT STARTED]  The IS re-run.
+# T7. [DPS+ADE] [IN PROGRESS -- prelim SUBMITTED 2026-09-18]  The IS re-run.
 # ===========================================================================
 # Only after T6 passes both gates.  Arctic howto steps 6-9, unchanged:
 # prelim over the 29 centers, collect, fetch, check_field_sizes.py, then the
@@ -304,6 +304,15 @@ scripts/maap/check_build_id.py \
 # EXPECT the counts to differ from the 0331 run: E1020_N-2580 wrote no tile
 # then, and with a cycle more data it may.  Build the matched list from what
 # EXISTS, as I6 says, rather than assuming 28.
+# PRELIM SUBMITTED 2026-09-18T01:15:50Z (Ben: "Go ahead with the 29 centers"):
+# all 29 of region_files/IS_prelim_xy.txt, E1300_N-2500 included (the smoke
+# tile re-runs, as howto step 6 says), on maap-dps-worker-16gb, tag
+# IS_rel006_0332_prelim, against the published args (diffed identical to
+# the local copy first) and --tile_prefix .../rel006/north/IS.  29/29
+# accepted.  LEDGER: ~/ATL14_processing/maap_ledgers/IS_0332_prelim_jobs.csv
+# -- a NEW name; IS_prelim_jobs.csv is the 0331 run's ledger and is kept.
+# DO NOT RE-REGISTER until every one of the 29 has finished (I3's split-build
+# trap); collect_jobs.py's commit column must read 61a19af on all 29.
 #
 #
 # ===========================================================================
