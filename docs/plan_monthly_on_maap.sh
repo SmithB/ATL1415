@@ -386,7 +386,7 @@ scripts/maap/submit_MAAP_jobs.py --xy_file region_files/IS_0332_monthly_smoke_xy
 #
 #
 # ===========================================================================
-# M8. [DPS] [IN FLIGHT 2026-09-18]  Matched.
+# M8. [DPS] [DONE 2026-09-18 -- 28/28 successful, all checks pass]  Matched.
 # ===========================================================================
 # The list from the monthly prelim tiles that EXIST, bucket and local
 # agreeing -> region_files/IS_0332_monthly_matched_xy.txt; submit --step
@@ -400,6 +400,19 @@ scripts/maap/submit_MAAP_jobs.py --xy_file region_files/IS_0332_monthly_smoke_xy
 #   options, so the matched list is the same whatever Ben answers.
 #   Queue maap-dps-worker-16gb: quarterly matched peaked ~9 GiB against a
 #   9.52 GiB prelim; monthly prelim peaked 4.13 GiB.
+# RESULT: 28/28 SUCCESSFUL, 0 failed, all on 61a19af (no split build).
+#   Dry-run first; matched/ prefix verified EMPTY before submitting.
+#   Ledger ~/ATL14_processing/maap_ledgers/IS_0332_monthly_matched_jobs.csv.
+#   Wall 85..307 s; peak 1.12..3.90 GiB; N_fit 222..280955; 1 iteration each
+#   (as quarterly matched).  Heaviest: E1340_N-2460 3.90 GiB (N_fit 280955),
+#   E1300_N-2460 3.57, E1300_N-2500 3.52 -- under the prelim peak, as in the
+#   quarterly run.
+# FETCHED 28/28, 0.40 GiB, to $monthly_dir/matched.
+# CHECKS, all pass:
+#   - check_field_sizes.py --step matched: 28 reports, 28 tiles, 28 of 28
+#     passed, 0 problems -- dz/dz [25, 25, 94], dz/sigma_dz null (by design).
+#   - bucket matched/ and local matched/: the same 28 names AND the same
+#     sizes, tile for tile.
 #
 #
 # ===========================================================================
