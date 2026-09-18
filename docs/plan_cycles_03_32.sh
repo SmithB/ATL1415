@@ -82,6 +82,10 @@
 # NOT BEFORE T6: until a tile has actually been solved on 0332, the 0331 index
 # is the only staged one, and re-staging it would mean a new archive from Ben.
 # The hemisphere_manifest/ files are tiny; leave both generations' manifests.
+# DONE 2026-09-18 by Ben, after T6 passed.  Verified: the staging dir is gone,
+# ATL11_index_0331_007_04/ lists 0 objects, and the bucket's ATL11_index/
+# holds only ATL11_index_0332_007_05/ (8100 objects, 2136402126 bytes -- as
+# uploaded in e) and hemisphere_manifest/.
 # [[maap-bucket-is-mountpoint-s3]]: this was `aws s3 cp`, not the mount.
 #
 #
@@ -290,9 +294,8 @@ scripts/maap/check_build_id.py \
 #   29-job fan-out, this one ran alone.  T7's fan-out will show whether fit
 #   times go back up.
 # ALSO DUE NOW, AT4 ("Delete once T6 has solved"): the two deletions in T1.
-#   NOT DONE -- the session's auto-mode permission check refused the bucket
-#   delete; Ben runs them (both targets checked 2026-09-18 and still as T1
-#   describes: staging dir 2.5 GB; 0331 index 8100 objects, 2136377505 bytes).
+#   DONE 2026-09-18 by Ben (the session's auto-mode permission check refused
+#   the bucket delete) and verified -- see T1.
 #
 #
 # ===========================================================================
