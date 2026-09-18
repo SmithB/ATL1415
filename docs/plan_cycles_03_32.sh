@@ -299,7 +299,7 @@ scripts/maap/check_build_id.py \
 #
 #
 # ===========================================================================
-# T7. [DPS+ADE] [IN PROGRESS -- prelim SUBMITTED 2026-09-18]  The IS re-run.
+# T7. [DPS+ADE] [IN PROGRESS -- prelim DONE 29/29; matched SUBMITTED 2026-09-18]  The IS re-run.
 # ===========================================================================
 # Only after T6 passes both gates.  Arctic howto steps 6-9, unchanged:
 # prelim over the 29 centers, collect, fetch, check_field_sizes.py, then the
@@ -323,6 +323,28 @@ scripts/maap/check_build_id.py \
 # -- UNLESS any prelim job ended failed: then hold matched and report ("Holding
 # matched on a failure is fine").  A successful job that wrote no tile is not a
 # failure.  T8 is not authorized by this.
+# PRELIM DONE 2026-09-18 (a background collect every 15 min, last at 02:30Z):
+#   29/29 successful, ALL on 61a19af (no split build).  E1020_N-2580 again
+#   took the no-data path (error step 4 s at 0.23 GiB, N_fit 349) and wrote
+#   no tile, so 28 tiles -- the same 28 centers as 0331.
+#   Wall 1332-3322 s (plus E1020's 490 s); 0331 was 1169-4260 s.
+#   Peak 4.42-9.52 GiB; NEW HIGH-WATER MARK 9.52 GiB (E1340_N-2460, N_fit
+#   273382), still well inside 16.  Memory tracks N_fit, as before.
+#   THE FIT-TIME QUESTION FROM T6: E1300_N-2500's fit took 1819 s inside the
+#   fan-out against 1213 s alone and 2404 s in the 0331 fan-out -- partway
+#   back up, which fits contention without proving it.  Not pursued.
+#   Fetched 27 + the re-run smoke tile (re-copied so the local file is the
+#   fan-out's); check_field_sizes.py 28 of 28 OK.  Lineage scanned on all
+#   28: every input_files name has a complete group with a uuid, every
+#   along-track granule is 0332_007_05; 69 along-track + 10 crossover
+#   granules in all (the ~79 T8 expects).
+# MATCHED LIST: region_files/IS_0332_matched_xy.txt (2601047), 28 centers,
+#   from the tiles that exist; bucket and local listings agree on names and
+#   sizes; identical to the 0331 IS_matched_xy.txt.
+# MATCHED SUBMITTED 2026-09-18T02:35:59Z: 28/28 accepted, maap-dps-worker-16gb,
+#   tag IS_rel006_0332_matched, matched/ prefix verified empty first.
+#   LEDGER ~/ATL14_processing/maap_ledgers/IS_0332_matched_jobs.csv.
+#   Still DO NOT RE-REGISTER until these finish.
 #
 #
 # ===========================================================================
