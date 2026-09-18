@@ -302,7 +302,7 @@ scripts/maap/submit_MAAP_jobs.py --xy_file region_files/IS_0332_monthly_smoke_xy
 #
 #
 # ===========================================================================
-# M7. [DPS] [IN FLIGHT -- 29 submitted 2026-09-18 ~16:55Z; 1 FAILED, see QM5]  Prelim fan-out, 29 centers.
+# M7. [DPS] [DONE 2026-09-18 -- 28/29 successful, 28 tiles; E1020 failed, see QM5]  Prelim fan-out, 29 centers.
 # ===========================================================================
 # region_files/IS_prelim_xy.txt, unchanged -- the centers come from the mask,
 # not the period.  Tag IS_rel006_0332_monthly_prelim, ledger
@@ -333,9 +333,33 @@ scripts/maap/submit_MAAP_jobs.py --xy_file region_files/IS_0332_monthly_smoke_xy
 #   matched set is 28 either way, and M8 (built from the tiles that EXIST)
 #   is not blocked.  Only the job accounting differs: failed, not
 #   successful-with-no-tile.
-#   WATCH: E1180_N-2380 has reference coverage of only 0.34% (1230 cells).
-#   It may succeed at a very low N_fit, or reach the error-step no-data exit
-#   (I7a, exit 0) -- neither is a failure.  Reported when M7 completes.
+#   E1180_N-2380 (reference coverage only 0.34%, 1230 cells) SUCCEEDED at
+#   N_fit 222, against 158 quarterly -- sparse, not broken.
+#
+# RESULT, all 29 terminal: 28 successful, 1 failed (E1020_N-2580, above).
+#   ALL 29 ON ONE BUILD, 61a19af -- no split-build (collect_jobs "Builds that
+#   ran these tiles": 61a19af, 29 tiles).
+#   Wall 496..1071 s; peak 1.33..4.13 GiB; N_fit 222..280955; 3 iterations
+#   on every tile.  Heaviest three are the high-N_fit centers again --
+#   E1340_N-2460 (4.13 GiB, 280955), E1340_N-2500 (3.83, 259550),
+#   E1300_N-2500 (3.75, 254509) -- so memory still tracks N_fit.  Against
+#   quarterly 0332 prelim (1332..3322 s, 4.42..9.52 GiB): ~3x faster, ~2.3x
+#   less memory.
+# FETCHED: 27 fetched + 1 already local (E1340_N-2460, from M6), 1 FAILED.
+#   M7 re-ran the smoke center, so the local copy (M6, job f0c16110) and the
+#   bucket copy (M7) came from different jobs, 42 min apart.  STATEMENT,
+#   compared: dz/dz, dz/sigma_dz, z0/z0 and z0/sigma_z0 are BIT-IDENTICAL
+#   (np.array_equal, equal_nan=True; max |d| 0.0).  The solve is
+#   deterministic on this build, so local == bucket in content and the copy
+#   was kept.
+# CHECKS, all pass:
+#   - check_field_sizes.py: 28 reports, 28 tiles, 28 of 28 passed,
+#     0 problems, at [25, 25, 94] with sigma_dz the same.
+#   - the SAME 28 centers as the quarterly 0332 prelim (set-equal).
+#   - lineage on all 28: none missing or empty, 0 NOT_SET, 79 distinct
+#     granules = 69 along-track + 10 crossover -- EXACTLY the quarterly
+#     product's 79, so the monthly run read the same inputs.
+#   - bucket prelim/ and local prelim/ list the same 28 tiles.
 #
 # QM5. [OPEN -- for Ben]  E1020_N-2580 fails the monthly FIT for want of any
 #      reference-DEM coverage.  What should happen to such a center?
@@ -362,12 +386,20 @@ scripts/maap/submit_MAAP_jobs.py --xy_file region_files/IS_0332_monthly_smoke_xy
 #
 #
 # ===========================================================================
-# M8. [DPS] [NOT STARTED]  Matched.
+# M8. [DPS] [IN FLIGHT 2026-09-18]  Matched.
 # ===========================================================================
 # The list from the monthly prelim tiles that EXIST, bucket and local
 # agreeing -> region_files/IS_0332_monthly_matched_xy.txt; submit --step
 # matched with the same prefix; collect, fetch, check (--step matched; no
 # sigma, by design).
+# LIST BUILT 2026-09-18: region_files/IS_0332_monthly_matched_xy.txt, 28
+#   centers, from the 28 prelim tiles that exist -- bucket and local listed
+#   IDENTICAL first.  E1020_N-2580 absent.  The list is IDENTICAL to the
+#   quarterly region_files/IS_0332_matched_xy.txt.
+#   NOT BLOCKED BY QM5: E1020 writes no tile under all three of QM5's
+#   options, so the matched list is the same whatever Ben answers.
+#   Queue maap-dps-worker-16gb: quarterly matched peaked ~9 GiB against a
+#   9.52 GiB prelim; monthly prelim peaked 4.13 GiB.
 #
 #
 # ===========================================================================
