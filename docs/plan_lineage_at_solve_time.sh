@@ -243,7 +243,11 @@
 #
 #
 # ===========================================================================
-# L6. [DPS] [BLOCKED: the cycles 03-32 transition (AL1), see the top]
+# L6. [DPS] [DONE 2026-09-18 -- GATE PASSES; the smoke is plan_cycles_03_32.sh T6,
+#     recorded there in full]
+#     The wall-time question below cannot be answered from it: the fit step
+#     ran in HALF the 2026-09-15 time for reasons unrelated to lineage, so
+#     the lineage reads' cost (L2c: <2%) is lost in that variation.
 #     Deploy and smoke ONE tile.
 # ===========================================================================
 # Commit and push; Ben registers; scripts/maap/check_build_id.py must say

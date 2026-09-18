@@ -247,7 +247,7 @@ scripts/maap/check_build_id.py \
 #
 #
 # ===========================================================================
-# T6. [DPS] [NOT STARTED]  One smoke tile, with two gates.
+# T6. [DPS] [DONE 2026-09-18 -- BOTH GATES PASS]  One smoke tile, with two gates.
 # ===========================================================================
 # RECOMMENDATION: E1300_N-2500 -- a full-3x3 center with crossovers, the tile
 # the matched smoke used.  Submit prelim for that center alone.
@@ -261,6 +261,38 @@ scripts/maap/check_build_id.py \
 # ALSO WORTH READING: wall time and peak RSS against the 0331 run (1169-4260 s,
 # 4.16-9.09 GiB).  One more cycle of data and one more epoch should move both
 # a little; a large jump means something else changed.
+# RESULT, job 64c1c7df-b23f-46cb-ab71-d696ae106950 (submitted 2026-09-17T19:57Z,
+# ledger IS_0332_smoke_jobs.csv), collected once 2026-09-18 and the tile
+# fetched to rel006/north/IS/prelim/ (63689285 bytes + report):
+#   successful on 61a19af, 3181 s, peak 9.32 GiB of 16, 3 iterations.
+# GATE A PASSES.  N_ATL11 306563, N_AT 306475, N_XO 88, N_fit 248749.  The
+#   /meta attribute input_files (an ATTRIBUTE, not a group -- "meta/input_files"
+#   above means that) names 21 distinct granules: 13 along-track, ALL
+#   0332_007_05, and 8 crossovers, all c01/c02 _007_03 (by design, AT5).
+#   check_field_sizes.py: 1 of 1 passed, dz/dz [61,61,32].
+# GATE B PASSES.  /meta/lineage holds exactly those 21 groups, none missing
+#   and none extra; every uuid non-empty; along-track groups carry uuid,
+#   start/end_geoseg, start/end_orbit (and start/end_rgt as well -- the
+#   granule provides them, which L1 allows), crossover groups uuid, geoseg
+#   and start/end_rgt; all int32 as read.  0 of 8 crossovers have
+#   start_rgt == end_rgt (the 66e4a35 fix holds).  The job log has no
+#   'could not read lineage' and no 'INVALID' line.
+# AGAINST THE 0331 JOB FOR THE SAME TILE (c72c7cb1, b5fe447, re-collected):
+#   N_ATL11 300004 -> 306563 (+2.2%), N_XO 88 -> 88, N_fit 245361 -> 248749
+#   (+1.4%), sigma_hat 4.23 -> 4.22: what one more cycle should do.
+#   Peak 8.80 -> 9.32 GiB: now the prelim high-water mark (was 9.09), still
+#   well inside 16 GiB.  Error step 1835 -> 1952 s, in line.
+#   THE FIT STEP HALVED, 2404 -> 1213 s, and it is the QR solves: ~712-735 s
+#   per iteration then, ~325-354 s now, same 4 threads, same problem size.
+#   NOT EXPLAINED, and harmless to the result (the numbers above agree).  The
+#   error step, also compute-bound, did NOT speed up, so a faster node alone
+#   does not fit; one HYPOTHESIS is contention -- the 0331 job ran inside the
+#   29-job fan-out, this one ran alone.  T7's fan-out will show whether fit
+#   times go back up.
+# ALSO DUE NOW, AT4 ("Delete once T6 has solved"): the two deletions in T1.
+#   NOT DONE -- the session's auto-mode permission check refused the bucket
+#   delete; Ben runs them (both targets checked 2026-09-18 and still as T1
+#   describes: staging dir 2.5 GB; 0331 index 8100 objects, 2136377505 bytes).
 #
 #
 # ===========================================================================
