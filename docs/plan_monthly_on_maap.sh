@@ -231,7 +231,7 @@ aws s3 cp $monthly_dir/input_args_IS.txt $s3_run_m/
 #
 #
 # ===========================================================================
-# M6. [DPS] [READY, WAITING ON BEN'S GO 2026-09-18]  Smoke one prelim tile.
+# M6. [DPS] [DONE 2026-09-18 -- ALL FOUR GATES PASS]  Smoke one prelim tile.
 # ===========================================================================
 # NO REGISTRATION NEEDED, and Ben was told so.  STATEMENT, from git:
 # everything committed since the registered build 61a19af is docs,
@@ -260,6 +260,45 @@ scripts/maap/submit_MAAP_jobs.py --xy_file region_files/IS_0332_monthly_smoke_xy
 #   b. field-size report dz/dz [25, 25, 94], sigma_dz the same (M3);
 #   c. /meta/lineage present, as in T6;
 #   d. wall time and peak memory, which set M7's queue.
+#
+# BUILD GATE FIRST: check_build_id.py against the monthly args with
+#   --expect 61a19af -> VERDICT MATCH.  Build stamp == live git in the image
+#   == cwl commit == 61a19af, tree_state=clean, maap_py=5.1.0, and
+#   maap_pgt=SET (the one that matters: unset means the worker falls back to
+#   earthaccess with no credentials and cannot read ATL11 at all).  origin is
+#   past the build at cb2796a -- expected, and NOT a reason to re-register:
+#   everything pushed since 61a19af is docs, tests and ADE-only code.
+#   TRAP, fallen into and then fixed: `check_build_id.py --help` SUBMITS A JOB
+#   (job 2cfaac9e, 32gb queue, 4 min, wrote nothing).  There is no --help, and
+#   the positional args_file swallowed it.  Guarded in 7d64824; see
+#   howto_MAAP_ogc.sh O5.
+#
+# RESULT: job f0c16110-4874-4c0e-9947-bcaa41a03840, submitted 16:32:51Z,
+#   SUCCESSFUL in 1060 s on maap-dps-worker-16gb, peak 4.05 GiB, 3 iterations,
+#   commit 61a19af.  Steps: fit 853 s at 4.05 GiB, error 189 s at 1.88 GiB.
+#   Ledger ~/ATL14_processing/maap_ledgers/IS_0332_monthly_smoke_jobs.csv,
+#   list region_files/IS_0332_monthly_smoke_xy.txt.  The output prefix was
+#   verified EMPTY before submitting, so the tile that appeared is this job's.
+#   Submitted --dry-run first: exactly 1 job, right args URL, right prefix.
+# a. PASSES.  The log carries
+#      arg: --ATL14_reference_file=s3://.../rel006/north/IS/ATL14_IS_0332_100m_006_02.nc
+#    and N_fit = 280955 against the QUARTERLY 273382 for this same tile
+#    (plan_cycles_03_32.sh:331) -- 2.8% HIGHER, not the collapse a missing or
+#    unreadable reference would cause.  dz/dz is 100% finite and sigma_dz
+#    98.9%, which a NaN reference could not produce.  The only log warnings
+#    are cwltool/GDAL boilerplate; the "cannot kill container" line is runner
+#    cleanup after success.
+# b. PASSES.  check_field_sizes.py $monthly_dir/prelim @$monthly_dir/input_args_IS.txt
+#    -> 1 reports, 1 tiles, 1 of 1 passed, 0 problems, at the derived
+#    dz/dz [25, 25, 94] with sigma_dz the same.  M3's code path, on real data.
+# c. PASSES.  /meta/lineage present: 16 granules (14 along-track, 2
+#    crossover), 0 NOT_SET attributes, 16 distinct uuids.  Fewer than the
+#    quarterly product's 79 because that is the union over 28 tiles; this is
+#    one tile's own inputs.
+# d. MEASURED, and it settles M7's queue: 1060 s and 4.05 GiB, against the
+#    quarterly's 3322 s and 9.52 GiB for the SAME tile -- 3.1x faster and
+#    2.4x less memory, as the ~8x-fewer-unknowns estimate predicted.
+#    maap-dps-worker-16gb has ample headroom; -32gb is NOT needed for M7.
 #
 #
 # ===========================================================================
