@@ -302,7 +302,7 @@ scripts/maap/submit_MAAP_jobs.py --xy_file region_files/IS_0332_monthly_smoke_xy
 #
 #
 # ===========================================================================
-# M7. [DPS] [NOT STARTED]  Prelim fan-out, 29 centers.
+# M7. [DPS] [IN FLIGHT -- 29 submitted 2026-09-18 ~16:55Z; 1 FAILED, see QM5]  Prelim fan-out, 29 centers.
 # ===========================================================================
 # region_files/IS_prelim_xy.txt, unchanged -- the centers come from the mask,
 # not the period.  Tag IS_rel006_0332_monthly_prelim, ledger
@@ -310,6 +310,55 @@ scripts/maap/submit_MAAP_jobs.py --xy_file region_files/IS_0332_monthly_smoke_xy
 # <ledger> $monthly_dir --step prelim, check_field_sizes.py $monthly_dir/prelim
 # @$monthly_dir/input_args_IS.txt.  EXPECT E1020_N-2580 to write no tile again.
 # DO NOT RE-REGISTER while jobs are queued (the split-build trap, I3).
+# SUBMITTED 2026-09-18: 29/29 on 61a19af, maap-dps-worker-16gb (M6 gate d),
+#   ledger ~/ATL14_processing/maap_ledgers/IS_0332_monthly_prelim_jobs.csv.
+#   Dry-run first; committed and pushed (98beeb1) BEFORE submitting.
+#
+# FINDING -- E1020_N-2580 FAILED, and NOT the way the quarterly runs did.
+#   STATEMENT (job 9266c3d7, triaged log
+#   triaged_job-...-20260918T170628.949933Z_task-7133567b..., _exit_code 1):
+#   read N=267958 (AT 267894, XO 64), then `smooth_fit: no valid data` and
+#   exit 1 IN THE FIT STEP, 212 s at 0.73 GiB.  Quarterly (0331 and 0332):
+#   the FIT succeeded with N_fit 327/349, and only the ERROR step found no
+#   data, which the I7a branch turns into delete-the-tile, exit 0.
+#   CAUSE, STATEMENT, measured: the reference DEM has ZERO finite h over this
+#   tile's 60 km box (0 of 361201 cells), against 87.6% for the smoke tile.
+#   The quarterly run never wrote a tile for this center, and at 40 km
+#   spacing it has no neighbour to fill from (plan_IS_run.sh, 2026-09-16), so
+#   the quarterly ATL14 is empty here.  The monthly solve subtracts z_ref from
+#   every point; with z_ref all NaN, nothing is valid.
+#   DETERMINISTIC -- same args, same build, same empty reference.  NOT
+#   RETRIED, and a retry would fail identically.
+#   OUTCOME IS THE SAME AS QUARTERLY: no tile for E1020_N-2580.  So the
+#   matched set is 28 either way, and M8 (built from the tiles that EXIST)
+#   is not blocked.  Only the job accounting differs: failed, not
+#   successful-with-no-tile.
+#   WATCH: E1180_N-2380 has reference coverage of only 0.34% (1230 cells).
+#   It may succeed at a very low N_fit, or reach the error-step no-data exit
+#   (I7a, exit 0) -- neither is a failure.  Reported when M7 completes.
+#
+# QM5. [OPEN -- for Ben]  E1020_N-2580 fails the monthly FIT for want of any
+#      reference-DEM coverage.  What should happen to such a center?
+#      WHY IT IS A QUESTION, not settled: Ben's 2026-09-16 decision ("tiles
+#      that fail on the uncertainty step are not critical") covers the
+#      ERROR step.  This is the same no-data exit (smooth_fit.py:485) on the
+#      FIT step, which I7a does not handle.  The decision's own boundary says
+#      not to widen it without asking.
+#        A. Accept it: a failed job, no tile, nothing changed.  M8 proceeds
+#           from the 28 tiles that exist.  No code, no rebuild.
+#        B. Extend the I7a no-data branch to the fit step, so it exits 0
+#           cleanly.  Solver change in ATL11_to_ATL15.py -> rebuild and
+#           REGISTRATION, and only AFTER M7 finishes (the split-build trap).
+#        C. Drop centers with no reference coverage from the monthly list
+#           before submitting -- a pre-flight coverage check per center,
+#           ADE-side, no rebuild.
+#      RECOMMENDATION: A now, for IS -- the outcome is already correct and
+#      IS has exactly one such center.  But C before M12: this is
+#      STRUCTURAL, not an IS quirk.  Every center the quarterly product does
+#      not cover will fail monthly the same way, and GL and AA have many
+#      sparse edge tiles.  A pre-flight check turns a predictable failed job
+#      into a center that is simply never submitted.
+# AM5:
 #
 #
 # ===========================================================================
