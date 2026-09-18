@@ -265,7 +265,7 @@
 #
 #
 # ===========================================================================
-# L7. [ADE] [BLOCKED on L6]  The netCDF check, on the smoke tile.
+# L7. [ADE] [DONE 2026-09-18 -- on all 28 IS tiles, not just the smoke; plan_cycles_03_32.sh T8]  The netCDF check.
 # ===========================================================================
 # write2nc over a --tiles_dir holding just the smoke tile (scratch, not the
 # region dir): no INVALID warning; METADATA/Lineage/ATL11 has a real uuid on

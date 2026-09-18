@@ -299,7 +299,7 @@ scripts/maap/check_build_id.py \
 #
 #
 # ===========================================================================
-# T7. [DPS+ADE] [IN PROGRESS -- prelim DONE 29/29; matched SUBMITTED 2026-09-18]  The IS re-run.
+# T7. [DPS+ADE] [DONE 2026-09-18 -- prelim 29/29, 28 tiles; matched 28/28 after one retry]  The IS re-run.
 # ===========================================================================
 # Only after T6 passes both gates.  Arctic howto steps 6-9, unchanged:
 # prelim over the 29 centers, collect, fetch, check_field_sizes.py, then the
@@ -345,10 +345,24 @@ scripts/maap/check_build_id.py \
 #   tag IS_rel006_0332_matched, matched/ prefix verified empty first.
 #   LEDGER ~/ATL14_processing/maap_ledgers/IS_0332_matched_jobs.csv.
 #   Still DO NOT RE-REGISTER until these finish.
+# MATCHED DONE 2026-09-18 (Ben: "Collect, fetch, check", one collect at 04:07Z):
+#   27/28 successful on 61a19af; wall 145-830 s; peak 3.58-9.36 GiB
+#   (E1340_N-2460, N_fit 273382 -- the same tile that set the prelim high).
+#   ONE FAILURE, E1220_N-2460 (e48a0dd3), 136 s, and it was the PLATFORM:
+#   the CWL runner's own /app/create_inputs.py -> stage_in.py timed out
+#   connecting to api.maap-project.org, before our image was launched.
+#   Logs in ~/tmp/triaged_job-...20260918T023520.389304Z_task-c0c6f9a3...;
+#   nothing for that tile on the bucket.  The 0331 run solved it fine.
+#   RETRIED (Ben: "Resubmit it"): region_files/IS_0332_matched_retry_xy.txt,
+#   ledger IS_0332_matched_retry_jobs.csv, job c3e8e289 on 61a19af --
+#   successful, 201 s, 4.90 GiB, N_fit 42127.
+#   Fetched all 28 (0.48 GiB); local sizes == bucket listing, tile for tile;
+#   same 28 names as prelim/; check_field_sizes.py 28 of 28 OK (dz/dz
+#   [61,61,32], sigma_dz null).
 #
 #
 # ===========================================================================
-# T8. [ADE] [NOT STARTED]  Mosaic, netCDF, and the checks.
+# T8. [ADE] [DONE 2026-09-18 -- all checks pass; rel005 comparison below]  Mosaic, netCDF, and the checks.
 # ===========================================================================
 # plan_IS_run.sh I9 as written, plus:
 #   - the lineage must now be COMPLETE: no INVALID warning from either writer
@@ -361,6 +375,62 @@ scripts/maap/check_build_id.py \
 #     one longer each.  The mosaic and the tiles still have 32.
 #   - I9g6 is worth more here than it was: differencing h against the rel005
 #     product is the only check that the extra cycle did not shift anything.
+# AUTHORIZED 2026-09-18 (Ben: "Yes, run T8").  Run dirs are NEW --
+# ~/ATL14_processing/runs/IS_0332_mosaic and IS_0332_nc; runs/IS_mosaic and
+# IS_nc are the 0331 run's and were left alone.
+# MOSAIC: make_mosaic_jobs.py as I9c with --run_name IS_0332_mosaic -> 41
+#   tasks; all 41 at -P 12 in 59 s, exit 0, error_logs/ empty, done/ 41.
+#   check_mosaic_outputs.py --values: 41 files, 131 fields, PROBLEMS 0.
+#   STATEMENT, measured: at 1 km every sigma_dzdt_lag* is finite on 16.9% of
+#   the box against 41.4% for the values; sigma_dz is 40.2%, and the 10/20/40 km
+#   sigmas match their values exactly.  The gap is IN THE PRELIM TILES, not the
+#   mosaic: sigma_dzdt covers 44% of the finite dzdt cells over all 28 tiles,
+#   ranging 8.5% (E1180_N-2380, E1180_N-2420) to 99.7% (E1340_N-2500) and
+#   tracking data density, while sigma_dz is 96.9% on every tile.  Whether
+#   0331 was the same cannot be checked -- its tiles are deleted (T4).
+#   NOT PURSUED; flagged to Ben.
+# netCDF: ATL14_write2nc.py 12 s, ATL15_write2nc.py 21 s, both exit 0, NO
+#   INVALID warning (logs hold only GDAL's FutureWarning).  Five files:
+#   ATL14_IS_0332_100m_006_02.nc (9915264) and
+#   ATL15_IS_0332_3mo_{1,10,20,40}km_006_02.nc.
+# CHECKS, all pass (scratch script, not committed):
+#   - lineage identical in all 5 files: 79 rows = 69 ATL11 + 10 ATL11XO, the
+#     same 79 names as the prelim tiles' input_files; every attribute a
+#     string; 79 distinct uuids, none NOT_SET; no NOT_SET on any along-track
+#     row; along-track all 0332_007_05, cycles 03-32, end_rgt == start_rgt;
+#     XO end_rgt != start_rgt on 10 of 10.  XO rows are NOT_SET for
+#     start/end_orbit and start/end_region ONLY -- the XO granules have no
+#     such datasets (plan_lineage_at_solve_time.sh, the probe), so that is
+#     the granule's absence, not a gap.  L7's gate passes.
+#   - ATL14 h (3001, 4201), x/y == z0.h5; finite(h) == finite(z0) & ice_area>0
+#     exactly; max |h - z0| 1.2e-4 m.
+#   - ATL15 delta_h (31, 301|30|14|7, 421|42|20|10), 31 epochs 2019.00..2026.50
+#     (AT1 as expected); dhdt groups 30,29,27,23,19,15,11,7,3 epochs, one
+#     longer each than 0331.  1 km: mosaic epochs kept 31 of 32; finite
+#     product == finite dz & ice_area>0 exactly; max |diff| 3.1e-5 m.
+# I9g6 DONE -- AGAINST rel005 (ATL14_IS_0329_100m_005_02.nc and
+#   ATL15_IS_0329_01km_005_02.nc, found by find_previous_product_files'
+#   CMR search and read by fs.open -- fs.get does a ListBucket, which NSIDC
+#   denies).  Ben's bar (2026-09-18): no >10 m errors, no major gaps.
+#   GAPS -- NONE MAJOR.  ATL14: 1304 rel005 cells (0.11%) have no 0332 value,
+#     82 the reverse; 24 of 12390 1-km blocks lose over half their cells.
+#     ATL15 1 km: 292 cells (0.09%) over 29 common epochs.
+#   ATL15 1 km delta_h -- CLOSE.  Median -0.025 m, p5/p95 -0.86/+0.68 m,
+#     |d|>10 m on 166 cells of 327796 (0.05%), max 19.0 m.
+#   ATL14 h -- LARGE DIFFERENCES, ALMOST ALL WHERE THERE ARE NO DATA.
+#     Median +0.01 m, p5/p95 -4.42/+4.38 m, but |d|>10 m on 43129 of 1133949
+#     cells (3.8%), max 330 m.  42702 of those have data_count 0 (4.2% of the
+#     no-data cells); where data_count > 0 it is 427 of 118777 (0.36%).  Median
+#     h_sigma is 10.9 m on the >10 m cells against 3.1 m elsewhere; 8673 of
+#     them still exceed 3x the two sigmas combined.
+#     RECOMMENDATION: read as interpolation differences, not errors -- but it
+#     is Ben's bar, so it is reported to him rather than decided here.
+# FOUND, NOT FIXED: time_coverage_duration is wrong in all five files
+#   (54385 in ATL14, against ~2.37e8 s for 2019-01-01..2026-07-02).
+#   ATL1415_attrs_meta.py:314 computes int((datetime_start-datetime_end).seconds)
+#   -- operands reversed, and .seconds is the within-day part of a negative
+#   timedelta, not total_seconds().  From 198ffee; pre_rel006 has the same
+#   line; main computes it another way.  rel005 carries 2.17e8.
 #
 #
 # ===========================================================================
