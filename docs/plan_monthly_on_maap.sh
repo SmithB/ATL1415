@@ -451,7 +451,7 @@ check_mosaic_outputs.py ~/ATL14_processing/runs/IS_0332_monthly_mosaic --values
 #
 #
 # ===========================================================================
-# M10. [ADE] [NOT STARTED]  netCDF -- ATL15 only.
+# M10. [ADE] [DONE 2026-09-18 -- product checks pass; science check -> QM6]  netCDF -- ATL15 only.
 # ===========================================================================
 mkdir -p ~/ATL14_processing/runs/IS_0332_monthly_nc && cd ~/ATL14_processing/runs/IS_0332_monthly_nc
 ATL15_write2nc.py @$monthly_dir/input_args_IS.txt > ATL15.log 2>&1
@@ -460,10 +460,76 @@ ATL15_write2nc.py @$monthly_dir/input_args_IS.txt > ATL15.log 2>&1
 # monthly prelim tiles carry their own), finite product == finite mosaic &
 # ice_area > 0.
 # RECOMMENDATION, the science check: monthly against the 0332 QUARTERLY at
-# 10 km, at the quarterly epochs.  Monthly delta_h is relative to a
-# DIFFERENT surface (the quarterly DEM), so compare delta_h differences
-# between epochs, or add the reference back, rather than raw delta_h.
-# Bar as Ben's: no >10 m errors, no major gaps.
+# 10 km, at the quarterly epochs.  Bar as Ben's: no >10 m errors, no major
+# gaps.
+# CORRECTED 2026-09-18 -- the method this entry first recommended ("monthly
+# delta_h is relative to a DIFFERENT surface, so compare differences between
+# epochs") was WRONG, and so was what I told Ben, that a raw comparison
+# would show "a large, meaningless offset".  STATEMENT, measured: the raw
+# monthly-minus-quarterly median is -0.049 m.  ATL14 h equals the quarterly
+# z0 to 1.2e-4 m (T8), and delta_h is defined against the 2020 reference
+# surface, so both products are exactly 0 at 2020.0 with sigma 0.  Raw
+# delta_h IS directly comparable.  Epoch-differencing against 2019.0 made
+# the agreement WORSE (|d|>10 m 0.37% -> 1.92%), because some of the large
+# disagreements sit AT 2019.0, and subtracting that epoch spreads them to
+# every epoch in those cells.  Referencing to 2020.0 reproduces the raw
+# result exactly, as it must.  USE RAW delta_h.
+#
+# RAN: ~/ATL14_processing/runs/IS_0332_monthly_nc, ATL15_write2nc.py exit 0,
+#   17 s, NO INVALID warning.  Four files, the names predicted:
+#   ATL15_IS_0332_1mo_2.5km_006_02.nc (9611717)  delta_h (91, 121, 169)
+#   ATL15_IS_0332_1mo_10km_006_02.nc  (1596409)  delta_h (91, 30, 42)
+#   ATL15_IS_0332_1mo_20km_006_02.nc  (957811)   delta_h (91, 14, 20)
+#   ATL15_IS_0332_1mo_40km_006_02.nc  (759464)   delta_h (91, 7, 10)
+# PRODUCT CHECKS, all pass:
+#   - 91 epochs 2019.000..2026.500 in every file, as expected; the mosaic's
+#     94 cropped to 91 by --t_crop.
+#   - time_coverage_duration = 236681615 in all four -- the FIRST NEW files
+#     written since M0b, so the fix holds end to end, not only on re-writes.
+#   - lineage: 79 rows = 69 AT + 10 XO, 79 distinct uuids.  40 NOT_SET
+#     values, ALL on the 10 XO rows, in exactly start/end_orbit and
+#     start/end_region -- none on an along-track row.  The pattern T8
+#     accepted: the XO granules have no such datasets.  L7's gate passes.
+#   - 2.5 km product against dz.h5: finite(product) == finite(mosaic) &
+#     ice_area>0 EXACTLY; max |product - mosaic| 3.05e-5 m over 179270
+#     values (T8: 3.1e-5).
+# SCIENCE CHECK against the 0332 quarterly at 10 km.  Grids identical (x and
+#   y array_equal); every quarterly epoch is exactly a monthly epoch (max
+#   |dt| 0, every 3rd).  Raw delta_h, 5926 paired values:
+#   GAPS -- none major.  Quarterly-finite cells missing from monthly: 62 of
+#     5988 (1.0%).  Monthly-finite missing from quarterly: 243 of 6169 (3.9%)
+#     -- monthly covers MORE.
+#   >10 m: 22 values (0.37%), max 16.3 m, in only 6 distinct 10 km cells:
+#     (y10,x31) 9 epochs; (y12,x35) 5; (y21,x32) 2; and an adjacent cluster
+#     (y24,x18), (y24,x19), (y25,x18) with 2 each.  ALL at the ENDS of the
+#     record -- 2019.0-2019.25 and 2024.5-2026.5; NONE in 2019.5-2024.25.
+#     Combined sigma on them: median 0.57 m, against 0.09 m elsewhere (6x).
+#     21 of the 22 exceed 3x combined sigma.
+#   SEASONAL -- STATEMENT, measured: the difference depends on season.
+#     Median monthly-minus-quarterly: Jan epochs +0.000 m, Apr -0.370, Jul
+#     -0.142, Oct +0.308 m.  The monthly box mean by calendar month carries a
+#     cycle: highest in May (-1.10 m), lowest in Oct (-4.50 m) -- spring
+#     maximum, autumn minimum.  64% of ALL paired values differ by >3x the
+#     combined sigma.
+#     HYPOTHESIS, not proven: monthly resolves a seasonal cycle the
+#     quarterly product smooths, so at the same epoch the two estimate
+#     different things.  A systematic 0.3-0.4 m seasonal difference is
+#     >3x a 0.09 m sigma, which would account for the 64% without the
+#     sigmas being wrong.  Resolving that cycle is what monthly is for.
+#
+# QM6. [OPEN -- for Ben]  Does the monthly product pass your bar?
+#      Same structure as QM1: the >10 m differences are confined to where
+#      the solution is weakly constrained.
+#        - gaps: none major (1.0% one way, 3.9% the other, monthly wider);
+#        - >10 m: 22 values (0.37%) in 6 cells, all at the record's ends,
+#          with 6x the typical sigma;
+#        - elsewhere: a systematic seasonal difference of a few tenths of a
+#          metre, which is the signal monthly exists to resolve.
+#      RECOMMENDATION: pass.  But 21 of the 22 exceed 3x combined sigma --
+#      in those 6 cells the products genuinely disagree beyond their error
+#      bars -- so the cells are named above if you want to look first.
+#        A. Pass; M11 and done.     B. Hold; look at the 6 cells first.
+# AM6:
 #
 #
 # ===========================================================================
