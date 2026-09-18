@@ -335,6 +335,20 @@
 #     re-scoring against a different --expect, there is no way to re-read it;
 #     you must either submit a fresh job or score the BUILD_ID line by hand
 #     through verdict().  The submit-and-wait path itself is fine.
+#     FIXED 2026-09-18, a SECOND trap, found by falling into it: the script
+#     takes args_file and queue POSITIONALLY and had no option validation, so
+#     `check_build_id.py --help` put '--help' in args_file and SUBMITTED A
+#     REAL JOB on the default 32gb queue (job 2cfaac9e, 4 min, exit 0 -- a
+#     build_id step writes no tile, so the cost was worker time only).
+#     There is no --help: the usage lives in the docstring.  main() now
+#     refuses any leftover argument starting with '-', prints the usage and
+#     the offending option to stderr, and exits 2 WITHOUT submitting -- the
+#     guard runs before load_config() and MAAP(), so it needs no credentials.
+#     tests/test_check_build_id.py covers it (7 cases), including that the
+#     real flags --expect/--timeout/--dry-run still get through.
+#     NOTE, while fixing it: main()'s other exits are sys.exit(); a bare
+#     `return` from main() would have been swallowed by `main()` at the
+#     bottom of the file and reported success.
 # ===========================================================================
 # FIRST, FIND THE PROCESS: submit_job() needs the deployed process's id
 # (F9).  Look it up by name and version from list_algorithms() --

@@ -166,6 +166,17 @@ def main():
             else:
                 timeout = int(value)
 
+    # A stray flag must never become the args_file: this script SUBMITS, and
+    # `check_build_id.py --help` once cost a real DPS job because --help landed
+    # here as argv[0].  Say so and stop; do not guess what was meant.
+    for leftover in argv:
+        if leftover.startswith('-'):
+            print(__doc__[__doc__.index('Usage:'):].rstrip(), file=sys.stderr)
+            print(f'\ncheck_build_id.py: unknown option {leftover!r}.  This script '
+                  'SUBMITS a DPS job, so it will not\n  treat an option as the '
+                  'args_file URL.  Nothing was submitted.', file=sys.stderr)
+            sys.exit(2)
+
     args_url = argv[0] if argv else f'{S3_RUN}/input_args_AA.txt'
     queue = argv[1] if len(argv) > 1 else DEFAULT_QUEUE
     config = load_config()
