@@ -154,19 +154,24 @@
 #
 #
 # ===========================================================================
-# M1. [ADE] [NOT STARTED]  Publish the reference DEM.
+# M1. [ADE] [DONE 2026-09-18]  Publish the reference DEM.
 # ===========================================================================
 region_dir=/home/jovyan/ATL14_processing/rel006/north/IS
 s3_out=s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/north/IS
 aws s3 cp $region_dir/ATL14_IS_0332_100m_006_02.nc $s3_out/
-# Beside the quarterly tiles, the same place as on discover.  Check the size
-# against the local file (9915264 bytes today; changes if M0b re-writes).
-# RECOMMENDATION: publish the four ATL15 files too, so the bucket holds the
-# whole quarterly product; only ATL14 is needed for monthly.
+# Beside the quarterly tiles, the same place as on discover.
+# DONE: all five 0332 files uploaded (the recommendation below taken), to a
+# prefix that held only matched/ and prelim/ -- nothing was overwritten.
+# VERIFIED: every bucket size equals its local size --
+#   ATL14 100m 9915264; ATL15 1km 18117749, 10km 895146, 20km 701363,
+#   40km 638098.  The ATL14 is the M0b re-write, so the published reference
+#   DEM is final.
+# RECOMMENDATION (taken): publish the four ATL15 files too, so the bucket holds
+# the whole quarterly product; only ATL14 is needed for monthly.
 #
 #
 # ===========================================================================
-# M2. [ADE] [NOT STARTED]  Read it back from the bucket the way the solver will.
+# M2. [ADE] [DONE 2026-09-18 -- bit-identical]  Read it back from the bucket the way the solver will.
 # ===========================================================================
 # pc.grid.mosaic().from_list(['<s3_out>/ATL14_IS_0332_100m_006_02.nc'],
 #     group='', bounds=<E1340_N-2460 +/- 32 km>, fields=['h','h_sigma'])
@@ -177,15 +182,26 @@ aws s3 cp $region_dir/ATL14_IS_0332_100m_006_02.nc $s3_out/
 #
 #
 # ===========================================================================
-# M3. [ADE] [NEEDS CODE: check_field_sizes.py fractional -g]
+# M3. [ADE] [DONE 2026-09-18]  check_field_sizes.py fractional -g.
 # ===========================================================================
 # Parse each -g entry as a/b the way make_mosaic_jobs.py and ATL15_write2nc.py
 # already do, and add a test: -W=60000 -g=1250,2500,1/12 -t=2018.75,2026.5
 # gives [25, 25, 94].  The quarterly expectation must stay [61, 61, 32].
+# DONE: scripts/check_field_sizes.py gains _spacing(), which reads 'a/b' the
+# way those two scripts do, and the derivation line now prints dt as the args
+# file wrote it ('1/12', not '0.0833333').
+#   monthly   -> [25, 25, 94]   (-W=60000 / 2500 + 1 = 25;  7.75 / 1/12 + 1 = 94)
+#   quarterly -> [61, 61, 32]   unchanged
+# Four tests added (tests/test_check_field_sizes.py, now 31): the monthly
+# shape, the quarterly shape unchanged, a fraction that does not divide the
+# span (1/7) raising CannotCheck, and a zero denominator raising CannotCheck
+# rather than a traceback.  Suite 112 passed 2 skipped.
+# REGRESSION CHECKED on the real quarterly tiles: 28 reports, 28 tiles,
+# 28 of 28 passed, 0 problems.
 #
 #
 # ===========================================================================
-# M4. [ADE] [NOT STARTED]  Compose the monthly args.
+# M4. [ADE] [DONE 2026-09-18]  Compose the monthly args.
 # ===========================================================================
 setup_ATL1415_region.py default_args/MAAP_dps.txt default_args/latest_release.txt \
     default_args/IS.txt default_args/monthly.txt --Hemisphere=1 \
@@ -194,18 +210,39 @@ monthly_dir=/home/jovyan/ATL14_processing/rel006/north_monthly/IS
 # Writes $monthly_dir/input_args_IS.txt.  CHECK, against the quarterly file:
 # the ONLY differences are -g=1250,2500,1/12, the monthly --dzdt_lags,
 # --ATL14_reference_file (an s3:// URI) and -b.  No --hemi_suffix line.
+# VERIFIED, sorted diff against rel006/north/IS/input_args_IS.txt -- exactly
+# those four and nothing else:
+#   + --ATL14_reference_file=s3://.../rel006/north/IS/ATL14_IS_0332_100m_006_02.nc
+#   - --dzdt_lags=1,2,4,8,12,16,20,24,28   + --dzdt_lags=1,3,6,12,24,36,48,60,72,84
+#   - -g=100,1000,0.25                     + -g=1250,2500,1/12
+#   - -b=.../rel006/north/IS               + -b=.../rel006/north_monthly/IS
+# --hemi_suffix is absent, as predicted; cycles 0332, Release 006, version 02,
+# --t_crop=2019,2026.5 and the ATL11 release all carry through unchanged.
 #
 #
 # ===========================================================================
-# M5. [ADE] [NOT STARTED]  Publish the args.
+# M5. [ADE] [DONE 2026-09-18]  Publish the args.
 # ===========================================================================
 s3_run_m=s3://maap-ops-workspace/ben_smith/ATL1415/run_args/rel006/north_monthly/IS
 aws s3 cp $monthly_dir/input_args_IS.txt $s3_run_m/
 # Then diff the bucket copy against the local one, as in T7.
+# DONE: the prefix was empty; the bucket copy was pulled back and diffed
+# against the local file -- IDENTICAL.
 #
 #
 # ===========================================================================
-# M6. [DPS] [NOT STARTED -- needs Ben's go]  Smoke one prelim tile.
+# M6. [DPS] [READY, WAITING ON BEN'S GO 2026-09-18]  Smoke one prelim tile.
+# ===========================================================================
+# NO REGISTRATION NEEDED, and Ben was told so.  STATEMENT, from git:
+# everything committed since the registered build 61a19af is docs,
+# region_files job lists, tests/test_time_coverage.py, and
+# ATL1415_attrs_meta.py -- and ATL11_to_ATL15.py does not import attrs_meta,
+# while set_time_range is called only from inside attrs_meta itself, by the
+# two netCDF writers, which run in the ADE.  scripts/check_field_sizes.py is
+# ADE-only too.  So the solve code in the image is unchanged and 61a19af is
+# the right build to run monthly on.
+# RECOMMENDATION unchanged: run check_build_id.py --expect 61a19af first, to
+# confirm the image is still that commit before spending a job on it.
 # ===========================================================================
 s3_out_m=s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/north_monthly/IS
 echo "1340000 -2460000" > region_files/IS_0332_monthly_smoke_xy.txt

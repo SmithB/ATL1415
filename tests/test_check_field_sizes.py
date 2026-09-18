@@ -88,6 +88,32 @@ def test_shape_follows_the_args_file(tmp_path):
     assert shape == [45, 45, 32]
 
 
+def test_monthly_fractional_dt(tmp_path):
+    # the monthly product passes dt as 1/12 (docs/plan_monthly_on_maap.sh M3);
+    # make_mosaic_jobs.py and ATL15_write2nc.py read -g the same way
+    text = ARGS.replace('-g=100,1000,0.25', '-g=1250,2500,1/12')
+    shape, derivation = shape_from(['@' + make_args(tmp_path, text)])
+    assert shape == [25, 25, 94]
+    assert '1/12' in derivation          # shown as written, not as 0.0833333
+
+
+def test_quarterly_shape_is_unchanged_by_the_fraction_support(tmp_path):
+    assert shape_from(['@' + make_args(tmp_path)])[0] == SHAPE
+
+
+def test_a_fraction_that_does_not_divide_the_span_is_caught(tmp_path):
+    # 7.75 / (1/7) is not a whole number of epochs
+    text = ARGS.replace('-g=100,1000,0.25', '-g=1250,2500,1/7')
+    with pytest.raises(checker.CannotCheck):
+        shape_from(['@' + make_args(tmp_path, text)])
+
+
+def test_a_zero_denominator_is_a_CannotCheck_not_a_traceback(tmp_path):
+    text = ARGS.replace('-g=100,1000,0.25', '-g=1250,2500,1/0')
+    with pytest.raises(checker.CannotCheck):
+        shape_from(['@' + make_args(tmp_path, text)])
+
+
 def test_long_option_names_are_read(tmp_path):
     text = '--Width=60000\n--time_span=2018.75,2026.5\n--grid_spacing=100,1000,0.25\n'
     assert shape_from(['@' + make_args(tmp_path, text)])[0] == SHAPE

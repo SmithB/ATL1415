@@ -65,6 +65,17 @@ def _count(span, spacing, what):
     return int(round(n)) + 1
 
 
+def _spacing(text):
+    """One -g entry, which may be a fraction: monthly runs pass dt as 1/12.
+
+    make_mosaic_jobs.py and ATL15_write2nc.py both read -g this way.
+    """
+    if '/' in text:
+        num, den = [float(v) for v in text.split('/')]
+        return num / den
+    return float(text)
+
+
 def expected_shape(Width, time_span, grid_spacing):
     """
     Derive the dz shape [nx, ny, nt] from the solver's -W, -t and -g values.
@@ -75,13 +86,14 @@ def expected_shape(Width, time_span, grid_spacing):
         raise CannotCheck('-W and -t are both required (pass @<input_args file>)')
     try:
         t0, t1 = [float(t) for t in time_span.split(',')]
-        _, dz_spacing, dt = [float(g) for g in grid_spacing.split(',')]
-    except ValueError:
+        _, dz_spacing, dt = [_spacing(g) for g in grid_spacing.split(',')]
+    except (ValueError, ZeroDivisionError):
         raise CannotCheck(f'cannot read -t={time_span} and -g={grid_spacing}')
     nxy = _count(Width, dz_spacing, '-W / dz spacing')
     nt = _count(t1 - t0, dt, '-t span / dt')
+    dt_text = grid_spacing.split(',')[2]
     derivation = (f'-W={Width:g} / {dz_spacing:g} + 1 = {nxy};  '
-                  f'-t={t0:g},{t1:g}: ({t1:g} - {t0:g}) / {dt:g} + 1 = {nt}')
+                  f'-t={t0:g},{t1:g}: ({t1:g} - {t0:g}) / {dt_text} + 1 = {nt}')
     return [nxy, nxy, nt], derivation
 
 
