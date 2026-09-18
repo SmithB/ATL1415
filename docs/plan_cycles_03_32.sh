@@ -434,13 +434,18 @@ scripts/maap/check_build_id.py \
 #
 #
 # ===========================================================================
-# T9. [NOT STARTED]  Docs, and the other regions.
+# T9. [PARTLY DONE -- howto_MAAP_arctic.sh only, 2026-09-18]  Docs, and the other regions.
 # ===========================================================================
 #   - plan_IS_run.sh: the run it describes becomes the 0331 run; record that
 #     the products were re-made at 0332 and what the counts were.
 #   - plan_lineage_at_solve_time.sh: L6/L7 stop being blocked once T6 runs.
 #   - howto_MAAP_arctic.sh / _GL / _AA: nothing structural -- they read
 #     default_args/latest_release.txt, which T2 repoints.
+#     DONE 2026-09-18 for howto_MAAP_arctic.sh, via plan_monthly_on_maap.sh
+#     M11: status banner now 0332 with complete lineage; step 10's stale
+#     "LINEAGE IS INVALID" note corrected; monthly added as step 10b.
+#     _GL and _AA NOT touched.
+#     The other bullets here are still open.
 #   - GL and AA have never run, so they simply start at 0332; nothing to
 #     re-do, but their queues and masks should be checked against the new
 #     generation before their first fan-out.

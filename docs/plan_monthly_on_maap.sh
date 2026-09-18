@@ -1,8 +1,10 @@
 #! /usr/bin/env bash
 # ===========================================================================
 # PLAN: run the MONTHLY product (dt = 1/12 yr) on MAAP.  IS first.
-# Written 2026-09-18.  TENTATIVE -- NOTHING HERE HAS RUN YET.  Revise as steps
-# land; every step carries its own status tag.
+# Written 2026-09-18.  STATUS 2026-09-18: M0-M11 DONE FOR IS -- the monthly
+# product is written (four ATL15 files in rel006/north_monthly/IS).  OPEN:
+# QM5 (centers with no reference coverage) and QM6 (does it pass Ben's bar).
+# M12 (other regions) not planned.  Every step carries its own status tag.
 # ===========================================================================
 # WHY NOW (Ben, 2026-09-18): "Assuming that the differences from the previous
 # product do not indicate > 10m errors or major gaps, move on to the monthly
@@ -533,11 +535,24 @@ ATL15_write2nc.py @$monthly_dir/input_args_IS.txt > ATL15.log 2>&1
 #
 #
 # ===========================================================================
-# M11. [ADE] [NOT STARTED]  Docs.
+# M11. [ADE] [DONE 2026-09-18]  Docs.
 # ===========================================================================
 #   - howto_MAAP_arctic.sh: a monthly section after step 10, citing M1-M10,
 #     like the discover howto's monthly block.
 #   - plan_cycles_03_32.sh T9 and this file: record what ran.
+# DONE: howto_MAAP_arctic.sh gains step 10b, "Monthly", between 10 and 11 --
+#   lettered, not numbered, so steps 11-12 keep their numbers.  It is the
+#   runnable procedure (a-f) plus the four things this run found: the N_fit
+#   gate, the deterministic no-coverage failure (QM5), the inferred-lags
+#   check, and how to compare with quarterly (raw delta_h, seasonal
+#   difference expected).
+#   ALSO CORRECTED in step 10: its netCDF note still said "LINEAGE IS
+#   INVALID FOR NOW ... each writer prints an INVALID warning".  Stale since
+#   build 61a19af (T6, T8), and it would have made M10's clean log look like
+#   an anomaly.  Now: expect NO INVALID warning; the XO rows' four NOT_SET
+#   attributes are correct.  Status banner updated to match.
+#   plan_cycles_03_32.sh T9: the howto bullet recorded; its other bullets
+#   are not monthly work and were left alone.
 #
 #
 # ===========================================================================

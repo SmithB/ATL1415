@@ -1,9 +1,10 @@
 # howto_MAAP_arctic.sh -- the arctic regions (RA IS CN CS SV) on MAAP
 #
 # ############################################################################
-# ##  STATUS 2026-09-17: IS HAS RUN STEPS 0-10 (plan_IS_run.sh), netCDF    ##
-# ##  with invalid lineage.  Steps 5 and 11 are still NEEDS CODE.  The     ##
-# ##  banner below is the 2026-09-05 original.                              ##
+# ##  STATUS 2026-09-18: IS HAS RUN STEPS 0-10 at cycles 03-32 with       ##
+# ##  COMPLETE lineage (plan_cycles_03_32.sh T5-T8), AND THE MONTHLY        ##
+# ##  PRODUCT, step 10b (plan_monthly_on_maap.sh).  Steps 5 and 11 are      ##
+# ##  still NEEDS CODE.  The banner below is the 2026-09-05 original.       ##
 # ##                                                                        ##
 # ##  TENTATIVE.  Written 2026-09-05 BEFORE any of it has been run end to   ##
 # ##  end -- no ATL1415 tile has been solved on DPS yet.  This is the plan,  ##
@@ -270,17 +271,92 @@ seq 1 $n_tasks | xargs -P 12 -I{} env SLURM_ARRAY_TASK_ID={} bash slurm_run.sh
 # --values also flags all-NaN fields.
 check_mosaic_outputs.py ~/ATL14_processing/runs/${reg}_mosaic --values
 #
-# netCDF: run the two writers directly, in the ADE (IS: 10 s + 15 s; five
+# netCDF: run the two writers directly, in the ADE (IS: 12 s + 18 s; five
 # files).  They need no lineage flags -- as of 28b4f72 they never open
-# ATL11.  LINEAGE IS INVALID FOR NOW: uuid, geoseg, orbit and the XO rgt are
-# 'NOT_SET', and each writer prints an INVALID warning, until the prelim
-# step records those attributes in the tiles (plan_IS_run.sh I9g2).
+# ATL11; the prelim tiles carry each granule's attributes (/meta/lineage,
+# since build 61a19af, plan_lineage_at_solve_time.sh).  EXPECT NO INVALID
+# warning.  One is a real fault: a tile solved on an older build.  The
+# only NOT_SET values are on the ATL11XO rows, in start/end_orbit and
+# start/end_region, which the XO granules do not carry -- that is correct.
 mkdir -p ~/ATL14_processing/runs/${reg}_nc && cd ~/ATL14_processing/runs/${reg}_nc
 ATL14_write2nc.py @$region_dir/input_args_$reg.txt > ATL14.log 2>&1
 ATL15_write2nc.py @$region_dir/input_args_$reg.txt > ATL15.log 2>&1
 # ATL15 writes all four resolutions (1, 10, 20, 40 km) in one call.
 # To open the products with GDAL, use the notebook env: ATL14's GDAL has no
 # netCDF or HDF5 plugin.
+
+
+# ===========================================================================
+# 10b. [ADE+DPS] [OK on IS 2026-09-18, plan_monthly_on_maap.sh M0-M10]  Monthly.
+# ===========================================================================
+# The monthly product (dt 1/12 yr): the SAME four steps as 6-10, with
+# default_args/monthly.txt added and the QUARTERLY ATL14 of the same release,
+# cycles and version as a reference DEM.  Only ATL15 is written.
+# PREREQUISITE: steps 0-10 done for this region -- monthly subtracts the
+# quarterly ATL14 from every point.  No rebuild: the solver already takes a
+# reference file by URI.  Check it anyway before the smoke tile (step 0).
+# IS measured: prelim 496-1071 s at 1.3-4.1 GiB, matched 85-307 s at
+# 1.1-3.9 GiB -- ~3x faster and ~2.3x lighter than quarterly (8x fewer
+# unknowns, the same data), so maap-dps-worker-16gb is ample.
+q_dir=$HOME/ATL14_processing/rel006/north/$reg
+s3_q=s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/north/$reg
+ref=ATL14_${reg}_0332_100m_006_02.nc
+
+# a. Publish the quarterly ATL14 beside the quarterly tiles, and read it back
+#    from the URI the way the solver will (plan M1-M2): pc.grid.mosaic()
+#    .from_list(['$s3_q/$ref'], group='', bounds=..., fields=['h','h_sigma'])
+#    against the local file.  Compare with equal_nan=True -- plain
+#    array_equal says False on NaNs, which is not a difference.
+aws s3 cp $q_dir/$ref $s3_q/
+
+# b. Compose and publish the monthly args (plan M4-M5).  They differ from the
+#    quarterly args in exactly four lines: -g, --dzdt_lags,
+#    --ATL14_reference_file and -b.  No --hemi_suffix line is written; it
+#    only sets the directory, rel006/north_monthly/<reg>.
+setup_ATL1415_region.py default_args/MAAP_dps.txt default_args/latest_release.txt \
+    default_args/$reg.txt default_args/monthly.txt --Hemisphere=1 \
+    --ATL14_reference_file=$s3_q/$ref
+m_dir=$HOME/ATL14_processing/rel006/north_monthly/$reg
+s3_run_m=s3://maap-ops-workspace/ben_smith/ATL1415/run_args/rel006/north_monthly/$reg
+s3_out_m=s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/north_monthly/$reg
+aws s3 cp $m_dir/input_args_$reg.txt $s3_run_m/
+
+# c. Smoke ONE prelim tile, then fan out (plan M6-M7), exactly as step 6 with
+#    --args_url $s3_run_m/input_args_$reg.txt --tile_prefix $s3_out_m and a
+#    _monthly_ tag.  Smoke on the quarterly memory high-water tile.
+#    THE GATE THAT MATTERS: N_fit the same order as that tile's quarterly
+#    N_fit.  An unreadable reference does not raise -- it leaves nothing
+#    valid, and _expand_reference_files guards local paths, not URIs.
+#    check_field_sizes.py reads -g=...,1/12 (plan M3): expect
+#    dz/dz [25, 25, 94] for -W 60000.
+#    EXPECT A FAILED JOB for any center the quarterly ATL14 does not cover:
+#    the reference is all NaN there, and the FIT exits 1 with
+#    "smooth_fit: no valid data".  IS: E1020_N-2580, which also writes no
+#    quarterly tile.  It is deterministic -- do not retry it.  Whether to
+#    skip such centers up front is open (plan QM5).
+
+# d. Matched, from the prelim tiles that EXIST (plan M8), as step 9.
+
+# e. Mosaic, as step 10, with monthly.txt in place of quarterly.txt (plan M9).
+#    No z0 task (skip_z0: the z0 spacing is over 1000 m).  IS: 44 tasks,
+#    74 s at -P 12.  INSPECT THE QUEUE before running: make_mosaic_jobs.py
+#    INFERS the dzdt lags from -t and -g rather than reading --dzdt_lags --
+#    they must come out 1,3,6,12,24,36,48,60,72,84.
+cd ~/ATL14_processing/runs
+make_mosaic_jobs.py -b $m_dir -rr $reg -t 2018.75,2026.5 -e ATL14 \
+    --run_name ${reg}_0332_monthly_mosaic @$HOME/git_repos/ATL1415/default_args/monthly.txt
+cat ${reg}_0332_monthly_mosaic/queue/* | grep -oE "lag[0-9]+" | sort -t g -k2 -n -u
+
+# f. netCDF: ATL15 ONLY (plan M10) -- ATL15_<reg>_0332_1mo_{2.5,10,20,40}km_006_02.nc,
+#    91 epochs.
+ATL15_write2nc.py @$m_dir/input_args_$reg.txt > ATL15.log 2>&1
+#    COMPARING WITH QUARTERLY: raw delta_h IS comparable.  Both are 0 at the
+#    2020 reference with sigma 0, and IS's raw median difference is -0.05 m.
+#    Do NOT difference against the first epoch: it spreads that epoch's
+#    errors across every other.  Expect a systematic SEASONAL difference of
+#    a few tenths of a metre (IS: Apr -0.37 m, Oct +0.31 m) -- monthly
+#    resolves a cycle quarterly smooths -- so many values will exceed 3x
+#    sigma without anything being wrong.
 
 
 # ===========================================================================
