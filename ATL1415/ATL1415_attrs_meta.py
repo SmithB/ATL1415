@@ -311,7 +311,11 @@ def set_time_range(dst, root_info, args):
     # set time attributes
     root_info.update({'time_coverage_start': sUTCtime})
     root_info.update({'time_coverage_end': eUTCtime})
-    root_info.update({'time_coverage_duration': int((datetime_start-datetime_end).seconds)})
+    # duration must agree with the two attributes just written: end minus the
+    # region-offset start, in whole seconds.  .seconds is the within-day part of
+    # a timedelta and drops the days entirely -- use total_seconds().
+    root_info.update({'time_coverage_duration':
+                      int((datetime_end-datetime_start).total_seconds())})
     dst['/METADATA/Extent'].setncattr('rangeBeginningDateTime',sUTCtime)
     dst['/METADATA/Extent'].setncattr('rangeEndingDateTime',eUTCtime)
 

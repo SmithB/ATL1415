@@ -32,7 +32,7 @@
 #      only AT DATA POINTS (z_ref = ref_dem.interp(data.x, data.y)), which is
 #      where the two agree best.
 #      A. Pass; M1 onward.            B. Hold; look at the 427 cells first.
-# AM1:
+# AM1: Pass
 #
 # QM2. time_coverage_duration is wrong in every product the ADE writes
 #      (ATL1415_attrs_meta.py:314; plan_cycles_03_32.sh T8).  Fix it before
@@ -42,13 +42,29 @@
 #      Re-writing the quarterly files takes ~35 s.  Do it BEFORE M1, so the
 #      reference DEM published to the bucket is the final object.
 #      A. Fix now, re-write, then M1.   B. Later; monthly carries the bug too.
-# AM2:
+# AM2: A. Fix now, re-write, then M1
 #
 # QM3. Scope: IS alone first, as the quarterly run did?
 #      RECOMMENDATION: yes.  GL and AA have never run quarterly on MAAP, and a
 #      region's monthly run needs its quarterly ATL14 first (M12).
 #      A. IS only.   B. Name the regions.
-# AM3:
+# AM3: A. IS only. 
+#
+# QM4. [CLOSED 2026-09-18 BY EVIDENCE, not by Ben]  Integer seconds or an ISO
+#      8601 duration string for time_coverage_duration?
+#      I recommended ISO 8601 to Ben on the grounds that CF/NSIDC expect it.
+#      THAT RECOMMENDATION WAS WRONG and is withdrawn.  STATEMENT, from the
+#      code and the released product:
+#        - rel005 (ATL14_IS_0329_100m_005_02.nc), which NSIDC accepted,
+#          carries 2.17e8 -- a NUMBER of seconds (T8, plan_cycles_03_32.sh:433);
+#        - main computes end-start over delta_time, also seconds
+#          (ATL14_attrs_meta.py:217);
+#        - root_info's own default is 0., a float (ATL1415_attrs_meta.py:28);
+#        - the two metadata templates carry the placeholder "SET_BY_PGE",
+#          which fixes no type.
+#      DECIDED: integer seconds, matching the released series.  Ben said "go
+#      ahead with the plan" without picking; the evidence picked for him, and
+#      the change is one line and a ~30 s re-write if he disagrees.
 #
 #
 # ===========================================================================
@@ -104,15 +120,37 @@
 #
 #
 # ===========================================================================
-# M0. [ADE] [BLOCKED: QM1]  Accept the reference DEM.
+# M0. [ADE] [DONE 2026-09-18 -- AM1 "Pass"]  Accept the reference DEM.
 # ===========================================================================
-# Nothing to run.  If AM2 is "fix now", do that first (M0b below), so the
-# file published in M1 is final.
+# ATL14_IS_0332_100m_006_02.nc is the monthly reference DEM.  AM2 was "fix
+# now", so M0b ran first and the file published in M1 is the re-written one.
 #
-# M0b. [ADE] [BLOCKED: QM2]  Fix time_coverage_duration.
-#      (datetime_end - datetime_start).total_seconds(), int, plus a test in
-#      tests/ that the duration of a known span comes out right.  Re-run both
-#      writers into ~/ATL14_processing/runs/IS_0332_nc and re-check.
+# M0b. [ADE] [DONE 2026-09-18]  Fix time_coverage_duration.
+#      FIXED in ATL1415_attrs_meta.py:313-317: int((datetime_end -
+#      datetime_start).total_seconds()), replacing
+#      int((datetime_start-datetime_end).seconds).  Numeric, per QM4.
+#      The duration now agrees with the start and end written beside it --
+#      start + duration == end -- and keeps the region offset that
+#      set_time_range adds to the start, so the three attributes are
+#      self-consistent.
+#      TEST: tests/test_time_coverage.py, 8 cases -- the invariant over
+#      IS/GL/AA, the known 0332 span (236681615 s), the shape of the old bug,
+#      a one-year span, the int type, and the METADATA/Extent mirror.
+#      Suite 108 passed 2 skipped (was 100 passed before these 8).
+#      RE-WRITTEN, into ~/ATL14_processing/runs/IS_0332_nc (logs overwritten):
+#      ATL14_write2nc.py 12 s, ATL15_write2nc.py 18 s, both exit 0, NO INVALID
+#      warning -- lineage still complete.
+#      VERIFIED, ncdump -h diffed against a snapshot of all five headers taken
+#      before the re-write: the ONLY attribute changed is
+#      time_coverage_duration, 54385 -> 236681615, in all five files.  The
+#      rest of each diff is the expected regeneration stamps (date_created,
+#      history, identifier_file_uuid, the per-file uuid).  All five file sizes
+#      are byte-identical to before (9915264, 18117749, 895146, 701363,
+#      638098).
+#      DATA UNCHANGED, re-running T8's own checks against the mosaic:
+#      ATL14 h (3001,4201), finite(h) == finite(z0) & ice_area>0 exactly,
+#      max |h - z0| = 1.219e-4 m (T8 recorded 1.2e-4); ATL15 1 km delta_h
+#      (31,301,421), 31 epochs.
 #
 #
 # ===========================================================================
