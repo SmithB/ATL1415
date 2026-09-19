@@ -2,8 +2,9 @@
 # ===========================================================================
 # PLAN: per-region TILE LISTS drive MAAP submissions, and a no-data prelim fit
 # exits cleanly.  From docs/plan_monthly_on_maap.sh AM5, AM7, AM8.
-# Written 2026-09-18.  TENTATIVE -- written BEFORE the code.  Every step
-# carries its own status tag; revise as each lands.
+# Written 2026-09-18, before the code.  STATUS 2026-09-18: TL0-TL5 DONE in
+# the ADE and tested; TL6 (Ben registers) is next; TL7 (DPS proof) waits on it.
+# Every step carries its own status tag.
 # ===========================================================================
 # WHAT BEN DECIDED (plan_monthly_on_maap.sh, in his words):
 #   AM5: "I have pushed lists of tiles for each region into
@@ -51,7 +52,7 @@
 #
 #
 # ===========================================================================
-# TL1. [ADE] [NOT STARTED -- NEEDS CODE: ATL11_to_ATL15.main]  A no-data prelim FIT exits 0.
+# TL1. [ADE] [DONE 2026-09-18 -- tested locally; DPS proof is TL7]  A no-data prelim FIT exits 0.
 # ===========================================================================
 # A fourth branch in main()'s status chain, beside the I7a one:
 #   args.prelim and calc_error_file is None and
@@ -68,10 +69,15 @@
 # BOUNDARY UNCHANGED: anything that raises -- solver error, OOM, a missing
 #   input -- never reaches the branch and still exits 1 (Ben, 2026-09-16).
 # NO run.sh CHANGE: run.sh:424 then skips the error step and exits 0.
+# DONE: the branch sits after I7a's in main(); remove_tile_and_report's
+#   docstring now names both callers.  tests/test_no_data_exit.py, 10 cases.
+#   MUTATION-CHECKED: against the solver WITHOUT the branch, exactly the 3
+#   new-branch cases fail (exit 1 -- E1020's monthly behaviour) and the 7
+#   boundary and unchanged-path cases pass; with it, all 10 pass.
 #
 #
 # ===========================================================================
-# TL2. [ADE] [NOT STARTED -- NEEDS CODE: submit_MAAP_jobs.py]  --tile_list.
+# TL2. [ADE] [DONE 2026-09-18 -- tested; dry-run verified on real data]  --tile_list.
 # ===========================================================================
 # --tile_list <file>, exactly one of it and --xy_file required.  Each line
 # E<x>_N<y>.h5 -> (x*1000, y*1000) meters.  Same rule as read_centers: every
@@ -84,10 +90,23 @@
 #   investigation; either way submitting its matched job only fails on DPS.
 #   RECOMMENDATION, from the standing rule to stop and name the problem
 #   rather than work around it.
+# DONE: read_tile_list, s3_names (one listing per region; a FAILED listing
+#   exits 2 rather than returning an empty set, which would read as "every
+#   tile missing"), missing_prelim_tiles.  --tile_list and --xy_file are a
+#   required mutually exclusive pair.  tests/test_submit_tile_list.py, 17.
+# VERIFIED LIVE, --dry-run, nothing submitted, no ledger written:
+#   - matched from ATL1415/resources/IS/40km_tile_list.txt against the
+#     monthly prefix: 28 centers, pre-flight passes;
+#   - matched for E1020 (region_files/IS_i7a_xy.txt): REFUSED, exit 2,
+#     naming E1020_N-2580.h5;
+#   - prelim from AA/40km_tile_list.txt: REFUSED, exit 2, at line 8945,
+#     'field_sizes' -- see OPEN.
+#   The real IS list parses to exactly the 28 centers of
+#   region_files/IS_0332_monthly_matched_xy.txt (a test asserts it).
 #
 #
 # ===========================================================================
-# TL3. [ADE] [NOT STARTED -- NEEDS CODE: scripts/maap/prune_tile_list.py]  Prune.
+# TL3. [ADE] [DONE 2026-09-18 -- tested; dry run matches both IS ledgers]  Prune.
 # ===========================================================================
 scripts/maap/prune_tile_list.py <prelim_ledger> ATL1415/resources/<region>/40km_tile_list.txt [--write]
 # For each PRELIM row of the ledger:
@@ -108,10 +127,21 @@ scripts/maap/prune_tile_list.py <prelim_ledger> ATL1415/resources/<region>/40km_
 #   reference coverage, so quarterly prunes it first.  The script prunes on
 #   any prelim ledger, as AM5 says, and prints which ledger caused each
 #   removal.
+# DONE: scripts/maap/prune_tile_list.py; the rule is classify(), a pure
+#   function.  Also refuses a non-prelim ledger, a list with non-tile lines,
+#   and rows with no tile_prefix.  Exit 0 clean / 1 investigate / 2 refused.
+#   tests/test_prune_tile_list.py, 10.
+# VERIFIED LIVE, dry run (list unchanged), against the IS list:
+#   - IS_0332_prelim_jobs.csv: 28 kept; E1020_N-2580 "no data, already
+#     absent" -- its quarterly job SUCCEEDED with no tile (I7a).  Exit 0.
+#   - IS_0332_monthly_prelim_jobs.csv: 28 kept; E1020_N-2580 INVESTIGATE --
+#     job 9266c3d7 FAILED on the pre-TL1 build, so it is not pruned.  Exit 1.
+#   Both are the answers the rule predicts.  --write not yet used on a real
+#   list: the IS list needs no change.
 #
 #
 # ===========================================================================
-# TL4. [ADE] [NOT STARTED]  Tests.
+# TL4. [ADE] [DONE 2026-09-18 -- suite 156 passed, 2 skipped (was 119)]  Tests.
 # ===========================================================================
 #   - TL1: main()'s status chain with the fit monkeypatched -- no-data prelim
 #     fit -> 0 and no tile; the same for matched -> 1; I7a's error-step branch
@@ -125,16 +155,22 @@ scripts/maap/prune_tile_list.py <prelim_ledger> ATL1415/resources/<region>/40km_
 #
 #
 # ===========================================================================
-# TL5. [ADE] [NOT STARTED]  Docs.
+# TL5. [ADE] [DONE 2026-09-18]  Docs.
 # ===========================================================================
 #   - howto_MAAP_arctic.sh steps 6, 9 and 10b: --tile_list in place of the
 #     region_files center lists; prune after each prelim fan-out.
 #   - region_files/*_prelim_xy.txt and *_matched_xy.txt are RETIRED for
 #     fan-outs (AM8), NOT deleted: the IS plans cite them as what ran.
+# DONE in howto_MAAP_arctic.sh: step 6 submits --tile_list; step 8 prunes
+#   (dry run, then --write, then commit); step 9 submits matched from the
+#   same list and explains the pre-flight; step 10b uses the same list for
+#   monthly and replaces its "expect a failed job" note with the TL1
+#   behaviour.  Tagged UNTESTED on DPS where they are.
+#   howto_MAAP_GL.sh and _AA.sh NOT touched -- GL and AA have not run.
 #
 #
 # ===========================================================================
-# TL6. [BEN] [NOT STARTED]  Register, then check_build_id MATCH.
+# TL6. [BEN] [READY 2026-09-18 -- Ben told to register]  Register, then check_build_id MATCH.
 # ===========================================================================
 # TL1 is solver code, so it reaches DPS only through a rebuild.  The checkout
 # must be clean and pushed first (register_algorithm.py refuses otherwise).
@@ -156,5 +192,10 @@ scripts/maap/prune_tile_list.py <prelim_ledger> ATL1415/resources/<region>/40km_
 # OPEN
 # ===========================================================================
 #   - SV has no list.  Not needed until SV runs.
+#   - AA/40km_tile_list.txt line 8945 is 'field_sizes' -- not a tile: the
+#     report subdirectory's name, so the list was likely made from a listing
+#     of a prelim/ directory.  Every submit or prune from that file refuses
+#     at that line, by design.  Left for Ben: it is his file, and AA is not
+#     running.  The other five lists are clean (every line a tile name).
 #   - AA has two lists (200km, 40km); which one gates which step is not
 #     settled here.  Not needed until AA runs.

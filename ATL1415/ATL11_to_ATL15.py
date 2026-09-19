@@ -966,7 +966,9 @@ def remove_tile_and_report(filename, why):
     Used when the uncertainty calculation has no data to work with -- either no
     valid data at all, or none left after masking: the fit that ran before it DID
     have data and wrote a file, but no errors can ever be added to it, so
-    publishing it would put a tile with no sigma fields into the mosaic.  The report goes with it -- fetch_tiles.py collects
+    publishing it would put a tile with no sigma fields into the mosaic.  Also
+    used when the prelim FIT has no data (docs/plan_tile_lists.sh TL1), where
+    the fit wrote nothing and this normally finds nothing to remove.  The report goes with it -- fetch_tiles.py collects
     prelim/field_sizes/*_report.json, and a report naming a deleted tile would
     outlive the tile and be counted against it.
     """
@@ -1416,6 +1418,22 @@ def main():
         # still exits 1.  Silencing those would turn a visible failed job into
         # a silently missing tile, which is worse than the bug being fixed.
         remove_tile_and_report(args.out_name, 'no data for the uncertainty step')
+        status=0
+    elif args.prelim and args.calc_error_file is None and (
+            S.get('data') is None or S['data'].size == 0):
+        # THE PRELIM FIT HAS NO DATA -- the same two smooth_fit exits as the
+        # branch above, one step earlier.  The case that forced it: a monthly
+        # tile whose reference DEM has no coverage, so every point is invalid
+        # (E1020_N-2580, job 9266c3d7).  Ben, 2026-09-18
+        # (docs/plan_tile_lists.sh TL1): exit 0, and prune the center from its
+        # region's tile list -- prune_tile_list.py counts "successful job, no
+        # tile", which only works if a failed job still means a real fault.
+        # run.sh then sees no tile, skips the error step and exits 0.
+        # PRELIM ONLY: a matched fit reads its own prelim tile, which had
+        # data, so finding none there is unexpected and still exits 1.
+        # Nothing is written on this path; the removal is for a stale tile or
+        # report that must not outlive the no-data verdict.
+        remove_tile_and_report(args.out_name, 'no data for the prelim fit')
         status=0
 
     print(f"done with {args.out_name}")
