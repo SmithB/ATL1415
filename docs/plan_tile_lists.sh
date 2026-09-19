@@ -24,7 +24,7 @@
 # BACKGROUND.  STATEMENT, 2026-09-18, by reading the code named.
 # ===========================================================================
 # THE LISTS (738bbd2): ATL1415/resources/<region>/40km_tile_list.txt for AA,
-#   CN, CS, GL, IS, RA; AA also has 200km_tile_list.txt; there is NO SV list.
+#   CN, CS, GL, IS, RA; AA also has 200km_tile_list.txt.  SV added in e73b47a.
 #   One tile file name per line, E<x km>_N<y km>.h5.  The IS list is 28
 #   names, set-equal to the 28 prelim tiles that exist, E1020_N-2580 absent.
 # THE FAILURE THIS FIXES: the monthly E1020_N-2580 prelim job (9266c3d7).
@@ -191,7 +191,8 @@ scripts/maap/prune_tile_list.py <prelim_ledger> ATL1415/resources/<region>/40km_
 # ===========================================================================
 # OPEN
 # ===========================================================================
-#   - SV has no list.  Not needed until SV runs.
+#   - SV list ADDED by Ben 2026-09-19 (e73b47a): 70 names, all tile names,
+#     all distinct.  Every region now has a 40 km list.
 #   - FIXED 2026-09-19 at Ben's request: AA/40km_tile_list.txt line 8945 was
 #     'field_sizes' -- the report subdirectory's name, so the list was likely
 #     made from a listing of a prelim/ directory.  Removed; nothing else
