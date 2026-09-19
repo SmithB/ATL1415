@@ -2,8 +2,10 @@
 # ===========================================================================
 # PLAN: per-region TILE LISTS drive MAAP submissions, and a no-data prelim fit
 # exits cleanly.  From docs/plan_monthly_on_maap.sh AM5, AM7, AM8.
-# Written 2026-09-18, before the code.  STATUS 2026-09-19: TL0-TL6 DONE --
-# built, tested, registered, MATCH at b8cb659.  TL7 (DPS proof) needs Ben's go.
+# Written 2026-09-18, before the code.  STATUS 2026-09-19: TL0-TL7 DONE --
+# built, tested, registered (MATCH at b8cb659), proven on DPS.  Ben then
+# judged a prune on every run overkill: TL8 PROPOSES flagging no-data tiles in
+# fetch_tiles.py instead, pending QT1-QT3.  Nothing of TL8 is written.
 # Every step carries its own status tag.
 # ===========================================================================
 # WHAT BEN DECIDED (plan_monthly_on_maap.sh, in his words):
@@ -185,7 +187,7 @@ scripts/maap/prune_tile_list.py <prelim_ledger> ATL1415/resources/<region>/40km_
 #
 #
 # ===========================================================================
-# TL7. [DPS] [READY -- needs Ben's go; build is MATCH]  Prove TL1 on DPS.
+# TL7. [DPS] [DONE 2026-09-19 -- TL1 PROVEN on DPS]  Prove TL1 on DPS.
 # ===========================================================================
 # Resubmit the monthly E1020_N-2580 prelim with --xy_file
 # region_files/IS_i7a_xy.txt (one center, 1020000 -2580000; the file the I7a
@@ -193,6 +195,89 @@ scripts/maap/prune_tile_list.py <prelim_ledger> ATL1415/resources/<region>/40km_
 # calculation" in the log, no tile at the prefix.  The same proof I7a had.
 # Then prune_tile_list.py on that ledger should propose removing E1020 --
 # which the IS list has already dropped, so it must report "not in list".
+# RESULT (Ben: "Go ahead with TL7"): ledger IS_0332_monthly_tl7_jobs.csv,
+#   tag IS_rel006_0332_monthly_tl7.  Dry-run first; E1020_N-2580 tile and
+#   report verified ABSENT from the monthly prefix before submitting.
+#   SUCCESSFUL on b8cb659, 267 s, 0.74 GiB -- the same N_ATL11 267958 as the
+#   failed 9266c3d7; only a fit step ran.  Log (dps_output/.../2026/09/19/
+#   15/10/47/999091/_stderr.txt), in order:
+#     smooth_fit: no valid data
+#     done with /AOTcgV/output/prelim/E1020_N-2580.h5
+#     === rusage [fit]: elapsed 250.1 s, peak RSS 0.74 GiB ..., exit 0
+#     no fit written for E1020_N-2580.h5 (insufficient data); skipping error calculation
+#   The job's output holds only logs and JSON, no .h5; no E1020_N-2580 tile
+#   on the monthly prefix.  fetch_tiles.py --dry-run: "no tile".
+#   prune_tile_list.py (dry run): "no data, already absent: E1020_N-2580.h5",
+#   exit 0.  Every expectation met.
+#
+#
+# ===========================================================================
+# TL8. [ADE] [PROPOSED 2026-09-19 -- TENTATIVE, waits on QT1-QT3]  Flag, don't prune.
+# ===========================================================================
+# Ben, 2026-09-19: "having a prune_tile_list script that runs with every run is
+# overkill.  It would be better to save a list of tiles that should be pruned,
+# and the user can delete those as part of cleanup after a run is complete."
+#
+# WHAT A RUN PRINTS ABOUT A NO-DATA TILE TODAY.  STATEMENT, from the real IS
+# ledgers, 2026-09-19:
+#   - the DPS job's own log: the fit case prints "no fit written for <name>
+#     (insufficient data); skipping error calculation" (run.sh:425); the
+#     uncertainty case prints "no tile to upload for <name> (removed: no data
+#     for the uncertainty step)".  One log per job, on the bucket: nobody
+#     reads 29, let alone 8944.
+#   - collect_jobs.py: CANNOT tell.  Quarterly E1020 (uncertainty no-data)
+#     reads "successful ... N_fit 349, 3 iters" -- the same shape as a real
+#     tile; the only hint is a 4 s error step.  The TL7 fit case reads N_fit
+#     "-".  Flagging both would mean reading log lines.
+#   - fetch_tiles.py: ALREADY KNOWS.  fetch_row's verdict "no tile" is
+#     exactly "successful job, no tile anywhere" -- the rule, for BOTH
+#     no-data cases, from status and a listing, no log.  But it prints only
+#       IS_rel006_0332_prelim_E1020_N-2580 no tile
+#     among 29 rows plus "1  no tile" in the counts, deliberately keeps it
+#     out of NOT FETCHED (":203 'no tile' is a normal outcome"), and saves
+#     nothing.
+#   - check_field_sizes.py: silent -- it checks the tiles that exist.
+#
+# RECOMMENDATION -- fetch_tiles.py is the place:
+#   a. with --step prelim, every "no tile" row's name is written to
+#      <region_dir>/prelim/no_data_tiles.txt, one E<x>_N<y>.h5 per line --
+#      the resource list's own format -- MERGED with what is already there
+#      (sorted, unique), so a retry ledger or a re-fetch never drops names
+#      an earlier fetch found;
+#   b. the summary names the file and says what it is for;
+#   c. with --step matched, "no tile" becomes UNEXPECTED (a matched no-data
+#      fit exits 1 since TL1) and moves into NOT FETCHED.
+#   CLEANUP, after the run, by the user: remove those names from
+#   ATL1415/resources/<region>/40km_tile_list.txt and commit, e.g.
+#     grep -vxFf $region_dir/prelim/no_data_tiles.txt $tile_list > t && mv t $tile_list
+#   No rebuild: fetch_tiles.py runs in the ADE.  The file sits beside the
+#   region's tiles, so quarterly (north/IS) and monthly (north_monthly/IS)
+#   keep separate ones.
+#
+# QT1. [OPEN -- for Ben]  Flag in fetch_tiles.py as above?
+#        A. Yes.   B. Somewhere else (say where).
+# AT1:
+#
+# QT2. [OPEN -- for Ben]  Retire prune_tile_list.py (TL3)?  RECOMMENDATION:
+#      yes -- delete the script, its tests and howto step 8's two lines; git
+#      keeps it.  Keeping an unused second route invites the two to drift.
+#        A. Delete it.   B. Keep it as an optional tool.
+# AT2:
+#
+# QT3. [OPEN -- for Ben]  THE MATCHED PRE-FLIGHT (TL2) CONFLICTS WITH CLEANUP
+#      AFTER THE RUN.  It REFUSES matched if any listed center has no prelim
+#      tile -- so a run that finds a new no-data center cannot reach matched
+#      until the list is cleaned, which is mid-run.
+#        A. Skip and print: submit matched only for listed centers whose
+#           prelim tile exists, and name the skipped ones -- the rule IS
+#           followed by hand.  A FAILED prelim is still loud where it
+#           already is: collect_jobs shows "failed", fetch_tiles lists it
+#           under NOT FETCHED.
+#        B. Keep refusing, but let submit read no_data_tiles.txt and skip
+#           only those -- anything else missing still refuses.
+#      RECOMMENDATION: A.  B keeps a refusal for a case two other tools
+#      already report, at the cost of a second input to get right.
+# AT3:
 #
 #
 # ===========================================================================
