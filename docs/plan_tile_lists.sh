@@ -2,8 +2,8 @@
 # ===========================================================================
 # PLAN: per-region TILE LISTS drive MAAP submissions, and a no-data prelim fit
 # exits cleanly.  From docs/plan_monthly_on_maap.sh AM5, AM7, AM8.
-# Written 2026-09-18, before the code.  STATUS 2026-09-18: TL0-TL5 DONE in
-# the ADE and tested; TL6 (Ben registers) is next; TL7 (DPS proof) waits on it.
+# Written 2026-09-18, before the code.  STATUS 2026-09-19: TL0-TL6 DONE --
+# built, tested, registered, MATCH at b8cb659.  TL7 (DPS proof) needs Ben's go.
 # Every step carries its own status tag.
 # ===========================================================================
 # WHAT BEN DECIDED (plan_monthly_on_maap.sh, in his words):
@@ -170,15 +170,22 @@ scripts/maap/prune_tile_list.py <prelim_ledger> ATL1415/resources/<region>/40km_
 #
 #
 # ===========================================================================
-# TL6. [BEN] [READY 2026-09-18 -- Ben told to register]  Register, then check_build_id MATCH.
+# TL6. [BEN] [DONE 2026-09-19 -- VERDICT MATCH at b8cb659]  Register, then check_build_id MATCH.
 # ===========================================================================
 # TL1 is solver code, so it reaches DPS only through a rebuild.  The checkout
 # must be clean and pushed first (register_algorithm.py refuses otherwise).
 # Never while a fan-out is queued.  Then check_build_id.py --expect <sha>.
+# DONE 2026-09-19: Ben registered from b8cb659 (clean, pushed; the tip after
+#   the AA fix and his SV list -- the solver is 889266d's).  Build ran
+#   14:47:23Z -> 14:50:18Z.  check_build_id.py (monthly IS args, 16gb queue)
+#   --expect b8cb659: VERDICT MATCH -- build stamp, live git in the image and
+#   CWL commit all b8cb659, tree_state=clean, maap_py=5.1.0, maap_pgt=set.
+#   Log: dps_output/atl1415_tile_solve_1786/on_s3/2026/09/19/15/04/13/185092/.
+#   TL1 IS DEPLOYED.  From here on, a no-data prelim fit is a successful job.
 #
 #
 # ===========================================================================
-# TL7. [DPS] [NOT STARTED -- needs Ben's go]  Prove TL1 on DPS.
+# TL7. [DPS] [READY -- needs Ben's go; build is MATCH]  Prove TL1 on DPS.
 # ===========================================================================
 # Resubmit the monthly E1020_N-2580 prelim with --xy_file
 # region_files/IS_i7a_xy.txt (one center, 1020000 -2580000; the file the I7a
