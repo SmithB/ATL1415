@@ -6,10 +6,15 @@ driver scripts `docs/howto_AA.sh` (Antarctica), `docs/howto_arctic.sh` /
 `docs/howto_GL.sh` (Arctic regions). It is meant as a map of the moving parts,
 not a replacement for the ATBD.
 
+It describes the discover/SLURM pipeline, which is still the production path.
+The same pipeline on NASA MAAP -- tiles solved as DPS jobs, everything else in
+the ADE -- is summarized in [Running on MAAP](#running-on-maap) at the end.
+
 ## Big picture
 
-Processing happens on a per-**tile** basis (100 km x 100 km, or other
-`tile_spacing`/width combos), in two passes:
+Processing happens on a per-**tile** basis -- 60 km tiles on 40 km centers
+(`-W` and `--tile_spacing` in the release file; Antarctica's near-pole half
+uses 44 km tiles) -- in two passes:
 
 1. **`prelim`** — initial least-squares surface fit (z0 + dz/dt at several
    scales) to all ATL11 data in a tile.
@@ -126,16 +131,16 @@ It replaces `notebooks/check_tiles.ipynb`, which is not in the repo.
 Same `make_ATL1415_queue.py matched ...` → `setup_slurm_run.py` →
 `sbatch` sequence, now using the `matched` step and prior `prelim` outputs.
 
-### 7. Mosaicking 100 km tiles into a regional grid
+### 7. Mosaicking the tiles into a regional grid
 Two paths, chosen by region size:
 
 - **Direct** (`scripts/make_mosaic_jobs`, or `make_mosaic_jobs.py`): builds a
   SLURM job that runs `make_mosaic.py` (from the `pointCollection`
-  dependency) directly over all 100 km tiles per field group (z0, dz,
+  dependency) directly over all the tiles per field group (z0, dz,
   `dzdt_lag<N>`, `avg_dz_<scale>`, ...), producing regional HDF5s like
   `z0.h5`, `dz.h5`, `dzdt_lag1.h5`.
 - **Two-stage, for large domains like Antarctica** (`make_200km_tiles.py`
-  then `make_200km_to_mosaic_jobs(.py|.sh)`): first blends 100 km tiles into
+  then `make_200km_to_mosaic_jobs(.py|.sh)`): first blends the tiles into
   intermediate 200 km tiles (with computed pad/feather based on tile
   overlap), written under `200km_tiles/<field>/`, then a second mosaic pass
   combines those 200 km tiles into the final regional HDF5s. Sigma
@@ -225,7 +230,7 @@ setup_ATL1415_region.py default_args/discover.txt default_args/latest_release.tx
 
 make_ATL1415_queue.py prelim <ATL14_root>/rel005/north/GL/input_args_GL.txt
 setup_slurm_run.py --run_name GL_prelim -q 1415_queue_GL_prelim.txt --time 04:00:00 -j 7 -e ATL14
-# sbatch GL_prelim/slurm_run.sh, then inspect with check_tiles.ipynb
+# sbatch GL_prelim/slurm_run.sh, then: scripts/check_field_sizes.py <region_dir>/prelim @<region_dir>/input_args_GL.txt
 
 make_ATL1415_queue.py matched <ATL14_root>/rel005/north/GL/input_args_GL.txt
 setup_slurm_run.py --run_name GL_matched -q 1415_queue_GL_matched.txt --time 04:00:00 -j 8 -e ATL14
@@ -235,3 +240,33 @@ scripts/make_mosaic_jobs <ATL14_root>/rel005/north/GL
 ATL14_write2nc.py @<ATL14_root>/rel005/north/GL/input_args_GL.txt
 ATL15_write2nc.py @<ATL14_root>/rel005/north/GL/input_args_GL.txt
 ```
+
+## Running on MAAP
+
+The same prelim -> matched -> mosaic -> netCDF pipeline runs on NASA MAAP.
+Iceland has run it end to end, quarterly and monthly (2026-09); the other
+regions have not yet.  The procedures are `docs/howto_MAAP_arctic.sh` (RA IS
+CN CS SV, in `howto_arctic.sh`'s order), `docs/howto_MAAP_GL.sh` and
+`docs/howto_MAAP_AA.sh`.  What changes:
+
+- **Configuration**: the location layer is `default_args/MAAP_dps.txt` in place
+  of `discover.txt`.  Masks, geoid and ATL11 index are read from the bucket;
+  ATL11 and the previous product come from NASA Earthdata Cloud (CMR).
+- **Tile centers**: `ATL1415/resources/<region>/40km_tile_list.txt`, not
+  `make_ATL1415_queue.py`.
+- **Tile solves**: one DPS job per tile, submitted from the ADE by
+  `scripts/maap/submit_MAAP_jobs.py --tile_list ...`, which writes a ledger of
+  job ids.  Each job puts its tile at a fixed bucket prefix (`--tile_prefix`),
+  where matched jobs find their neighbours.  DPS runs the *registered build*,
+  not the working copy: `register_algorithm.py`, then
+  `scripts/maap/check_build_id.py` must say MATCH.
+- **Watching and collecting**: `scripts/maap/collect_jobs.py <ledger>` (status,
+  time, peak memory, point counts, the build each tile ran) replaces
+  `slurm_run_status.py`; `scripts/maap/fetch_tiles.py <ledger> <region_dir>`
+  copies the tiles into the ADE and saves any no-data centers to
+  `<region_dir>/prelim/no_data_tiles.txt`, which come out of the tile list
+  after the run.
+- **Mosaic and netCDF** run in the ADE: the `slurm_run.sh` that
+  `make_mosaic_jobs.py` writes is plain bash, so it runs locally with
+  `SLURM_ARRAY_TASK_ID` set; the netCDF writers are called directly.
+

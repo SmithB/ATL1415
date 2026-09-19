@@ -1,6 +1,14 @@
 # plan_IS_run.sh -- THE ICELAND (IS) RUN: prelim and matched, end to end
 #
 # ############################################################################
+# ##  STATUS 2026-09-19: THIS RUN (cycles 03-31) IS SUPERSEDED.  Its        ##
+# ##  products were deleted and IS was RE-MADE at cycles 03-32, with        ##
+# ##  complete lineage: prelim 28/29 and matched 28/28 on DPS, mosaic 41/41 ##
+# ##  and five netCDFs *_0332_*_006_02.nc (plan_cycles_03_32.sh T5-T8),     ##
+# ##  then the MONTHLY product (plan_monthly_on_maap.sh), both accepted by  ##
+# ##  Ben.  The procedure now lives in docs/howto_MAAP_arctic.sh.  Below    ##
+# ##  is the record of the first run and the decisions it made.             ##
+# ##                                                                        ##
 # ##  STATUS 2026-09-17: RUN THROUGH netCDF.  prelim 28/29 and matched      ##
 # ##  28/28 on DPS, mosaic 41/41 and all five netCDFs in the ADE -- with   ##
 # ##  lineage INVALID by design (I9g2).  IS WILL BE RE-RUN COMPLETELY once ##
@@ -928,6 +936,8 @@ check_mosaic_outputs.py $mosaic_run --values
 #          netCDF step reads them from the tiles and never opens ATL11.  An
 #          attribute the tiles do not carry is marked INVALID in the output.
 #          PLANNED 2026-09-17: docs/plan_lineage_at_solve_time.sh.
+#          DONE: L1-L7 of that plan; every 0332 product carries complete
+#          lineage (plan_cycles_03_32.sh T8), no INVALID warning.
 #          Lands before the IS re-run -- which is ALSO blocked: CMR now lists
 #          ATL11 0332_007_05 only, not the 0331_007_04 IS ran on (that plan,
 #          top).  That transition is docs/plan_cycles_03_32.sh.

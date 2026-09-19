@@ -64,7 +64,10 @@ the entire error-code table is one row:
 
 INFER: at a fan-out of thousands of multi-hour tiles, exit 143 will be a routine, non-zero
 fraction of the failures and is *not* a code bug.  `check_MAAP_jobs.py` (Q10) should special-case
-exit code 143 as "requeue, do not triage", separately from real exceptions.  DPS does not
+exit code 143 as "requeue, do not triage", separately from real exceptions.
+(2026-09-19: check_MAAP_jobs.py was never built -- collect_jobs.py watches and failed centers
+are resubmitted by hand with `--xy_file`; the point stands for whoever does that, and see
+howto_MAAP_staging.sh S7: 143 is also what a walltime kill returns.)  DPS does not
 retry automatically as far as the docs say (SILENT on retries).
 
 ### 0.4  The platform ceiling is 4,000 concurrent jobs, and per-member job limits are an org setting
@@ -693,6 +696,8 @@ Recorded so nobody searches for them again.
     reports; vCPU counts per queue.
 12. A named contact, form or ticket URL for requesting an organizational queue.
 13. Max in-flight jobs per user; what the ~10 jobs/hr throttle does when exceeded.
+    (2026-09-18: not seen at 29 jobs -- IS's all ran at once, finishing within ~45 min.
+    Still unknown at thousands.)
 14. DPS error codes other than 143; the `triaged_job` bucket layout; retry semantics.
 15. Bulk cancel; requeue; job priority at submit time.
 16. Where DPS build logs live or any API to fetch them.

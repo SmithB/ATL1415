@@ -273,7 +273,7 @@
 #
 #
 # ===========================================================================
-# L8. [NOT STARTED]  Docs.
+# L8. [DONE 2026-09-19]  Docs.
 # ===========================================================================
 #   - plan_IS_run.sh I9g2: LONG TERM -> points here, then DONE.
 #   - howto_MAAP_arctic.sh step 10: drop the "lineage is invalid for now" note
@@ -283,6 +283,10 @@
 #     written, link it from the blocker note at the top of this file.
 #   - pre_rel006 is NOT touched (AL5): "Do not change pre_rel006.  This will
 #     come in with on_s3" -- including the XO end_rgt fix already on on_s3.
+# DONE: plan_IS_run.sh I9g2 points here and says done; howto_MAAP_arctic.sh
+#   step 10 says to expect no INVALID warning (2026-09-18, then the rewrite of
+#   2026-09-19); the cycles 03-32 plan exists (plan_cycles_03_32.sh).
+#   pre_rel006 untouched.
 #
 #
 # ===========================================================================

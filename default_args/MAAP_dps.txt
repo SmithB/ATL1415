@@ -46,7 +46,7 @@
 # derivation assumes the local '<...>/index/GeoIndex.h5' layout).
 #
 # CROSSOVERS ARE STILL READ HERE.  --ATL11xo_version, which comes from the
-# release args file (rel_006_0331.txt: 007_cycle_03_30_v03), is the cloud switch:
+# release args file (rel_006_0332.txt: 007_cycle_03_30_v03), is the cloud switch:
 # read_ATL11 builds the 200 km tiling schema in memory and resolves the ATL11XO
 # tiles through CMR, so nothing is staged and no schema file exists.  Omit
 # --ATL11xo_version and a cloud run is along-track only -- which is what every

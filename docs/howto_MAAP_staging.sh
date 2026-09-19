@@ -242,7 +242,11 @@ EOF
 # ===========================================================================
 # NOT OPTIONAL FOR PRODUCTION, and it has days of latency -- ask early.
 # Public queues are throttled to ~10 jobs/hr, which makes a per-tile fan-out of
-# thousands of jobs infeasible.  Queues visible to this account (getQueues(),
+# thousands of jobs infeasible.
+# MEASURED 2026-09-18, and not borne out at small scale: IS's 29 monthly prelim
+# jobs, submitted within one minute, all finished within ~45 min at 8-18 min
+# each.  Whether that holds at GL's 1483 or AA's 9184 jobs is unknown, so the
+# request may still be needed -- it is no longer known to be.  Queues visible to this account (getQueues(),
 # 2026-09-04): maap-dps-sandbox, maap-dps-worker-8gb, -16gb, -32gb, -64gb,
 # maap-dps-worker-32vcpu-64gb.
 #
@@ -268,6 +272,8 @@ EOF
 # effort).  Worker-hours are fit + error, the prelim step only:
 #   Antarctica   9143 jobs  (8725 at 60 km, 418 at 44 km)   ~8,600 h
 #   Greenland    1486 jobs  (60 km)                          ~1,260 h
+# (The tile lists Ben added 2026-09-18 give AA 9184 jobs -- 8724 at 60 km, 460
+# at 44 km -- and GL 1483; the estimate predates them and moves by <1%.)
 # THE MATCHED STEP IS NOT MEASURED.  If it costs about what prelim does, a
 # full run is roughly double: ~17,000 h AA, ~2,500 h GL.  Not counted: queue
 # wait, image pulls, and the ADE-side 200 km / mosaic / netCDF steps.
@@ -540,7 +546,8 @@ EOF
 # AND NOTE THE EXIT CODE: 143.  The docs' one-row error table says 143 means a
 # spot interruption, "re-run the job(s) later".  Here it was a walltime kill.
 # The two are indistinguishable by exit code alone, which matters for
-# check_MAAP_jobs.py: requeueing a job that exceeded its walltime just burns
+# resubmitting failures (check_MAAP_jobs.py was never built; failed centers go
+# back with --xy_file, howto_MAAP_arctic.sh step 5): requeueing a job that exceeded its walltime just burns
 # the queue again, forever.  Distinguish them on the log -- a walltime kill
 # says "Soft time limit (Ns) exceeded" -- or on elapsed time against the
 # queue's limit, not on 143 by itself.

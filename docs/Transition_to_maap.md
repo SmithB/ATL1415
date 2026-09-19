@@ -1,5 +1,12 @@
 # Transition to MAAP
 
+> **STATUS 2026-09-19.** Iceland has run end to end on MAAP, quarterly and monthly, at
+> cycles 03-32 (docs/plan_IS_run.sh, plan_cycles_03_32.sh, plan_monthly_on_maap.sh,
+> plan_tile_lists.sh).  The three MAAP howtos were rewritten from that run the same day;
+> they, not this file, are the procedure.  This file is the decision record: the Q&A
+> below stands as answered, and the work lists near the end are updated to say what
+> became of each item.
+
 ## QUESTIONNAIRE -- input needed before the MAAP howtos can be written
 Raised 2026-09-04 while planning docs/howto_MAAP_<region>.sh (see "Porting the howto
 workflows to MAAP" at the end of this file for the plan these questions come out of).
@@ -9,6 +16,9 @@ STILL OPEN as of the 2026-09-05 pass, and only this one:
   Q4  -- A: is still "TBD", but it is NOT waiting on you: Q18 turned it into a measurement.
         As of 2026-09-06 it is no longer blocked either -- the ADE env was built that day
         (staging S1), so all that remains is to time one z0 field group.
+        MEASURED FOR IS 2026-09-16 (plan_IS_run.sh I9d): the z0 task took 41.7 s at
+        0.25 GiB peak, and all 41 mosaic tasks 59 s at -P 12.  For AA and GL the
+        answer is still an extrapolation, not a measurement (howto_MAAP_AA.sh step 11).
 Everything else (Q1-Q3, Q5-Q27) is answered.  What remains in this file is work items, not
 questions.
 
@@ -527,13 +537,19 @@ and s3fs ignores it.
 WORK ITEMS.
   [ ] REPORT UPSTREAM to pyTMD: writing a process-wide os.environ key at import time is a side
       effect on every other library in the process, and GDAL is the one that notices.
-  [ ] The fix is unverified on a DPS worker.  The worker authenticates differently from the
+  [X] The fix is unverified on a DPS worker.  The worker authenticates differently from the
       ADE, so the 403 could have a second cause there; the smoke test (S7) is what settles it.
+      SETTLED: every IS job and the whole AA transect read their masks from the bucket on
+      DPS workers without a 403.
 
 ## TBDs: 
 [ ] Request an organizational DPS queue from the MAAP platform team.
     Public queues are throttled to ~10 jobs/hr, so a per-tile fan-out of thousands of jobs is
     infeasible until this is resolved.  Days of latency -- ask early.
+    MEASURED 2026-09-18, and it does not bear the ~10 jobs/hr out: IS's 29 monthly prelim
+    jobs, submitted within one minute, all finished within ~45 min at 8-18 min each -- they
+    ran largely in parallel.  Behaviour at GL's 1483 or AA's 9184 jobs is still unknown,
+    so the request may still be needed; it is no longer known to be.
     - queues visible to this account (getQueues(), 2026-09-04): maap-dps-sandbox,
       maap-dps-worker-8gb, -16gb, -32gb, -64gb, maap-dps-worker-32vcpu-64gb.
       algorithm_config.yml currently names -32gb; -32vcpu-64gb is probably the better
@@ -1203,6 +1219,11 @@ variants (Q2).  howto_ATL11.sh says explicitly that it has no MAAP counterpart (
 ### Code that has to exist before the howtos are runnable
 Listed in the order they block the sequence above.
 
+[ X ] SUPERSEDED 2026-09-18 -- the MAAP howtos no longer run make_ATL1415_queue.py.  Tile
+    centers come from ATL1415/resources/<region>/40km_tile_list.txt, which
+    submit_MAAP_jobs.py --tile_list reads (plan_tile_lists.sh).  THE BUGS BELOW ARE
+    UNFIXED and matter only if something needs the script in the cloud again.
+    As first written:
 [ ] make_ATL1415_queue.py HAS NOT HAD THE CLOUD-PATH TREATMENT setup_ATL1415_region.py
     got, and it is step 3 of every howto.  Four separate problems:
     - line 134, `os.path.isfile(defaults['--ATL11_index'])`: always False for a URI, and
@@ -1217,6 +1238,8 @@ Listed in the order they block the sequence above.
       rather than shell command lines.  The parse already exists as
       setup_ATL1415_run.py's xy0_re if a separate converter is preferred.
 
+[ X ] SUPERSEDED 2026-09-18 by the same tile lists: GL (1483) and AA (8944) no longer
+    derive their centers from a mask.  As first written:
 [ ] THE 1 km MASK.  See Q6 -- as things stand neither ice sheet can produce a tile list
     from the v4.1 masks.  This gates step 3 just as hard as the item above.  Q6 chooses
     (b) an explicit --grid_mask_file, (c) a frozen tile list in region_files/, and building the
@@ -1228,6 +1251,10 @@ Listed in the order they block the sequence above.
     columns unchanged, Q11's --rate and --max_in_flight present.  Built from
     submit_AA_queue.py, which STAYS as the AA-only two-width submitter.  Tested
     against the deployed process; not yet run for real.
+    SINCE: it has run every IS fan-out, and gained --tile_list and a matched step that
+    skips, by name, centers with no prelim tile (plan_tile_lists.sh).  For production AA
+    the howto splits the list by half and uses THIS submitter, not submit_AA_queue.py,
+    because only this one passes --tile_prefix.
     THE MONITOR IS NOT SEPARATE after all: scripts/maap/collect_jobs.py (the
     renamed collect_AA_queue.py) already reports status, cost and build per
     tile from the ledger, which is what check_MAAP_jobs.py was for.  What it
@@ -1236,6 +1263,10 @@ Listed in the order they block the sequence above.
     ALSO NEW, and the other half of "collect": scripts/maap/fetch_tiles.py
     moves the solved .h5 tiles out of DPS output into the region tree (QI3).
 
+[ X ] NOT BUILT, AND NOT NEEDED so far: collect_jobs.py is the monitor, and a failed
+    center is resubmitted with --xy_file and a new ledger (howto_MAAP_arctic.sh step 5).
+    Whether GL's 1483 tiles want an automated --requeue is a question for the GL run.
+    As first written:
 [ ] scripts/check_MAAP_jobs.py --requeue, for GL.  THE OGC CALLS EXIST for
     one region: scripts/maap/submit_AA_queue.py, collect_jobs.py and ogc_jobs.py
     (howto_MAAP_ogc O7) -- build these from them.  The submitter loops the xy list, applies a rate /
@@ -1243,6 +1274,10 @@ Listed in the order they block the sequence above.
     slurm_run_status.py analogue (Q10).  This is the biggest new piece and the one that
     makes the howtos executable rather than aspirational.
 
+[ X ] NOT NEEDED (plan_IS_run.sh I9d): the slurm_run.sh these tools write is plain bash --
+    the #SBATCH lines are comments -- so `SLURM_ARRAY_TASK_ID=N bash slurm_run.sh` does the
+    same queue -> running -> done bookkeeping locally, run in parallel with xargs -P.
+    As first written:
 [ ] scripts/run_queue_local.sh.  make_mosaic_jobs.py, make_200km_tiles.py,
     make_200km_to_mosaic_jobs.py and the to-nc wrappers all still emit
     <run_dir>/queue/task_N plus a slurm_run.sh, and there is no sbatch in the ADE.  A
@@ -1252,6 +1287,9 @@ Listed in the order they block the sequence above.
     slurm_run_status.py keep working unchanged on those directories.  One small script
     that unblocks steps 8 and 9 of all three howtos.
 
+[ X ] DONE as the tile_prefix job input (plan_IS_run.sh I7, QI4/QI5): a prelim job writes
+    <tile_prefix>/prelim/E<x>_N<y>.h5 and a matched job reads its neighbours from there.
+    As first written:
 [ ] Deterministic tile output on S3 (Q9), then the matched neighbourhood (Q8).  These
     two are one problem: matched cannot be fanned out until a job can name its
     neighbours' prelim tiles by key.
@@ -1385,7 +1423,8 @@ of each region howto and the rebuild rule in staging S5.  It has already bitten 
      Smoke-test one sandbox DPS job (staging S7).  It settles five things that no amount
      of reading can, including whether submitJob works on this account at all, and it is
      what sizes the production queue.        -> unblocks GL step 5, AA 6, arctic 6
-  2. make_ATL1415_queue.py cloud fixes + --xy_out, and IMPLEMENT the 1 km mask recipe
+  2. [SUPERSEDED 2026-09-18 by the tile lists]
+     make_ATL1415_queue.py cloud fixes + --xy_out, and IMPLEMENT the 1 km mask recipe
      that Q6/Q16 already answer (nothing there is open).  The cloud fixes now have a
      named bug: os.path.isfile() at lines 109 (--tide_mask_file) and 214 (the arctic
      _40km.tif) is False for an s3:// URI, so the arctic branch raises OSError on a
@@ -1393,12 +1432,13 @@ of each region howto and the rebuild rule in staging S5.  It has already bitten 
      is GL/AA ONLY -- the arctic .db branch reads _40km.tif, already staged and already
      rasterized all-touched, which is the Q16 (b) rule.
                                              -> GL step 4, AA 4-5, arctic 5
-  3. submit_MAAP_jobs.py + check_MAAP_jobs.py.  The biggest new piece.
+  3. [DONE; the monitor is collect_jobs.py] submit_MAAP_jobs.py + check_MAAP_jobs.py.
                                              -> GL steps 5-6, AA 6-7, arctic 6-7
-  4. Deterministic output prefix, then the matched neighbourhood (Q9 then Q8).  These are
+  4. [DONE as --tile_prefix, 2026-09-15/16]
+     Deterministic output prefix, then the matched neighbourhood (Q9 then Q8).  These are
      one problem: matched cannot fan out until a job can name its neighbours by key.
                                              -> GL steps 7 and 9
-  5. run_queue_local.sh.                     -> GL steps 10-11, AA 10/12/13, arctic 10
+  5. [NOT NEEDED -- slurm_run.sh runs locally as it is] run_queue_local.sh.
   6. [DONE 2026-09-06] The arctic .db mask check (Q12) passes; what it turned up was the
      pyTMD AWS_NO_SIGN_REQUEST bug, now fixed.  The previous-product items (Q27 W1/W3/W4 and
      W5) are done too -- W1 was a silent-failure bug, and it did not wait for a production
@@ -1406,3 +1446,6 @@ of each region howto and the rebuild rule in staging S5.  It has already bitten 
 
 The howtos are now the thing to revise as each of these lands, rather than the thing to
 write at the end.
+  7. [DONE 2026-09-19] Rewrite the three MAAP howtos from the IS run.  Step numbers cited
+     above ("GL step 5", "arctic 10") refer to the 2026-09-05 versions; the current files
+     are renumbered.

@@ -18,7 +18,8 @@ setup_ATL1415_run.py --run_name GL"_prelim" -q 1415_queue_GL"_prelim.txt" --time
 
 # generate the tile-size report  # this is now taken care of in ATL11_to_ATL15.py
 #make_field_size_report.py /discover/nobackup/projects/icesat2/ATL14_processing/rel006/north/GL/prelim
-# now look at the tile sizes using the check_tiles.ipynb notebook in ATL1415. 
+# now check the tile sizes (check_tiles.ipynb is not in the repo; this replaces it):
+# scripts/check_field_sizes.py /discover/nobackup/projects/icesat2/ATL14_processing/rel006/north/GL/prelim @/discover/nobackup/projects/icesat2/ATL14_processing/rel006/north/GL/input_args_GL.txt
 
 # setup matched
 make_ATL1415_queue.py matched /discover/nobackup/projects/icesat2/ATL14_processing/rel006/north/GL/input_args_GL.txt

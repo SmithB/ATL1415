@@ -434,7 +434,7 @@ scripts/maap/check_build_id.py \
 #
 #
 # ===========================================================================
-# T9. [PARTLY DONE -- howto_MAAP_arctic.sh only, 2026-09-18]  Docs, and the other regions.
+# T9. [DONE 2026-09-19 for the docs; the other regions are their own howtos]  Docs, and the other regions.
 # ===========================================================================
 #   - plan_IS_run.sh: the run it describes becomes the 0331 run; record that
 #     the products were re-made at 0332 and what the counts were.
@@ -446,6 +446,12 @@ scripts/maap/check_build_id.py \
 #     "LINEAGE IS INVALID" note corrected; monthly added as step 10b.
 #     _GL and _AA NOT touched.
 #     The other bullets here are still open.
+#   DONE 2026-09-19: plan_IS_run.sh's banner records the 0332 re-run; its I9g2
+#     points at the finished lineage work; howto_MAAP_GL.sh and _AA.sh were
+#     rewritten from the IS run, and howto_MAAP_arctic.sh again in discover's
+#     order.  The last bullet -- check GL's and AA's queues and masks against
+#     the new generation before their first fan-out -- is now those howtos'
+#     smoke steps (GL 3, AA 4); every mask they name is staged.
 #   - GL and AA have never run, so they simply start at 0332; nothing to
 #     re-do, but their queues and masks should be checked against the new
 #     generation before their first fan-out.
