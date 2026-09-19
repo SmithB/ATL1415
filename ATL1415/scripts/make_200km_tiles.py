@@ -60,7 +60,51 @@ def make_fields(dzdt_lags, t_res=0.25, skip_z0=False ):
     #print(fields)
     return fields, time_ranges
 
-def make_200km_tiles(region_dir, tile_W=200e3):
+def read_200km_tile_list(filename):
+    """
+    Read a 200km-tile center list: one "<x> <y>" pair per line, in meters.
+
+    Every non-blank line must parse; one that does not is an error rather
+    than a skip, since a dropped center is a silently missing 200 km tile.
+    """
+    xyc = []
+    with open(filename) as fh:
+        for n, line in enumerate(fh, 1):
+            if not line.strip():
+                continue
+            try:
+                x, y = map(float, line.split())
+            except ValueError:
+                raise ValueError(f'{filename}:{n}: not an "<x> <y>" pair: {line.strip()!r}')
+            xyc.append([x, y])
+    return xyc
+
+
+def select_200km_tiles(xyc, min_xy=None, max_xy=None):
+    """
+    Keep the 200km-tile centers inside a partition's xy limits.
+
+    The limits mean what make_ATL1415_queue.py's do for the 40 km tiles:
+    min_xy keeps a center whose max(|x|, |y|) is at least min_xy, and max_xy
+    keeps one whose |x| and |y| are both at most max_xy.  So each Antarctic
+    partition passes the limits it used for its tiles -- the 60 km half
+    --min_xy 360000, the 44 km half --max_xy 440000 -- and, because 200 km
+    centers sit at odd multiples of 100 km, the two halves split exactly at
+    400 km, which is the near_pole_radius setup_AA_sectors.py uses to decide
+    which half each sector draws a 200 km tile from.
+    """
+    keep = []
+    for xy in xyc:
+        extent = np.max(np.abs(xy))
+        if min_xy is not None and extent < min_xy:
+            continue
+        if max_xy is not None and extent > max_xy:
+            continue
+        keep.append(xy)
+    return keep
+
+
+def make_200km_tiles(region_dir, tile_W=200e3, tile_list_file=None):
     """
     Find or build the list of 200km-tile centers for a region.
 
@@ -71,6 +115,11 @@ def make_200km_tiles(region_dir, tile_W=200e3):
     tile_W : float, optional
         width of the tiles into which the small tiles are grouped, in meters.
         The default is 200e3.
+    tile_list_file : str, optional
+        the CANONICAL list of 200km-tile centers (for Antarctica,
+        ATL1415/resources/AA/200km_tile_list.txt).  When given it is used as
+        is, and region_dir's own 200km_tile_list.txt is neither read nor
+        written.  Filter it with select_200km_tiles().
 
     Returns
     -------
@@ -78,6 +127,9 @@ def make_200km_tiles(region_dir, tile_W=200e3):
         list of [x, y] tile-center coordinates.
 
     """
+    if tile_list_file is not None:
+        print("reading 200km tile centers from "+tile_list_file)
+        return read_200km_tile_list(tile_list_file)
     print("looking for tiles for "+region_dir)
     tile_ctr_file=os.path.join(region_dir,'200km_tile_list.txt')
 
@@ -127,6 +179,9 @@ def main():
     parser.add_argument('--name', type=str)
     parser.add_argument('--lags_only', action='store_true')
     parser.add_argument('--environment','-e', type=str, default='ATL14', help="environment that each job will activate")
+    parser.add_argument('--tile_list_file', type=str, help="canonical list of 200km-tile centers, \"<x> <y>\" per line; overrides <region_dir>/200km_tile_list.txt")
+    parser.add_argument('--min_xy', type=float, help="keep 200km tiles whose max(|x|,|y|) >= min_xy (the partition's own limit)")
+    parser.add_argument('--max_xy', type=float, help="keep 200km tiles whose |x| and |y| are both <= max_xy (the partition's own limit)")
     args, _ =parser.parse_known_args()
 
     region_dir=args.region_dir
@@ -169,7 +224,12 @@ def main():
                                     t_res = args.grid_spacing[2],
                                     skip_z0 = args.skip_z0)
 
-    xyc=make_200km_tiles(region_dir)
+    xyc=make_200km_tiles(region_dir, tile_list_file=args.tile_list_file)
+    n_all=len(xyc)
+    xyc=select_200km_tiles(xyc, min_xy=args.min_xy, max_xy=args.max_xy)
+    print(f"{len(xyc)} of {n_all} 200km tiles are inside min_xy={args.min_xy}, max_xy={args.max_xy}")
+    if len(xyc) == 0:
+        raise SystemExit("make_200km_tiles.py: no 200km tile is inside this partition's xy limits")
 
     tile_dir_200km=os.path.join(region_dir,'200km_tiles')
     if not os.path.isdir(tile_dir_200km):

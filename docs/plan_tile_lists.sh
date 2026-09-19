@@ -325,5 +325,8 @@ scripts/maap/prune_tile_list.py <prelim_ledger> ATL1415/resources/<region>/40km_
 #     made from a listing of a prelim/ directory.  Removed; nothing else
 #     changed.  The list is now 8944 names, all tile names, all distinct, and
 #     read_tile_list parses it.  All six 40 km lists are now clean.
-#   - AA has two lists (200km, 40km); which one gates which step is not
-#     settled here.  Not needed until AA runs.
+#   - SETTLED 2026-09-19 (Ben): AA's 40km list gates the tile submissions,
+#     split per half by the halves' xy limits (howto_MAAP_AA.sh step 3); its
+#     200km_tile_list.txt is the CANONICAL list of 200 km tiles for BOTH
+#     partitions, each keeping those inside its own xy limits
+#     (make_200km_tiles.py --tile_list_file --min_xy/--max_xy; AA step 9).

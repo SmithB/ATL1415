@@ -42,8 +42,8 @@
 #      four sectors A1-A4, and a mosaic and netCDF per sector.  WHETHER THE
 #      ADE CAN MOSAIC AA IN REASONABLE TIME IS UNMEASURED (IS's mosaic was
 #      trivial; AA is ~300x the tiles).
-#   f. MONTHLY IS BLOCKED on a reference DEM that spans four sector files
-#      (step 16, NEEDS CODE).
+#   f. MONTHLY IS ONE PARTITION (60 km everywhere, as on discover), and is
+#      BLOCKED on a reference DEM that spans four sector files (step 16).
 
 conda activate ATL14
 cd ~/git_repos/ATL1415
@@ -195,26 +195,33 @@ done
 
 
 # ===========================================================================
-# 9. [ADE] [UNTESTED]  200 km tiles, each half.
+# 9. [ADE] [UNTESTED on data; setup verified 2026-09-19]  200 km tiles, each half.
 # ===========================================================================
-# make_200km_tiles.py writes tile_run_<name>/ in the current directory, with
-# queue/task_N and a runner named slurm_mos_run (not slurm_run.sh).  Plain
-# bash, like the IS mosaic's, so it runs locally.
+# BOTH HALVES READ THE CANONICAL LIST, ATL1415/resources/AA/200km_tile_list.txt
+# (413 centers), AND EACH KEEPS THE TILES INSIDE ITS OWN XY LIMITS -- the same
+# limits its 40 km tiles use (Ben, 2026-09-19).  Because 200 km centers sit at
+# odd multiples of 100 km, that splits the list at 400 km: 397 tiles to the
+# 60 km half, 16 to the 44 km half, none to both, none to neither -- EXACTLY
+# the split setup_AA_sectors.py (step 10) uses to draw each sector's 200 km
+# tiles, so each half builds precisely what it will be asked for.
+# (make_200km_tiles.py --tile_list_file / --min_xy / --max_xy; with a list
+# given, <region_dir>/200km_tile_list.txt is neither read nor written.)
+# It writes tile_run_<name>/ in the current directory, with queue/task_N and a
+# runner named slurm_mos_run (not slurm_run.sh).  Plain bash, like the IS
+# mosaic's, so it runs locally.
 cd $runs
-make_200km_tiles.py $south/AA AA -t $tspan
-make_200km_tiles.py $south/AA_44km AA --name AA_south --W 44000 --spacing 40000 -t $tspan
+l200=$repo/ATL1415/resources/AA/200km_tile_list.txt
+make_200km_tiles.py $south/AA AA -t $tspan --tile_list_file $l200 --min_xy 360000
+make_200km_tiles.py $south/AA_44km AA --name AA_south --W 44000 --spacing 40000 -t $tspan \
+    --tile_list_file $l200 --max_xy 440000
+# each prints "397 of 413" / "16 of 413" -- and builds 397 / 16 tasks
 for d in tile_run_AA tile_run_AA_south; do
     ( cd $d; seq 1 $(ls queue | wc -l) | xargs -P 8 -I{} env SLURM_ARRAY_TASK_ID={} bash slurm_mos_run )
 done
 cd $repo
-# Each half's 200 km tile centers come from <region_dir>/200km_tile_list.txt
-# if it exists, else are derived from that half's prelim tiles and written
-# there.  QUESTION for Ben: ATL1415/resources/AA/200km_tile_list.txt (413
-# centers) is in that format but matches NEITHER half: it contains every cell
-# derivable from the 40 km list (411 for both halves together, 407 for the
-# 60 km half) plus 2 more.  Which region directory is it for?  Until
-# answered, each half derives its own.
-# -P 8 is a guess: UNTIMED on AA.
+# VERIFIED 2026-09-19, in scratch directories: both commands against the real
+# list produce 397 and 16 tasks and write no per-directory list.  Nothing has
+# been mosaicked: -P 8 is a guess, UNTIMED on AA.
 
 
 # ===========================================================================
@@ -280,9 +287,12 @@ done
 # ===========================================================================
 # 16. [ADE+DPS] [NEEDS CODE: a multi-file --ATL14_reference_file]  Monthly.
 # ===========================================================================
-# As IS monthly (arctic 11-18) for both halves, with south_monthly in every
-# path and setup_AA_sectors.py --near_pole_radius 0 -- EXCEPT the reference
-# DEM.  AA's quarterly ATL14 is FOUR sector files, and the solver takes ONE:
+# ONE PARTITION, NOT TWO -- as in discover's howto_AA.sh: monthly composes only
+# input_args_AA.txt (60 km everywhere, no --min_xy, no 44 km half), so the
+# whole unsplit tile list is submitted once, south_monthly is in every path,
+# make_200km_tiles.py takes the canonical 200 km list with NO limits (all
+# 413), and setup_AA_sectors.py --near_pole_radius 0 draws every tile from it.
+# Otherwise as IS monthly (arctic 11-18) -- EXCEPT the reference DEM.  AA's quarterly ATL14 is FOUR sector files, and the solver takes ONE:
 # discover passes a glob ("rel005_0329/south/A*/ATL14_*_0329_100m_005_02.nc"),
 # and a URI with a wildcard RAISES (by design: a glob over s3:// used to
 # return nothing and silently edit away every point).  The error says "Name

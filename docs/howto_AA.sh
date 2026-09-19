@@ -28,9 +28,12 @@ make_ATL1415_queue.py matched /discover/nobackup/projects/icesat2/ATL14_processi
 setup_ATL1415_run.py --run_name AA"_matched_south" -q 1415_queue_AA"_matched.txt" --time 04:00:00  -e ATL14
 
 # mosaic the northern tiles:
-make_200km_tiles.py  ~/shared/ATL14_processing/rel006/south/AA AA -t 2018.75,2026.5
+# Both halves take their 200 km tiles from the canonical list and keep those inside their own
+# xy limits (the same limits as the prelim queues) -- 397 north, 16 south, split at 400 km as
+# setup_AA_sectors.py expects.  Paths are from the repo root.
+make_200km_tiles.py  ~/shared/ATL14_processing/rel006/south/AA AA -t 2018.75,2026.5 --tile_list_file ATL1415/resources/AA/200km_tile_list.txt --min_xy 360000
 # then run the slurm_run in tile_run_AA
-scripts/make_200km_tiles.py  ~/shared/ATL14_processing/rel006/south/AA_44km AA --name AA_south --W 44000 --spacing 40000 -t 2018.75,2026.5
+scripts/make_200km_tiles.py  ~/shared/ATL14_processing/rel006/south/AA_44km AA --name AA_south --W 44000 --spacing 40000 -t 2018.75,2026.5 --tile_list_file ATL1415/resources/AA/200km_tile_list.txt --max_xy 440000
 
 # setup the four antarctic sectors:
 setup_AA_sectors.py ~/shared/ATL14_processing/rel006/south
@@ -60,7 +63,8 @@ setup_ATL1415_run.py --run_name AAm_matched -q 1415_queue_AA_matched.txt --time 
 
 # tiles:
 
-make_200km_tiles.py  ~/shared/ATL14_processing/rel006/south_monthly/AA AA -t 2018.75,2026.5 @/discover/nobackup/projects/icesat2/ATL14_processing/rel006/south_monthly/AA/input_args_AA.txt
+# monthly is one partition: the whole canonical list, no limits
+make_200km_tiles.py  ~/shared/ATL14_processing/rel006/south_monthly/AA AA -t 2018.75,2026.5 @/discover/nobackup/projects/icesat2/ATL14_processing/rel006/south_monthly/AA/input_args_AA.txt --tile_list_file ATL1415/resources/AA/200km_tile_list.txt
 
 setup_AA_sectors.py ~/shared/ATL14_processing/rel006/south_monthly --near_pole_radius 0
 
