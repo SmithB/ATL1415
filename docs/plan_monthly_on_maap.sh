@@ -3,7 +3,8 @@
 # PLAN: run the MONTHLY product (dt = 1/12 yr) on MAAP.  IS first.
 # Written 2026-09-18.  STATUS 2026-09-18: M0-M11 DONE FOR IS AND ACCEPTED
 # (AM6: pass) -- four ATL15 files in rel006/north_monthly/IS, local and on
-# the bucket.  QM5 answered; its follow-ups QM7 and QM8 are OPEN.
+# the bucket.  QM5, QM7, QM8 answered; the work they set is planned in
+# docs/plan_tile_lists.sh.
 # M12 (other regions) not planned.  Every step carries its own status tag.
 # ===========================================================================
 # WHY NOW (Ben, 2026-09-18): "Assuming that the differences from the previous
@@ -407,7 +408,7 @@ scripts/maap/submit_MAAP_jobs.py --xy_file region_files/IS_0332_monthly_smoke_xy
 #   script, and the list change is committed for Ben to see, not edited by
 #   hand.
 #
-# QM7. [OPEN -- for Ben]  AM5 says "B", but describes list maintenance.  B was
+# QM7. [ANSWERED 2026-09-18 -- B, both]  AM5 says "B", but describes list maintenance.  B was
 #      the SOLVER change: make a no-data FIT exit 0 as the error step already
 #      does (I7a), which needs a rebuild and your registration.  Which did
 #      you mean?
@@ -421,9 +422,9 @@ scripts/maap/submit_MAAP_jobs.py --xy_file region_files/IS_0332_monthly_smoke_xy
 #      2026-09-16 decision intended for the error step, and the prune rule is
 #      simply "successful job, no tile".  Cost: one rebuild and registration,
 #      best timed before the next region's first fan-out, never during one.
-# AM7:
+# AM7: B. Both.  The solver change AND the lists.
 #
-# QM8. [OPEN -- for Ben]  Should the resource lists DRIVE MAAP submissions,
+# QM8. [ANSWERED 2026-09-18 -- A]  Should the resource lists DRIVE MAAP submissions,
 #      replacing region_files/<region>_prelim_xy.txt?  Today
 #      submit_MAAP_jobs.py takes --xy_file ("x y" centers), and the IS run
 #      used region_files/IS_prelim_xy.txt -- 29 centers, E1020 included.
@@ -434,7 +435,9 @@ scripts/maap/submit_MAAP_jobs.py --xy_file region_files/IS_0332_monthly_smoke_xy
 #      RECOMMENDATION: A.  Pruning after a prelim failure only has an effect
 #      if the list gates PRELIM -- under B the pruned center is submitted
 #      again every run, and matched already builds from the tiles that exist.
-# AM8:
+# AM8:  A. Yes, for prelim AND matched
+#   PLANNED 2026-09-18, AM5 + AM7 + AM8 together, in docs/plan_tile_lists.sh
+#   (TL0-TL7).  This file no longer tracks that work.
 #
 #
 # ===========================================================================
