@@ -192,10 +192,10 @@ scripts/maap/prune_tile_list.py <prelim_ledger> ATL1415/resources/<region>/40km_
 # OPEN
 # ===========================================================================
 #   - SV has no list.  Not needed until SV runs.
-#   - AA/40km_tile_list.txt line 8945 is 'field_sizes' -- not a tile: the
-#     report subdirectory's name, so the list was likely made from a listing
-#     of a prelim/ directory.  Every submit or prune from that file refuses
-#     at that line, by design.  Left for Ben: it is his file, and AA is not
-#     running.  The other five lists are clean (every line a tile name).
+#   - FIXED 2026-09-19 at Ben's request: AA/40km_tile_list.txt line 8945 was
+#     'field_sizes' -- the report subdirectory's name, so the list was likely
+#     made from a listing of a prelim/ directory.  Removed; nothing else
+#     changed.  The list is now 8944 names, all tile names, all distinct, and
+#     read_tile_list parses it.  All six 40 km lists are now clean.
 #   - AA has two lists (200km, 40km); which one gates which step is not
 #     settled here.  Not needed until AA runs.
