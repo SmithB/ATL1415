@@ -1,10 +1,9 @@
 #! /usr/bin/env bash
 # ===========================================================================
 # PLAN: run the MONTHLY product (dt = 1/12 yr) on MAAP.  IS first.
-# Written 2026-09-18.  STATUS 2026-09-18: M0-M11 DONE FOR IS -- the monthly
-# product is written (four ATL15 files in rel006/north_monthly/IS, local AND
-# on the bucket since 2026-09-18, M10 PUBLISHED).  OPEN:
-# QM5 (centers with no reference coverage) and QM6 (does it pass Ben's bar).
+# Written 2026-09-18.  STATUS 2026-09-18: M0-M11 DONE FOR IS AND ACCEPTED
+# (AM6: pass) -- four ATL15 files in rel006/north_monthly/IS, local and on
+# the bucket.  QM5 answered; its follow-ups QM7 and QM8 are OPEN.
 # M12 (other regions) not planned.  Every step carries its own status tag.
 # ===========================================================================
 # WHY NOW (Ben, 2026-09-18): "Assuming that the differences from the previous
@@ -385,7 +384,57 @@ scripts/maap/submit_MAAP_jobs.py --xy_file region_files/IS_0332_monthly_smoke_xy
 #      not cover will fail monthly the same way, and GL and AA have many
 #      sparse edge tiles.  A pre-flight check turns a predictable failed job
 #      into a center that is simply never submitted.
-# AM5:
+# AM5:  B. I have pushed lists of tiles for each region into ATL1415/resources/{region} in the on_s3 branch.  If any tiles fail for lack of data on the prelim step, they should be deleted from this list.  
+#
+# READING AM5 (2026-09-18).  STATEMENT, from 738bbd2 (pulled, fast-forward):
+#   ATL1415/resources/<region>/40km_tile_list.txt for AA, CN, CS, GL, IS, RA,
+#   plus AA/200km_tile_list.txt.  NO SV list.  Format: one tile file name per
+#   line (E1020_N-2420.h5) -- the names make_ATL1415_queue.py's
+#   --tile_list_file already reads.  On discover that option filters ONLY the
+#   matched step (make_ATL1415_queue.py:272-274); prelim is not filtered.
+#   IS/40km_tile_list.txt is 28 names, set-equal to the 28 prelim tiles that
+#   exist in BOTH rel006/north/IS and rel006/north_monthly/IS.  E1020_N-2580
+#   is ALREADY absent, so for IS the pruning AM5 asks for is done and
+#   nothing needs to change.
+#   What AM5 leaves open is QM7 and QM8, below.
+#   ASSUMED, correct if wrong: "fail for lack of data" means the solve found
+#   no data -- the fit-step exit (E1020 monthly, exit 1) or the error-step
+#   exit (E1020 quarterly, exit 0 with no tile).  NOT a crash, an OOM or a
+#   MAAP staging failure (E1220_N-2460's api timeout, T7): those stay in the
+#   list and get investigated.  One list per region serves quarterly AND
+#   monthly: a center with no quarterly tile has no monthly reference
+#   coverage, so the quarterly run prunes it first.  Pruning is done by a
+#   script, and the list change is committed for Ben to see, not edited by
+#   hand.
+#
+# QM7. [OPEN -- for Ben]  AM5 says "B", but describes list maintenance.  B was
+#      the SOLVER change: make a no-data FIT exit 0 as the error step already
+#      does (I7a), which needs a rebuild and your registration.  Which did
+#      you mean?
+#        A. Lists only.  No solver change; a no-data fit stays a failed job
+#           (exit 1), is pruned, and is never submitted again.
+#        B. Both.  The solver change AND the lists.
+#      RECOMMENDATION: B.  With A, a no-data fit and a real crash both exit
+#      1, so telling which to prune means reading every failed job's log for
+#      "smooth_fit: no valid data" -- and a crash misread as no-data would be
+#      pruned silently.  With B, exit 1 again means a real fault, as your
+#      2026-09-16 decision intended for the error step, and the prune rule is
+#      simply "successful job, no tile".  Cost: one rebuild and registration,
+#      best timed before the next region's first fan-out, never during one.
+# AM7:
+#
+# QM8. [OPEN -- for Ben]  Should the resource lists DRIVE MAAP submissions,
+#      replacing region_files/<region>_prelim_xy.txt?  Today
+#      submit_MAAP_jobs.py takes --xy_file ("x y" centers), and the IS run
+#      used region_files/IS_prelim_xy.txt -- 29 centers, E1020 included.
+#        A. Yes, for prelim AND matched: submit_MAAP_jobs.py gains a
+#           --tile_list option that reads the resource list; the
+#           region_files center lists retire.
+#        B. Matched only, as on discover; prelim stays on region_files.
+#      RECOMMENDATION: A.  Pruning after a prelim failure only has an effect
+#      if the list gates PRELIM -- under B the pruned center is submitted
+#      again every run, and matched already builds from the tiles that exist.
+# AM8:
 #
 #
 # ===========================================================================
@@ -532,7 +581,8 @@ ATL15_write2nc.py @$monthly_dir/input_args_IS.txt > ATL15.log 2>&1
 #      in those 6 cells the products genuinely disagree beyond their error
 #      bars -- so the cells are named above if you want to look first.
 #        A. Pass; M11 and done.     B. Hold; look at the 6 cells first.
-# AM6:
+# AM6: A. Pass; M11 and done.
+#   CLOSED 2026-09-18.  The IS monthly product is accepted as written.
 #
 # M10 PUBLISHED 2026-09-18 (Ben: "Please publish the monthly files"; the plan
 #   had not asked for it).  The four ATL15 files went to
