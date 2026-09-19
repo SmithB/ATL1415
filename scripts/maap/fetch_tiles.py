@@ -42,10 +42,19 @@ those is right, and the summary says which layout each tile actually came
 from.  If matched tiles turn up under <prefix>/matched/ instead, nothing here
 needs changing -- that is the third place tried.
 
-A SUCCESSFUL JOB WITH NO TILE IS NORMAL, not an error: ATL11_to_ATL15 returns
-0 without writing anything when a tile has too little data, and run.sh exits 0
-on that path without running the error step.  Those rows are reported as
-'no tile' and counted separately from failures.
+A SUCCESSFUL PRELIM JOB WITH NO TILE MEANS NO DATA, not an error: the fit
+(docs/plan_tile_lists.sh TL1) or the uncertainty step (plan_IS_run.sh I7a)
+found no data, exited 0 and left no tile.  Those rows get the verdict
+'no tile', counted apart from failures -- AND THEIR NAMES ARE SAVED to
+    <region_dir>/prelim/no_data_tiles.txt
+one E<x>_N<y>.h5 per line, the format of ATL1415/resources/<region>/
+40km_tile_list.txt, merged with what the file already holds (sorted, unique),
+so a retry ledger or a second fetch never drops a name an earlier one found.
+Nothing prunes the tile list automatically: after the run, remove those names
+from it and commit (Ben, 2026-09-19; plan_tile_lists.sh TL8).  --dry-run
+writes nothing and says what it would add.
+A MATCHED job with no tile is NOT normal -- since TL1 a matched fit with no
+data exits 1 -- so there 'no tile' is listed under NOT FETCHED.
 
 THE TILE NAME IS DERIVED FROM THE LEDGER, not from whatever is on the bucket,
 and then required to match: 'E%d_N%d.h5' % (x0/1e3, y0/1e3), truncated toward
@@ -65,6 +74,7 @@ Usage:
   --any-status   try jobs that are not 'successful' too (they rarely have
                  products; a failed job's prefix is under triaged_job/).
 """
+NO_DATA_FILE = 'no_data_tiles.txt'
 import argparse
 import csv
 import os
@@ -127,6 +137,25 @@ def candidates(prefix, step, name):
             (f'{prefix}/output/{step}/{name}', f'output/{step}/')]
 
 
+def record_no_data(path, names, dry_run=False):
+    """
+    Merge `names` into the no-data list at `path`; return the names it adds.
+
+    Sorted and unique, so the file is the union of every fetch into this
+    region directory and re-running a fetch changes nothing.
+    """
+    have = set()
+    if os.path.isfile(path):
+        with open(path) as fh:
+            have = {line.strip() for line in fh if line.strip()}
+    added = sorted(set(names) - have)
+    if added and not dry_run:
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, 'w') as fh:
+            fh.writelines(f'{name}\n' for name in sorted(have | set(names)))
+    return added
+
+
 def fetch_row(maap, row, args):
     """One ledger row -> (verdict, bytes fetched)."""
     ident = row.get('identifier', '?')
@@ -182,7 +211,7 @@ def main():
         sys.exit(2)
 
     maap = MAAP(maap_host=os.environ.get('MAAP_API_HOST', 'api.maap-project.org'))
-    verdicts, total = {}, 0
+    verdicts, total, no_data = {}, 0, []
     rows = list(csv.DictReader(open(args.ledger)))
     print(f'{len(rows)} rows in {args.ledger} -> '
           f'{os.path.join(args.region_dir, args.step)}'
@@ -193,20 +222,35 @@ def main():
         except Exception as exc:
             verdict, size = f'ERROR {type(exc).__name__}: {exc}'[:60], 0
         verdicts.setdefault(verdict, []).append(row.get('identifier', '?'))
+        if verdict == 'no tile':
+            no_data.append(tile_name(row['x0'], row['y0']))
         total += size
         print(f'  {row.get("identifier", "?"):34} {verdict}')
 
     print(f'\n{total / 2**30:.2f} GiB')
     for verdict, idents in sorted(verdicts.items()):
         print(f'  {len(idents):4}  {verdict}')
-    # 'no tile' is a normal outcome; anything else unexpected is worth naming.
+    # 'no tile' is a normal outcome for PRELIM (no data) and is saved for the
+    # cleanup; for matched it is unexpected.  Anything else odd is named.
+    normal = ('fetched', 'would fetch') + (('no tile',) if args.step == 'prelim' else ())
     odd = {v: i for v, i in verdicts.items()
-           if v not in ('fetched', 'would fetch', 'no tile')
-           and not v.startswith('have it')}
+           if v not in normal and not v.startswith('have it')}
     if odd:
         print('\nNOT FETCHED:')
         for verdict, idents in sorted(odd.items()):
             print(f'  {verdict}: ' + ', '.join(idents))
+
+    if args.step == 'prelim' and no_data:
+        path = os.path.join(args.region_dir, 'prelim', NO_DATA_FILE)
+        added = record_no_data(path, no_data, args.dry_run)
+        print(f'\nNO DATA -- {len(no_data)} center(s) wrote no tile; nothing to'
+              ' run there next time:')
+        for name in sorted(no_data):
+            print(f'  {name}{"" if name in added else "  (already listed)"}')
+        print(f'  {"would add" if args.dry_run else "added"} {len(added)} to {path}')
+        print('  AFTER THE RUN: remove these from the region\'s tile list and'
+              ' commit, e.g.\n'
+              f'    grep -vxFf {path} <tile_list> > t && mv t <tile_list>')
 
 
 if __name__ == '__main__':

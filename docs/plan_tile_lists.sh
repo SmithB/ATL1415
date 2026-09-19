@@ -2,10 +2,11 @@
 # ===========================================================================
 # PLAN: per-region TILE LISTS drive MAAP submissions, and a no-data prelim fit
 # exits cleanly.  From docs/plan_monthly_on_maap.sh AM5, AM7, AM8.
-# Written 2026-09-18, before the code.  STATUS 2026-09-19: TL0-TL7 DONE --
+# Written 2026-09-18, before the code.  STATUS 2026-09-19: ALL DONE.  TL0-TL7
 # built, tested, registered (MATCH at b8cb659), proven on DPS.  Ben then
-# judged a prune on every run overkill: TL8 PROPOSES flagging no-data tiles in
-# fetch_tiles.py instead, pending QT1-QT3.  Nothing of TL8 is written.
+# judged a prune on every run overkill; TL8 replaced it -- fetch_tiles.py
+# saves no-data centers for a cleanup after the run (QT1-QT3 answered, A/A/A).
+# TL8 is ADE-only: no rebuild.
 # Every step carries its own status tag.
 # ===========================================================================
 # WHAT BEN DECIDED (plan_monthly_on_maap.sh, in his words):
@@ -79,7 +80,7 @@
 #
 #
 # ===========================================================================
-# TL2. [ADE] [DONE 2026-09-18 -- tested; dry-run verified on real data]  --tile_list.
+# TL2. [ADE] [DONE 2026-09-18; matched pre-flight changed to SKIP by TL8/AT3]  --tile_list.
 # ===========================================================================
 # --tile_list <file>, exactly one of it and --xy_file required.  Each line
 # E<x>_N<y>.h5 -> (x*1000, y*1000) meters.  Same rule as read_centers: every
@@ -108,7 +109,7 @@
 #
 #
 # ===========================================================================
-# TL3. [ADE] [DONE 2026-09-18 -- tested; dry run matches both IS ledgers]  Prune.
+# TL3. [SUPERSEDED 2026-09-19 by TL8 -- script and tests DELETED (AT2)]  Prune.
 # ===========================================================================
 scripts/maap/prune_tile_list.py <prelim_ledger> ATL1415/resources/<region>/40km_tile_list.txt [--write]
 # For each PRELIM row of the ledger:
@@ -212,7 +213,7 @@ scripts/maap/prune_tile_list.py <prelim_ledger> ATL1415/resources/<region>/40km_
 #
 #
 # ===========================================================================
-# TL8. [ADE] [PROPOSED 2026-09-19 -- TENTATIVE, waits on QT1-QT3]  Flag, don't prune.
+# TL8. [ADE] [DONE 2026-09-19 -- AT1-AT3 all A; verified on the real IS ledgers]  Flag, don't prune.
 # ===========================================================================
 # Ben, 2026-09-19: "having a prune_tile_list script that runs with every run is
 # overkill.  It would be better to save a list of tiles that should be pruned,
@@ -254,17 +255,17 @@ scripts/maap/prune_tile_list.py <prelim_ledger> ATL1415/resources/<region>/40km_
 #   region's tiles, so quarterly (north/IS) and monthly (north_monthly/IS)
 #   keep separate ones.
 #
-# QT1. [OPEN -- for Ben]  Flag in fetch_tiles.py as above?
+# QT1. [ANSWERED 2026-09-19 -- A]  Flag in fetch_tiles.py as above?
 #        A. Yes.   B. Somewhere else (say where).
-# AT1:
+# AT1: A. Yes.
 #
-# QT2. [OPEN -- for Ben]  Retire prune_tile_list.py (TL3)?  RECOMMENDATION:
+# QT2. [ANSWERED 2026-09-19 -- A]  Retire prune_tile_list.py (TL3)?  RECOMMENDATION:
 #      yes -- delete the script, its tests and howto step 8's two lines; git
 #      keeps it.  Keeping an unused second route invites the two to drift.
 #        A. Delete it.   B. Keep it as an optional tool.
-# AT2:
+# AT2: A. Delete it
 #
-# QT3. [OPEN -- for Ben]  THE MATCHED PRE-FLIGHT (TL2) CONFLICTS WITH CLEANUP
+# QT3. [ANSWERED 2026-09-19 -- A]  THE MATCHED PRE-FLIGHT (TL2) CONFLICTS WITH CLEANUP
 #      AFTER THE RUN.  It REFUSES matched if any listed center has no prelim
 #      tile -- so a run that finds a new no-data center cannot reach matched
 #      until the list is cleaned, which is mid-run.
@@ -277,7 +278,41 @@ scripts/maap/prune_tile_list.py <prelim_ledger> ATL1415/resources/<region>/40km_
 #           only those -- anything else missing still refuses.
 #      RECOMMENDATION: A.  B keeps a refusal for a case two other tools
 #      already report, at the cost of a second input to get right.
-# AT3:
+# AT3: A. Skip and print
+#
+# TL8 AS BUILT, 2026-09-19:
+#   - fetch_tiles.py: record_no_data() merges names into
+#     <region_dir>/prelim/no_data_tiles.txt (sorted, unique; rewritten only
+#     when something is added; --dry-run writes nothing).  The summary gains a
+#     "NO DATA" block naming each center, the file, and the cleanup command.
+#     With --step matched, "no tile" moves into NOT FETCHED.  Safe to write
+#     a .txt into prelim/: every reader of that directory takes *.h5 or E*.h5
+#     only (checked: check_field_sizes, make_mosaic globs,
+#     make_tile_stats_group filters .h5).
+#   - submit_MAAP_jobs.py: split_by_prelim() replaces the refusal; matched
+#     SKIPS centers without a prelim tile and names them; exit 2 only if none
+#     is left.  The SKIPPING message is flushed before any stderr.  (Under
+#     `conda run` the two streams still come out swapped -- conda re-emits
+#     them separately; run directly, or after `conda activate`, they are in
+#     order.)
+#   - DELETED scripts/maap/prune_tile_list.py and tests/test_prune_tile_list.py
+#     (AT2).  The solver comment that named it now names fetch_tiles.py.
+#   - howto_MAAP_arctic.sh step 8: the fetch saves the list; the cleanup is
+#     a grep -vxFf and a commit, AFTER the run.  Step 9: matched skips.
+#   - tests: tests/test_fetch_no_data.py (8); test_submit_tile_list.py now
+#     tests the skip (18).  Suite 155 passed, 2 skipped (156 - 10 prune + 9).
+# VERIFIED ON THE REAL IS LEDGERS (tiles already local, nothing downloaded):
+#   - IS_0332_prelim_jobs -> north/IS: "NO DATA ... E1020_N-2580.h5", added to
+#     rel006/north/IS/prelim/no_data_tiles.txt (the uncertainty-step case).
+#   - IS_0332_monthly_tl7_jobs -> north_monthly/IS: the same, added to
+#     rel006/north_monthly/IS/prelim/no_data_tiles.txt (the fit case).
+#   - IS_0332_monthly_prelim_jobs: E1020 is FAILED (pre-TL1 build) -> under
+#     NOT FETCHED, NOT saved.  Correct: a failure is not no-data.
+#   - the cleanup grep on a copy of the IS list: no change (E1020 already
+#     gone); on the list plus E1020: back to 28.
+#   - matched --dry-run from the list plus E1020: "SKIPPING 1 of 29 ...
+#     E1020_N-2580.h5", 28 would submit; from E1020 alone: nothing to
+#     submit, exit 2.  No ledger written by any dry run.
 #
 #
 # ===========================================================================

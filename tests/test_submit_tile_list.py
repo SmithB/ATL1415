@@ -1,9 +1,10 @@
 """
-submit_MAAP_jobs.py --tile_list and the matched pre-flight.
+submit_MAAP_jobs.py --tile_list, and matched skipping centers with no prelim tile.
 
 docs/plan_tile_lists.sh TL2 (Ben's AM8: the resource lists drive prelim AND
-matched submissions).  No MAAP and no S3: the S3 listing is either stubbed or
-fed canned `aws s3 ls` output, and argparse refuses before any network call.
+matched submissions) and QT3 (matched skips, by name, rather than refusing).
+No MAAP and no S3: the S3 listing is either stubbed or fed canned `aws s3 ls`
+output, and argparse refuses before any network call.
 """
 import importlib.util
 import os
@@ -67,22 +68,29 @@ def test_the_real_IS_list_is_the_28_centers_the_monthly_run_used():
     assert (1020000, -2580000) not in from_list
 
 
-# --- the matched pre-flight --------------------------------------------------
+# --- matched: only centers with a prelim tile (QT3) ---------------------------
 
 CENTERS = [(1020000, -2420000), (1140000, -2500000), (1020000, -2580000)]
 
 
-def test_preflight_names_exactly_the_missing_tiles():
+def test_matched_skips_exactly_the_centers_without_a_prelim_tile():
     listed = {'E1020_N-2420.h5', 'E1140_N-2500.h5'}
     seen = []
     lister = lambda prefix: (seen.append(prefix), listed)[1]
-    assert sub.missing_prelim_tiles(CENTERS, 's3://b/IS/', lister) == ['E1020_N-2580.h5']
+    have, missing = sub.split_by_prelim(CENTERS, 's3://b/IS/', lister)
+    assert have == [(1020000, -2420000), (1140000, -2500000)]    # order kept
+    assert missing == ['E1020_N-2580.h5']
     assert seen == ['s3://b/IS/prelim']            # one listing, of prelim/
 
 
-def test_preflight_passes_when_every_tile_is_there():
+def test_matched_keeps_every_center_when_every_tile_is_there():
     listed = {sub.tile_name(x, y) for x, y in CENTERS}
-    assert sub.missing_prelim_tiles(CENTERS, 's3://b/IS', lambda p: listed) == []
+    assert sub.split_by_prelim(CENTERS, 's3://b/IS', lambda p: listed) == (CENTERS, [])
+
+
+def test_matched_with_no_prelim_tiles_at_all_keeps_nothing():
+    assert sub.split_by_prelim(CENTERS, 's3://b/IS', lambda p: set()) == \
+        ([], [sub.tile_name(x, y) for x, y in CENTERS])
 
 
 # --- listing S3 --------------------------------------------------------------

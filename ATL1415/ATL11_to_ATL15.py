@@ -1425,9 +1425,10 @@ def main():
         # branch above, one step earlier.  The case that forced it: a monthly
         # tile whose reference DEM has no coverage, so every point is invalid
         # (E1020_N-2580, job 9266c3d7).  Ben, 2026-09-18
-        # (docs/plan_tile_lists.sh TL1): exit 0, and prune the center from its
-        # region's tile list -- prune_tile_list.py counts "successful job, no
-        # tile", which only works if a failed job still means a real fault.
+        # (docs/plan_tile_lists.sh TL1): exit 0, so the center can come out of
+        # its region's tile list -- fetch_tiles.py saves every "successful job,
+        # no tile" as no data (TL8), which only works if a failed job still
+        # means a real fault.
         # run.sh then sees no tile, skips the error step and exits 0.
         # PRELIM ONLY: a matched fit reads its own prelim tile, which had
         # data, so finding none there is unexpected and still exits 1.

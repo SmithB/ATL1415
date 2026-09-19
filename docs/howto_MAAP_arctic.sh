@@ -201,7 +201,7 @@ make_ATL1415_queue.py prelim $region_dir/input_args_$reg.txt --xy_out ${reg}_pre
 # THE CENTERS COME FROM THE REGION'S TILE LIST, ATL1415/resources/$reg/
 # 40km_tile_list.txt (Ben, 2026-09-18; docs/plan_tile_lists.sh TL2) -- no
 # longer region_files/${reg}_prelim_xy.txt, which IS used and which is
-# retired for fan-outs.  The list is kept pruned of no-data centers (step 8).
+# retired for fan-outs.  No-data centers come out of it after each run (step 8).
 # [UNTESTED on DPS -- --tile_list is new; dry-run verified on IS]
 ledgers=~/ATL14_processing/maap_ledgers
 tile_list=ATL1415/resources/$reg/40km_tile_list.txt
@@ -237,27 +237,28 @@ scripts/maap/fetch_tiles.py $ledgers/${reg}_prelim_jobs.csv $region_dir --step p
 # prelim sigma_dz == dz/dz, and a report for every tile.  Exit 0 OK, 1
 # problems, 2 the check did not happen.  [OK on IS 2026-09-17, plan I5]
 scripts/check_field_sizes.py $region_dir/prelim @$region_dir/input_args_$reg.txt
-# PRUNE THE TILE LIST of centers that had no data (Ben, AM5; plan_tile_lists.sh
-# TL3): a successful job that left no tile.  Failed jobs are kept and listed
-# to investigate -- they are real faults until their logs are read.  Refuses
-# while any job is unfinished.  Dry run first; --write edits the list, and the
-# change is COMMITTED so it can be reviewed.  Exit 0 clean, 1 something to
-# investigate, 2 could not decide.  [UNTESTED with --write; dry run matches
-# both IS ledgers]
-scripts/maap/prune_tile_list.py $ledgers/${reg}_prelim_jobs.csv $tile_list
-scripts/maap/prune_tile_list.py $ledgers/${reg}_prelim_jobs.csv $tile_list --write
+# NO-DATA CENTERS ARE SAVED, NOT PRUNED (Ben, 2026-09-19; plan_tile_lists.sh
+# TL8).  The fetch above lists every successful job that left no tile --
+# the prelim fit or the uncertainty step found no data -- under "NO DATA", and
+# adds their names to $region_dir/prelim/no_data_tiles.txt (merged, so retry
+# ledgers add to it).  Failed jobs are NOT in it: they show as FAILED under
+# NOT FETCHED, and are real faults until their logs are read.
+# Nothing changes the tile list during the run -- matched (step 9) simply
+# skips centers without a prelim tile.  CLEANUP, AFTER THE RUN: take the
+# saved names out of the list and commit, so the next run does not submit
+# them.  [OK on IS 2026-09-19: E1020_N-2580, both ledgers]
+grep -vxFf $region_dir/prelim/no_data_tiles.txt $tile_list > t && mv t $tile_list
+git -C ~/git_repos/ATL1415 commit -m "Drop no-data centers from the $reg tile list" $tile_list
 
 
 # ===========================================================================
 # 9. [DPS] [OK on IS 2026-09-16, plan_IS_run.sh I6-I8]  Matched.  (as GL step 9)
 # ===========================================================================
-# FROM THE SAME, NOW-PRUNED TILE LIST (AM8: the lists drive prelim AND
-# matched).  After step 8's prune it holds exactly the centers with a prelim
-# tile -- the rule IS followed by hand (region_files/IS_matched_xy.txt).
-# submit_MAAP_jobs.py CHECKS THAT: with --step matched it lists
-# $s3_out/prelim/ once and refuses, naming them, if any listed center has no
-# prelim tile -- an unpruned no-data center, or a failed prelim still under
-# investigation.  Nothing is submitted until that is resolved.
+# FROM THE SAME TILE LIST (AM8: the lists drive prelim AND matched), which
+# still holds this run's no-data centers -- the cleanup is after the run.
+# submit_MAAP_jobs.py lists $s3_out/prelim/ once and SKIPS, by name, every
+# center with no prelim tile (QT3), so matched runs exactly where a prelim
+# tile exists -- the rule IS followed by hand (region_files/IS_matched_xy.txt).
 # Each matched job fetches its own and its neighbours' prelim tiles from
 # --tile_prefix; missing neighbours are logged, not fatal.
 scripts/maap/submit_MAAP_jobs.py --tile_list $tile_list \
@@ -351,11 +352,11 @@ aws s3 cp $m_dir/input_args_$reg.txt $s3_run_m/
 #    dz/dz [25, 25, 94] for -W 60000.
 #    A center the quarterly ATL14 does not cover has an all-NaN reference and
 #    NO DATA for the fit ("smooth_fit: no valid data").  Normally it never
-#    gets here: it wrote no quarterly tile either, so step 8 pruned it from
-#    the list first.  On a build before plan_tile_lists.sh TL1 such a fit
+#    gets here: it wrote no quarterly tile either, so it came out of
+#    the list at cleanup.  On a build before plan_tile_lists.sh TL1 such a fit
 #    FAILED the job (IS E1020_N-2580, 9266c3d7, deterministic -- do not
 #    retry); from TL1 on it is a successful job with no tile, which step 8's
-#    prune removes.
+#    fetch saves to prelim/no_data_tiles.txt for the cleanup.
 
 # d. Matched, from the prelim tiles that EXIST (plan M8), as step 9.
 

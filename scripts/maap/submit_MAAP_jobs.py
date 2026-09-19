@@ -44,8 +44,9 @@ Usage:
 
   --tile_list      THE FAN-OUT INPUT (docs/plan_tile_lists.sh TL2, Ben's AM8):
                    one tile file name per line, E<x km>_N<y km>.h5, e.g.
-                   ATL1415/resources/IS/40km_tile_list.txt.  Pruned of
-                   no-data centers by scripts/maap/prune_tile_list.py.
+                   ATL1415/resources/IS/40km_tile_list.txt.  No-data centers
+                   come out of it by hand after a run, from the
+                   prelim/no_data_tiles.txt that fetch_tiles.py saves.
   --xy_file        one "<x0> <y0>" per line, in meters -- for the one-center
                    smoke and retry files.  The region_files/*_prelim_xy.txt
                    center lists are retired for fan-outs.
@@ -61,11 +62,14 @@ Usage:
   --rate S         seconds between submissions (default 2)
   --max_in_flight  hold at N un-finished jobs, polling until one finishes
 
-MATCHED PRE-FLIGHT.  With --step matched, every center's own prelim tile must
-already exist at <tile_prefix>/prelim/.  If any is missing, nothing is
-submitted and the missing names are printed: each is either a no-data center
-not yet pruned from the list, or a failed prelim under investigation, and a
-matched job for it could only fail on DPS.
+MATCHED: ONLY CENTERS WITH A PRELIM TILE.  With --step matched, the prelim
+prefix is listed once and a center whose own tile is not at
+<tile_prefix>/prelim/ is SKIPPED, by name, rather than submitted to fail on
+DPS (Ben, 2026-09-19; docs/plan_tile_lists.sh QT3).  Skipped centers are
+either no data -- fetch_tiles.py saved them to prelim/no_data_tiles.txt for
+the cleanup after the run -- or a failed prelim, which collect_jobs.py and
+fetch_tiles.py already report.  If NO center has a tile, nothing is submitted
+and the exit is 2.
 
 Written for the IS run (docs/plan_IS_run.sh I2) and intended for GL next.
 """
@@ -162,11 +166,19 @@ def s3_names(prefix):
             if line.strip().endswith('.h5') and not line.lstrip().startswith('PRE')}
 
 
-def missing_prelim_tiles(centers, tile_prefix, lister=s3_names):
-    """Centers whose OWN prelim tile is not at <tile_prefix>/prelim/."""
+def split_by_prelim(centers, tile_prefix, lister=s3_names):
+    """(centers WITH their own prelim tile, names of those WITHOUT one).
+
+    ONE listing of <tile_prefix>/prelim/ for the whole region.
+    """
     present = lister(f'{tile_prefix.rstrip("/")}/prelim')
-    return [tile_name(x0, y0) for x0, y0 in centers
-            if tile_name(x0, y0) not in present]
+    have, missing = [], []
+    for x0, y0 in centers:
+        if tile_name(x0, y0) in present:
+            have.append((x0, y0))
+        else:
+            missing.append(tile_name(x0, y0))
+    return have, missing
 
 
 def config_declares(config, name):
@@ -301,13 +313,16 @@ def main():
               ' them (plan_IS_run.sh I7).', file=sys.stderr)
         sys.exit(2)
     if args.step == 'matched':
-        missing = missing_prelim_tiles(centers, args.tile_prefix)
+        n_listed = len(centers)
+        centers, missing = split_by_prelim(centers, args.tile_prefix)
         if missing:
-            print(f'{len(missing)} of {len(centers)} centers have no prelim tile'
-                  f' at {args.tile_prefix}/prelim/:\n    ' + '\n    '.join(missing) +
-                  '\n  Nothing submitted.  Each is a no-data center not yet pruned'
-                  '\n  (scripts/maap/prune_tile_list.py) or a failed prelim still'
-                  '\n  to be investigated; its matched job could only fail.',
+            print(f'SKIPPING {len(missing)} of {n_listed} centers: no prelim tile at'
+                  f' {args.tile_prefix}/prelim/\n    ' + '\n    '.join(missing) +
+                  '\n  No data (see <region_dir>/prelim/no_data_tiles.txt), or a'
+                  '\n  failed prelim (see collect_jobs.py / fetch_tiles.py).\n',
+                  flush=True)   # before any stderr below, so the two stay in order
+        if not centers:
+            print('no listed center has a prelim tile -- nothing to submit.',
                   file=sys.stderr)
             sys.exit(2)
 
