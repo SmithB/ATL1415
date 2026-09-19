@@ -1,96 +1,83 @@
 # howto_MAAP_AA.sh -- Antarctica on MAAP (per-tile solves on DPS)
 #
 # ############################################################################
-# ##  TENTATIVE.  Written 2026-09-05 BEFORE any of it has been run end to   ##
-# ##  end -- no ATL1415 tile has been solved on DPS yet.  This is the plan,  ##
-# ##  not a record of a successful run.  Expect steps to move, split and    ##
-# ##  change as testing advances; revise this file as that happens.         ##
+# ##  REWRITTEN 2026-09-19 from what the Iceland run learned.               ##
+# ##  AA HAS NOT RUN IN PRODUCTION ON MAAP.  EVERY STEP IS TENTATIVE.       ##
+# ##  What HAS run: a 17-job cost transect on DPS (2026-09-11, build        ##
+# ##  ab84687) -- tides, crossovers and the pole hole all worked; numbers   ##
+# ##  in scripts/maap/AA_cost_results.csv.  The per-tile procedure is the   ##
+# ##  one IS ran end to end (docs/howto_MAAP_arctic.sh explains each step   ##
+# ##  and cites the IS record); this file carries it for AA's two halves    ##
+# ##  and adds the stages only AA has.                                      ##
 # ############################################################################
 #
 # The discover/SLURM variant is docs/howto_AA.sh, which is still the
 # production path and is NOT replaced by this file.
 #
-# READ docs/howto_MAAP_GL.sh FIRST.  GL is the reference workflow; this file
-# marks only what Antarctica does differently, and refers to "GL step N" for
-# the parts that are identical.  Tags and numbering follow the same scheme:
-#   [ADE] / [DPS]   where it runs
-#   [OK] [UNTESTED] [NEEDS CODE: x]
-# Steps are numbered 1..15.
-#
-# Prerequisite: docs/howto_MAAP_staging.sh S1-S6; step 6 is gated on S7.
-#
-# READ THIS BEFORE DEBUGGING ANY 403 ON A MASK: pyTMD v3.0.9 set
-# AWS_NO_SIGN_REQUEST=YES process-wide at import, which made GDAL read every
-# /vsis3 object anonymously, so every mask read from s3://maap-ops-workspace
-# came back HTTP 403.  Fixed 2026-09-06 in ATL1415/__init__.py.  Verified on
-# the GL geotiff masks in both directions; full account in howto_MAAP_arctic.sh
-# step 2 and in Transition_to_maap.md, "The pyTMD AWS_NO_SIGN_REQUEST bug".
+# Tags:  [ADE] / [DPS];  [OK on IS] the same command ran for Iceland;
+#   [OK, transect] ran in the cost transect;  [UNTESTED];  [NEEDS CODE: x].
+# Steps are numbered 0-17 so they can be cited ("AA step 9").
 #
 # WHAT MAKES AA DIFFERENT, in one place:
-#   a. it is submitted as TWO HALVES on a 400 km line, and stays that way on
-#      DPS (Q7).  The halves differ in tile geometry, not just in extent.
-#   b. the two halves should target DIFFERENT QUEUES (Q22): the near-pole
-#      south tiles are the expensive ones.  On the OGC path the queue is
-#      submit_job's own argument, chosen per job -- no re-registration.
-#   c. between the tile solves and the mosaic there are three extra ADE
-#      stages: 200 km tiles, the four sectors, and per-sector mosaic jobs.
-#   d. it is ~20 GiB of previous product across A1-A4, which is why the
-#      previous-product read path had to stop downloading whole granules.
-#   e. WHETHER THE ADE CAN MOSAIC AA AT ALL IS STILL AN OPEN MEASUREMENT
-#      (Q4/Q18).  See step 12.
+#   a. TWO HALVES WITH DIFFERENT TILE WIDTHS: 60 km north of the 400 km line,
+#      44 km south of it, overlapping ON PURPOSE (Ben, 2026-09-08): a center
+#      with max(|x|,|y|) >= 360 km belongs to the 60 km half, one with
+#      max(|x|,|y|) <= 440 km to the 44 km half, so the 240 centers between
+#      are solved at BOTH widths.  DO NOT "FIX" THE LIMITS.
+#      Each half has its own region directory (AA, AA_44km), args file and
+#      bucket prefix.  Because a matched job reads its neighbours from its
+#      own --tile_prefix, keeping the prefixes separate is what keeps a
+#      matched neighbourhood from mixing 44 km and 60 km fits under identical
+#      file names -- which would give a solved tile, not an error.
+#   b. THE 44 km ARGS FILE KEEPS --region=AA.  It is DERIVED from the 60 km
+#      file by scripts/maap/make_AA_44km_args.py (-W and -b only).  Composing
+#      it with --region=AA_44km broke all four 44 km jobs on 2026-09-08:
+#      ATL11_to_ATL15.py loads the gridded mask only for region AA or GL.
+#   c. SCALE: 8944 list centers -> 9184 jobs (8724 at 60 km, 460 at 44 km,
+#      the 240 overlap centers twice).  Tools built and tested at 29 jobs.
+#   d. MEMORY: the transect's worst tile, 44km E220_N20 at the pole-hole
+#      edge, peaked at 21.47 GiB; every other tile <= 18.92 GiB.  Use the
+#      32 GiB queue.  Roughly an hour per tile (median fit+error 0.88 h).
+#   e. AFTER THE TILES, THREE EXTRA ADE STAGES: 200 km tiles per half, the
+#      four sectors A1-A4, and a mosaic and netCDF per sector.  WHETHER THE
+#      ADE CAN MOSAIC AA IN REASONABLE TIME IS UNMEASURED (IS's mosaic was
+#      trivial; AA is ~300x the tiles).
+#   f. MONTHLY IS BLOCKED on a reference DEM that spans four sector files
+#      (step 16, NEEDS CODE).
 
 conda activate ATL14
 cd ~/git_repos/ATL1415
-region_dir=/home/jovyan/ATL14_processing/rel006/south/AA
-region_dir_44=/home/jovyan/ATL14_processing/rel006/south/AA_44km
-s3_run=s3://maap-ops-workspace/ben_smith/ATL1415/run_args/rel006/south/AA
-s3_out=s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/south/AA
-s3_out_44=s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/south/AA_44km
-
-# TWO OUTPUT PREFIXES, ONE PER HALF, and they must stay separate.  The two
-# halves solve DIFFERENT TILE SIZES -- 60 km / 40 km spacing for the north
-# half, 44 km / 40 km for the south -- but a tile is named for its CENTER
-# alone, 'E%d_N%d.h5' (make_ATL1415_queue.py:257), with nothing in the name to
-# say which width produced it.  The discover workflow keeps them apart by
-# giving each half its own region directory ($region_dir vs $region_dir_44);
-# on the bucket that separation has to be made explicitly, or the halves
-# overwrite each other.
-#
-# THEY DELIBERATELY OVERLAP -- confirmed by Ben 2026-09-08.  Step 4 filters
-# with --min_xy 360000 (keep if max|xy| >= 360 km) and step 5 with
-# --max_xy 440000 (keep if every |xy| <= 440 km), so any tile whose max|xy|
-# falls in 360000..440000 is queued by BOTH halves: same center, same
-# 'E%d_N%d.h5' filename, two different widths.  DO NOT "FIX" THE LIMITS.
-#
-# That makes the two prefixes above load-bearing rather than tidy: in the
-# overlap band a tile center legitimately has TWO valid solutions, and any
-# namespace that holds only one of them silently keeps whichever was written
-# last.  Two consequences for code that is not written yet:
-#
-#   Q9, the deterministic output prefix.  The key CANNOT be the tile center
-#   alone.  It has to carry the half (or the width) as well, or the 44 km and
-#   60 km solutions of an overlap tile collide wherever they meet -- on the
-#   bucket, in a job ledger, or in a requeue check that asks "does the output
-#   for this center already exist?"  The answer to that question is only
-#   well-posed per half.
-#
-#   Q8, the matched neighbourhood.  A matched job localizes its tile's prelim
-#   output plus its 8 neighbours BY NAME.  For a tile in the overlap band,
-#   "the prelim tile at this center" is ambiguous, and a neighbourhood
-#   assembled across the two halves would mix 44 km and 60 km fits.  Each
-#   half's matched pass must draw only on its own prelim tree -- which is what
-#   the discover workflow gets for free from $region_dir vs $region_dir_44,
-#   and what step 9 below has to reproduce explicitly.
+repo=$PWD
+rel_file=default_args/latest_release.txt
+rel=$(grep '^--Release=' $rel_file | cut -d= -f2)     # 006
+cyc=$(grep '^--cycles=' $rel_file | cut -d= -f2)      # 0332
+ver=$(grep '^--version=' $rel_file | cut -d= -f2)     # 02
+tspan=$(grep '^-t=' $rel_file | cut -d= -f2)          # 2018.75,2026.5
+ATL14_root=/home/jovyan/ATL14_processing
+s3_root=s3://maap-ops-workspace/ben_smith
+ledgers=$ATL14_root/maap_ledgers
+runs=$ATL14_root/runs
+south=$ATL14_root/rel$rel/south
+tile_list=$repo/ATL1415/resources/AA/40km_tile_list.txt     # 8944 centers
+# half <60km|44km> -- every per-half path, from one place
+half () {
+    if [ $1 = 60km ]; then name=AA; else name=AA_44km; fi
+    region_dir=$south/$name
+    args=input_args_$name.txt
+    s3_run=$s3_root/ATL1415/run_args/rel$rel/south/AA      # both args files live here
+    s3_out=$s3_root/ATL14_processing/rel$rel/south/$name
+    half_list=$ledgers/AA_$1_tile_list.txt
+    tag=AA_$1_rel${rel}_${cyc}
+    L=$ledgers/AA_$1_${cyc}
+}
 
 
 # ===========================================================================
-# 0. [ADE] [OK 2026-09-11]  Rebuild the DPS image if any code has changed.
+# 0. [ADE] [OK on IS]  The DPS build is the commit you mean to run.  (arctic 0)
 # ===========================================================================
-# DPS DOES NOT RUN THIS WORKING COPY: a build clones on_s3 from GitHub.  Push,
-# register, and check the image -- staging S5 and S5b carry the rule, and
-# howto_MAAP_ogc O3-O6 the detail:
-/srv/conda/envs/notebook/bin/python register_algorithm.py           # refuses unpushed work
-/srv/conda/envs/notebook/bin/python scripts/maap/check_build_id.py  # must say MATCH
+/srv/conda/envs/notebook/bin/python register_algorithm.py --dry-run   # "push check: OK"
+scripts/maap/check_build_id.py $s3_root/ATL1415/run_args/rel006/north/IS/input_args_IS.txt \
+    maap-dps-worker-16gb                  # VERDICT: MATCH, maap_pgt=set
 
 
 # ===========================================================================
@@ -98,389 +85,230 @@ s3_out_44=s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/south/AA_44k
 # ===========================================================================
 ln -sf rel_006_0332.txt default_args/latest_release.txt
 ln -sf AA_0331.txt      default_args/AA_latest.txt
+# AA_0331.txt names only masks, the tide model and adjustment, and the z0
+# scaling map -- nothing tied to the ATL11 generation -- so it serves cycles
+# 03-32.  All of them are staged (checked 2026-09-19).
 
 
 # ===========================================================================
-# 2. [ADE] [UNTESTED]  Compose the args file.        (as GL step 2)
+# 2. [ADE] [OK, transect; UNTESTED at 0332]  Compose, derive and publish the args.
 # ===========================================================================
-setup_ATL1415_region.py default_args/MAAP_dps.txt default_args/latest_release.txt \
+setup_ATL1415_region.py default_args/MAAP_dps.txt $rel_file \
     default_args/AA_latest.txt default_args/quarterly.txt --Hemisphere=-1
-
-# AA is the region that actually exercises --tide_adjustment, which was being
-# silently dropped by the greedy defaults regex until that was fixed in
-# setup_ATL1415_region.py (Q15).  Confirm it survived into the composed file:
-grep -E '^(--tide_adjustment|--tide_model|--mask_dir)' $region_dir/input_args_AA.txt
-#
-# THE PREVIOUS PRODUCT IS NOW A CMR SEARCH, not a discover path (Q27 W3/W4,
-# b293807).  MAAP_dps.txt carries --previous_product_earthaccess, so setup
-# rewrites --previous_product_top into --previous_product=<release>_<cycles>
-# and drops the /discover/... tree.  The composed file should therefore contain
-#   --previous_product_earthaccess
-#   --previous_product=005_0329
-# and NO --previous_product_top.  EXPECTATION, from MAAP_dps.txt and the IS run
-# of 2026-09-06 -- not yet observed for this region.
-grep -E '^--previous_product' $region_dir/input_args_AA.txt
-#
-# AA IS THE REGION WHERE W3's SIMPLIFICATION SHOWS.  The discover workflow
-# globs A1-A4 and reads up to ~20 GiB of previous product; the bounding-box CMR
-# search returns only the sectors a tile actually touches, which on the tested
-# Antarctic tile was exactly one ATL14_A2 granule.
+scripts/maap/make_AA_44km_args.py $south/AA/input_args_AA.txt \
+    $south/AA_44km/input_args_AA_44km.txt
+half 60km; aws s3 cp $south/AA/input_args_AA.txt $s3_run/
+aws s3 cp $south/AA_44km/input_args_AA_44km.txt $s3_run/
+# CHECK: --tide_adjustment survived (the greedy-regex bug once dropped it),
+# the previous product is a CMR search, and the two files differ in exactly
+# -W and -b:
+grep -E '^(--tide_adjustment|--tide_model|--mask_file|--previous_product)' $south/AA/input_args_AA.txt
+diff $south/AA/input_args_AA.txt $south/AA_44km/input_args_AA_44km.txt
 
 
 # ===========================================================================
-# 3. [ADE] [UNTESTED]  Publish the args file.        (as GL step 3)
+# 3. [ADE] [UNTESTED]  Split the tile list into the two halves.
 # ===========================================================================
-aws s3 cp $region_dir/input_args_AA.txt $s3_run/
-# ...and the south half's, DERIVED from it rather than composed (see step 5):
-scripts/maap/make_AA_44km_args.py $region_dir/input_args_AA.txt \
-    $region_dir_44/input_args_AA_44km.txt
-aws s3 cp $region_dir_44/input_args_AA_44km.txt $s3_run/
-# RUN 2026-09-08.  The two files differ in exactly two lines, -W and -b; the
-# script refuses to run if the source does not carry --region=AA.
+# By the halves' own rule, into tile-list files under $ledgers (not the
+# checkout).  Checked 2026-09-19 on the list: 8724 + 460, 240 in both.
+python - <<EOF
+import re
+cs = [l.strip() for l in open('$tile_list') if l.strip()]
+ext = lambda n: max(abs(int(v)) for v in re.match(r'E(-?\d+)_N(-?\d+)\.h5', n).groups()) * 1000
+open('$ledgers/AA_60km_tile_list.txt', 'w').writelines(n + '\n' for n in cs if ext(n) >= 360000)
+open('$ledgers/AA_44km_tile_list.txt', 'w').writelines(n + '\n' for n in cs if ext(n) <= 440000)
+EOF
+wc -l $ledgers/AA_60km_tile_list.txt $ledgers/AA_44km_tile_list.txt
 
 
 # ===========================================================================
-# 3b. [ADE+DPS] [OK 2026-09-11, post-crossover, on ab84687]  The cost-characterisation transect.
+# 4. [DPS] [UNTESTED]  Smoke two known tiles on the current build.
 # ===========================================================================
-# WHY, and it is not part of the production workflow: the Iceland smoke tile
-# (staging S7) took 26.6 minutes for 239613 ATL11 points, and it is close to
-# the FLOOR of the cost range -- a small, low-latitude, grounded, tide-free
-# tile.  Nothing yet says what the expensive end looks like, and the S6 queue
-# request cannot be written without it.  This runs a spread of Antarctic tiles
-# and records time, peak memory and input size for each.
-#
-# 16 tiles, in scripts/maap/AA_queue_xy.txt, chosen against the real masks and
-# documented one row each in scripts/maap/AA_queue_manifest.csv:
-#
-#   10 along azimuth 90 deg through East Antarctica, from the pole outward.
-#      One sits INSIDE the ICESat-2 pole hole (ice_frac 0.00, r=100 km): the
-#      mask encodes the hole exactly, no ATL11 data exists there, and the tile
-#      is a free production test of the empty-tile fix -- it should skip
-#      cleanly rather than raise.  One sits on the hole's EDGE at 88 S, where
-#      track convergence peaks.  The rest run out to the coastal margin at
-#      2420 km, where track density is lowest.
-#
-#    6 that exercise the TIDE CORRECTION, which no DPS job has touched: three
-#      fully floating (Ross, Ronne, Amery: tide_frac 1.00) and three straddling
-#      a grounding line (tide_frac 0.32/0.44/0.67).  The grounding-line tiles
-#      are the interesting ones -- a tile that is partly floating is where the
-#      tide mask boundary actually has to be right.  These also exercise the
-#      ANONYMOUS s3://pytmd read, the one credential path of the three that no
-#      job has used yet: AA sets --tide_model=CATS2008-v2023 and
-#      --tide_adjustment, and IS does not.
-#
-# CROSSOVERS CHANGED UNDER THIS STEP, 2026-09-09 (e798344).  Every DPS job so
-# far has been along-track only -- E220_N20 reported N_AT=935506, N_XO=0 -- and
-# a cloud run now reads crossovers too, keyed by --ATL11xo_version out of the
-# release args file.  TWO CONSEQUENCES HERE:
-#   - REBUILD FIRST (step 0).  DPS bakes the repo in at build time, so a
-#     transect run on the current image would measure the OLD behaviour and
-#     silently look like a valid cost characterisation.
-#   - THE COST NUMBERS MOVE.  Crossovers add points to the fit, so time, peak
-#     RSS and N all rise relative to anything measured before the rebuild.  Do
-#     not mix pre- and post-rebuild rows in the same table.
-# It is also the cheapest confirmation that the fix works on a worker rather
-# than only against CMR: N_XO must now be non-zero.  collect_jobs.py
-# reports it as a column since 2026-09-10 (from the solve's
-# "Decimate_data: N_AT=..., N_XO=..." line), so no hand-run grep is needed.
-# THE BASELINE IS ZERO EVERYWHERE: the ported collector, run over all twelve
-# pre-fix transect jobs, reads N_XO=0 on every one of them -- and reproduces
-# AA_cost_results.csv exactly, field for field, while doing it.
-# Under the OGC runner the solve's lines are in the job's _stderr.txt, not
-# _stdout.txt (howto_MAAP_ogc QD); the collector reads both.
-#
-# ---------------------------------------------------------------------------
-# 3b-i. [OK, 2026-09-11]  VERIFY THE CROSSOVER READ FIRST, on two tiles, not sixteen.
-# ---------------------------------------------------------------------------
-# This step is also howto_MAAP_ogc O8, where its full record is.
-#
-# DECIDED 2026-09-10 (Ben): before re-measuring cost, just establish that
-# ATL11XO is read on a worker at all.  Two tiles near the pole hole answer it,
-# and the full transect can wait until the answer is yes.
-#
-# Step 0 first, and then S5b -- there is no point submitting anything until the
-# image is known to carry the crossover commit:
-#     /srv/conda/envs/notebook/bin/python register_algorithm.py
-#     /srv/conda/envs/notebook/bin/python scripts/maap/check_build_id.py
-#
-scripts/maap/submit_AA_queue.py scripts/maap/AA_xo_check_xy.txt \
-    $s3_run/input_args_AA.txt $s3_run/input_args_AA_44km.txt \
-    maap-dps-worker-32gb AA_xo_check_jobs.csv
-#
-# FIXED 2026-09-10: this command and step 3b's passed FOUR arguments to a
-# five-positional script (xy, args_60km, args_44km, queue, ledger), which put
-# the queue name in the 44 km args slot and the ledger name in the queue
-# slot -- confirmed with --dry-run: queue=AA_xo_check_jobs.csv,
-# args=maap-dps-worker-32gb.  The script now refuses that arrangement.
-#
-# WHY THESE TWO (scripts/maap/AA_xo_check_xy.txt):
-#   220000 20000  the pole-hole EDGE tile, 88 S, where track convergence peaks
-#                 -- so crossover density is at its highest anywhere on the
-#                 continent, which makes N_XO=0 unambiguous if the fix failed.
-#                 It is ALSO the exact tile that produced the pre-fix evidence:
-#                 E220_N20 reported N_AT=935506, N_XO=0.  Rerunning it is a
-#                 direct before/after on one tile rather than an argument.
-#   300000 20000  just outside the hole, fully grounded (ice_frac 1.0), as the
-#                 control: whatever E220_N20 does, an ordinary interior tile
-#                 should do too.
-# Both have max|xy| below 360 km, so halves_for() routes each to the 44 km half
-# ONLY -- two centers, two jobs, not four.
-#
-# WHAT SAYS IT WORKED:
-scripts/maap/collect_jobs.py AA_xo_check_jobs.csv
-# N_XO > 0 on both.  For E220_N20 compare against N_AT=935506, N_XO=0; for
-# E300_N20, N_AT=1256488, N_XO=0 -- both read back 2026-09-10 from the
-# pre-fix jobs by the collector itself.
-# RUN 2026-09-10/11 on build 8935494 -- PASSED:
-#   E220_N20  N_XO=171488  N_AT=935506   3.1 h (was 2.2)  21.40 GiB (was 20.93)
-#   E300_N20  N_XO=52882   N_AT=1256488  1.3 h (was 1.1)  16.32 GiB (was 15.70)
-# Along-track counts unchanged, and N_ATL11 rose by exactly N_XO on both.
-# So 3b's cost numbers (AA_cost_results.csv) are pre-crossover and low --
-# most of all near the pole; rerun the transect before sizing S6.
-# RERUN 2026-09-11 (below); the file now holds the post-crossover numbers.
-#
-# EXPECT IT TO COST MORE THAN THE PRE-FIX RUN.  44km_E220_N20 was the most
-# expensive tile in the whole transect at 132.5 min and 20.9 GiB on a 32 GiB
-# worker -- about 35% headroom -- and crossovers only add points.  If it OOMs,
-# that is a RESULT and not a failure: rerun on maap-dps-worker-64gb, and note
-# that the S6 queue request has to assume the post-crossover numbers.  N_XO is
-# printed by decimate_data early in the fit, so even a job that later dies has
-# already answered the question.
-#
-# Run it (needs the args file from step 3):
-scripts/maap/submit_AA_queue.py scripts/maap/AA_queue_xy.txt \
-    $s3_run/input_args_AA.txt $s3_run/input_args_AA_44km.txt \
-    maap-dps-worker-32gb AA_queue_jobs.csv
-scripts/maap/collect_jobs.py AA_queue_jobs.csv
-#
-# SUBMITTED 2026-09-11 ~15:50 UTC, the POST-CROSSOVER rerun, on build ab84687
-# (MATCH, maap_pgt=set: howto_MAAP_ogc O6 run 3); queue -32gb.  All 17
-# submit_job calls accepted -- 16 centers, E420_N20 in both halves.  Ledger,
-# outside the checkout so it cannot block register_algorithm.py:
-#   ~/ATL14_processing/maap_ledgers/AA_transect_ab84687_jobs.csv
-# Read it with
-scripts/maap/collect_jobs.py ~/ATL14_processing/maap_ledgers/AA_transect_ab84687_jobs.csv
-# First run on a build whose tiles print their BUILD_ID and write /meta
-# build_* (howto_MAAP_ogc O11, O12a): the collector's commit column should
-# read ab84687 on every row, and this is the first check of that.  Its rows
-# REPLACE AA_cost_results.csv; do not mix the two (see above).
-#
-# RESULT, all 17 SUCCESSFUL by 20:28 UTC (~4.6 h after submission).  Now in
-# scripts/maap/AA_cost_results.csv, same columns as before plus n_xo and
-# build; the pre-crossover table is in git at cbb4cfc.
-#   - EVERY TILE RAN ab84687, by the log's BUILD_ID line AND by the tile's
-#     /meta build_commit and errors_build_commit -- the first check of
-#     howto_MAAP_ogc O11/O12a on real tiles.  (E100_N20 wrote no tile.)
-#   - THE WHOLE TRANSECT RAN, tide tiles included.  The first transect
-#     collected only one of the six; now all six solved, and the logged
-#     "mean tide adjustment scale" tracks each tile's floating fraction:
-#     0.980/0.995/0.995 on the three floating tiles (tide_frac 1.0), and
-#     0.25/0.31/0.56 on the grounding-line tiles (tide_frac 0.32/0.44/0.67).
-#   - E100_N20, inside the pole hole: skipped cleanly in 8 s -- the empty-
-#     tile fix works in production.
-#   - CROSSOVERS MATTER ONLY NEAR THE POLE.  N_XO/N_AT: 18% at E220_N20,
-#     4.2% at E300_N20, 1.3% and 2.7% at E420 (44 and 60 km), 0.9% at E620,
-#     under 0.3% beyond, 0.03% at the coast, ~0.1% on the tide tiles.
-#     E220_N20 and E300_N20 reproduce O8's counts exactly.
-#   - MEMORY: worst 21.47 GiB (E220_N20, was 20.93); every other tile
-#     <= 18.92.  Every tile measured fits the 32 GiB queue with >= 1/3
-#     headroom; none needs -64gb.
-#   - TIME: worst 148 min fit+error (E220_N20, 8 threads; was 132.5); the
-#     six tide tiles 47-57 min; median fit+error 0.88 h over the 16 tiles
-#     with data (was 1.02 h over 11).  DO NOT READ THAT AS A SPEED-UP: the mix
-#     of tiles differs, 13 of 16 workers had 4 threads where the first run
-#     had mostly 8, and identical inputs vary by ~20% between workers
-#     (E220_N20 took 11032 s in O8 and 8909 s here).  Same-thread pairs:
-#     E900 (8/8) unchanged, E1220 and E1620 (4/4) +2-5%, E620 (4/4) +16%,
-#     E220 (8/8) +12%.  Roughly an hour per tile, as before.
-#
-# The collector joins each job's status to the peak RSS and elapsed time the
-# job reports about ITSELF (scripts/run_with_rusage.py, one line per fit /
-# error / matched step), plus N_ATL11 and N_fit parsed from its log.  It uses
-# get_job_metrics only for the wall clock: its machine and memory fields come
-# back null.
-#
-# EXPECT SOME TO FAIL, and that is a result too: a tile that OOMs on
-# maap-dps-worker-32gb has told us that its class needs a bigger queue, which
-# is exactly what S6 has to ask for.  Re-run those on maap-dps-worker-64gb.
-#
-# Regenerate the queue with scripts/maap/make_AA_queue.py (which recomputes
-# ice_frac and tide_frac from the staged masks) if the tile geometry changes.
+# The transect ran on ab84687; the solver has changed since (lineage in the
+# tiles, the no-data exit).  Re-run two of its tiles and compare:
+#   44km  220000 20000     E220_N20, the pole-hole edge: the worst memory
+#                          (21.47 GiB) and the most crossovers (N_XO 171488)
+#   60km  -580000 -980000  E-580_N-980, a grounding-line tide tile (0.25
+#                          tide adjustment scale)
+for h in 44km 60km; do half $h
+    if [ $h = 44km ]; then xy='220000 20000'; else xy='-580000 -980000'; fi
+    echo "$xy" > $ledgers/AA_${h}_smoke_xy.txt
+    scripts/maap/submit_MAAP_jobs.py --xy_file $ledgers/AA_${h}_smoke_xy.txt \
+        --step prelim --args_url $s3_run/$args --tile_prefix $s3_out \
+        --queue maap-dps-worker-32gb --tag ${tag}_smoke --ledger ${L}_smoke_jobs.csv --dry-run
+done
+# (then without --dry-run; collect_jobs.py on each ledger)
+# GATES: successful; N_XO the transect's order; N_AT HIGHER than the
+# transect's (0332 has one more cycle than the 0331 it ran on); peak memory
+# under 32 GiB.  /meta/lineage present in the fetched tile.
 
 
 # ===========================================================================
-# 4. [ADE] [NEEDS CODE: make_ATL1415_queue.py --xy_out]  North-half centers.
+# 5. [DPS] [UNTESTED]  Fan out, both halves.
 # ===========================================================================
-# Same four blockers as GL step 4, plus the 1 km grid mask -- Q6/Q16 are
-# ANSWERED, so what is missing there is the code, not a decision.  For AA
-# the mask problem is worse: AntarcticIceMask_..._240m_v4.1.tif has neither
-# '100m' nor '125m' in its name, so make_ATL1415_queue.py raises ValueError
-# outright rather than merely failing to find a sibling.
-make_ATL1415_queue.py prelim $region_dir/input_args_AA.txt --min_xy 360000 \
-    --xy_out AA_north_prelim_xy.txt
+for h in 60km 44km; do half $h
+    nohup scripts/maap/submit_MAAP_jobs.py --tile_list $half_list \
+        --step prelim --args_url $s3_run/$args --tile_prefix $s3_out \
+        --queue maap-dps-worker-32gb --tag ${tag}_prelim --ledger ${L}_prelim_jobs.csv \
+        --max_in_flight 200 > ${L}_prelim_submit.log 2>&1 &
+done
+# --max_in_flight N=200 is a RECOMMENDATION, not a measured limit (GL step 4
+# explains).  Never register while these run.
 
 
 # ===========================================================================
-# 5. [ADE] [NEEDS CODE, as step 4]  South-half centers, different geometry.
+# 6. [ADE] [OK on IS; UNTESTED at AA scale]  Watch, fetch, check -- both halves.
 # ===========================================================================
-# The south half is a SEPARATE REGION DIRECTORY with a different tile size:
-# W=44000, spacing 40000, against the 60 km / 40 km of the north half.  That
-# is why it cannot simply be a --max_xy filter on the same queue.
-#
-# THE 44 km ARGS FILE, which nothing used to compose.  It is used here, at step
-# 6 and at step 9, but step 2 composed only input_args_AA.txt -- and the
-# discover howto (docs/howto_AA.sh:23) has the identical gap.  Resolved
-# 2026-09-08 with scripts/maap/make_AA_44km_args.py, which DERIVES it from the
-# north-half file, changing exactly two lines: -W to 44000 and -b to the
-# AA_44km region directory.
-#
-# IT IS NOT A default_args OVERRIDES FILE, which was tried first and broke all
-# four 44 km jobs.  setup_ATL1415_region.py derives both the region directory
-# and the args-file name from --region, so producing input_args_AA_44km.txt
-# through it means --region=AA_44km -- and --region is NOT A LABEL.
-# ATL11_to_ATL15.py:595 loads the gridded mask only for region in ['AA','GL'];
-# any other value falls through both branches with mask_data left None, and the
-# solve dies at line 619 with "'NoneType' object has no attribute 'z'".  The
-# 60 km jobs succeeded at the same tile centers, including E420_N20 in the
-# overlap band, which is what isolated it to the args file.  The south half
-# therefore KEEPS --region=AA and differs only in geometry and output location.
-make_ATL1415_queue.py prelim $region_dir_44/input_args_AA_44km.txt --max_xy 440000 \
-    --xy_out AA_south_prelim_xy.txt
+for h in 60km 44km; do half $h
+    scripts/maap/collect_jobs.py ${L}_prelim_jobs.csv > ${L}_prelim_collect.txt
+    scripts/maap/fetch_tiles.py  ${L}_prelim_jobs.csv $region_dir --step prelim
+    scripts/check_field_sizes.py $region_dir/prelim @$region_dir/$args
+done
+# check_field_sizes derives the shape from each half's own -W: [61, 61, 32]
+# at 60 km, [45, 45, 32] at 44 km.  Each half's no-data centers go to its own
+# $region_dir/prelim/no_data_tiles.txt (step 17).  The pole-hole tiles (e.g.
+# E100_N20, 8 s in the transect) are no-data by construction.
 
 
 # ===========================================================================
-# 6. [DPS] [NEEDS CODE: scripts/submit_MAAP_jobs.py]  Fan out, two submissions.
+# 7. [DPS] [OK on IS; UNTESTED for AA]  Matched, both halves, each on its own prefix.
 # ===========================================================================
-# GATED ON THE SMOKE TEST (staging S7).  Two ledgers, and per Q22 two queues:
-# the south half gets the larger instance.  Sizing is a guess until a real
-# tile is timed -- that is smoke-test question 5.
-submit_MAAP_jobs.py --xy_file AA_north_prelim_xy.txt --step prelim \
-    --args_url $s3_run/input_args_AA.txt --out_prefix $s3_out/prelim \
-    --queue maap-dps-worker-32gb \
-    --tag AA_rel006_prelim_north --ledger AA_north_prelim_jobs.csv
-
-submit_MAAP_jobs.py --xy_file AA_south_prelim_xy.txt --step prelim \
-    --args_url $s3_run/input_args_AA_44km.txt --out_prefix $s3_out_44/prelim \
-    --queue maap-dps-worker-32vcpu-64gb \
-    --tag AA_rel006_prelim_south --ledger AA_south_prelim_jobs.csv
+for h in 60km 44km; do half $h
+    nohup scripts/maap/submit_MAAP_jobs.py --tile_list $half_list \
+        --step matched --args_url $s3_run/$args --tile_prefix $s3_out \
+        --queue maap-dps-worker-32gb --tag ${tag}_matched --ledger ${L}_matched_jobs.csv \
+        --max_in_flight 200 > ${L}_matched_submit.log 2>&1 &
+done
+# EACH HALF'S OWN --tile_prefix: see (a) at the top.  Centers without a prelim
+# tile in THAT half are skipped by name.  discover packs 4 matched tiles per
+# task (--lines_per_task 4); on DPS a job is one tile.
 
 
 # ===========================================================================
-# 7. [DPS] [NEEDS CODE: scripts/check_MAAP_jobs.py]  Watch both halves.
+# 8. [ADE] [OK on IS; UNTESTED for AA]  Watch, fetch, check matched.
 # ===========================================================================
-for L in AA_north_prelim_jobs.csv AA_south_prelim_jobs.csv; do
-    echo $L; check_MAAP_jobs.py $L
+for h in 60km 44km; do half $h
+    scripts/maap/collect_jobs.py ${L}_matched_jobs.csv > ${L}_matched_collect.txt
+    scripts/maap/fetch_tiles.py  ${L}_matched_jobs.csv $region_dir --step matched
+    scripts/check_field_sizes.py $region_dir/matched @$region_dir/$args
 done
 
 
 # ===========================================================================
-# 8. [ADE] [NEEDS CODE: deterministic output prefix]  Collect.  (as GL step 7)
+# 9. [ADE] [UNTESTED]  200 km tiles, each half.
 # ===========================================================================
-aws s3 sync $s3_out/prelim/    $region_dir/prelim/
-aws s3 sync $s3_out_44/prelim/ $region_dir_44/prelim/
-
-
-# ===========================================================================
-# 9. [DPS] [NEEDS CODE: run.sh prelim_prefix input]  Matched, both halves.
-# ===========================================================================
-# As GL step 9, twice.  The discover workflow uses --lines_per_task 4 for AA
-# matched; on DPS that has no analogue -- one job is one tile.
-make_ATL1415_queue.py matched $region_dir/input_args_AA.txt --min_xy 360000 \
-    --xy_out AA_north_matched_xy.txt
-make_ATL1415_queue.py matched $region_dir_44/input_args_AA_44km.txt --max_xy 440000 \
-    --xy_out AA_south_matched_xy.txt
-# ... then two submit_MAAP_jobs.py calls with --step matched, EACH POINTED AT
-# ITS OWN HALF'S PRELIM TREE -- north at --prelim_prefix $s3_out/prelim, south
-# at --prelim_prefix $s3_out_44/prelim.  NOT one shared prefix, and this is the
-# step where getting it wrong is least visible: a matched job localizes its
-# tile's own prelim output plus its 8 neighbours by name, so in the deliberate
-# 360-440 km overlap band a shared prefix would hand it a neighbourhood mixing
-# 44 km and 60 km fits at identical filenames.  The result would be a solved
-# tile, not an error.  See the note at the top of this file.
-aws s3 sync $s3_out/matched/    $region_dir/matched/
-aws s3 sync $s3_out_44/matched/ $region_dir_44/matched/
-
-
-# ===========================================================================
-# 10. [ADE] [NEEDS CODE: run_queue_local.sh]  200 km tiles, both halves.
-# ===========================================================================
-# make_200km_tiles.py emits a queue directory plus a slurm_run.sh, so it needs
-# the local runner for the same reason the mosaic does.
-make_200km_tiles.py $region_dir AA -t 2018.75,2026.5
-run_queue_local.sh tile_run_AA -P 8
-
-make_200km_tiles.py $region_dir_44 AA --name AA_south --W 44000 --spacing 40000 \
-    -t 2018.75,2026.5
-run_queue_local.sh tile_run_AA_south -P 8
-
-
-# ===========================================================================
-# 11. [ADE] [UNTESTED]  Set up the four Antarctic sectors.
-# ===========================================================================
-# Pure bookkeeping over the 200 km tiles; no solve, no cloud read.  Expected to
-# work unchanged, but it has never been run in the ADE.
-setup_AA_sectors.py /home/jovyan/ATL14_processing/rel006/south
-
-
-# ===========================================================================
-# 12. [ADE] [NEEDS CODE: run_queue_local.sh]  Mosaic, per sector.
-# ===========================================================================
-# THIS IS THE STEP Q4/Q18 IS ABOUT.  On discover an AA mosaic is a 4-hour,
-# 4-task SLURM job per field group.  The ADE has 16 cores, 124.4 GiB RAM and
-# no walltime limit -- four times the tasks and no clock -- so the shape of
-# the answer is encouraging, but NOTHING HAS BEEN TIMED, because
-# pointCollection was not importable in the ADE until staging S1.
-#
-# TO SETTLE IT: after S1, time one z0 field group for a small region (IS or
-# GL) and extrapolate by tile count to AA.  If the answer is no, the mosaic
-# stops being an ADE step and this file changes shape.
-for sector in A1 A2 A3 A4; do
-    make_200km_to_mosaic_jobs.py -b /home/jovyan/ATL14_processing/rel006/south/$sector \
-        -rr $sector -t 2018.75,2026.5
-    run_queue_local.sh ${sector}_mosaic -P 8
+# make_200km_tiles.py writes tile_run_<name>/ in the current directory, with
+# queue/task_N and a runner named slurm_mos_run (not slurm_run.sh).  Plain
+# bash, like the IS mosaic's, so it runs locally.
+cd $runs
+make_200km_tiles.py $south/AA AA -t $tspan
+make_200km_tiles.py $south/AA_44km AA --name AA_south --W 44000 --spacing 40000 -t $tspan
+for d in tile_run_AA tile_run_AA_south; do
+    ( cd $d; seq 1 $(ls queue | wc -l) | xargs -P 8 -I{} env SLURM_ARRAY_TASK_ID={} bash slurm_mos_run )
 done
-# [OK on IS 2026-09-16, docs/plan_IS_run.sh I9f]  Check the outputs: exit
-# codes are not enough.  Metadata only; --values also flags all-NaN fields.
-# make_200km_to_mosaic_jobs.py has no --run_name: its run dir is mosaic_run_<sector>.
-for sector in A1 A2 A3 A4; do echo $sector; check_mosaic_outputs.py -q mosaic_run_$sector; done
+cd $repo
+# Each half's 200 km tile centers come from <region_dir>/200km_tile_list.txt
+# if it exists, else are derived from that half's prelim tiles and written
+# there.  QUESTION for Ben: ATL1415/resources/AA/200km_tile_list.txt (413
+# centers) is in that format but matches NEITHER half: it contains every cell
+# derivable from the 40 km list (411 for both halves together, 407 for the
+# 60 km half) plus 2 more.  Which region directory is it for?  Until
+# answered, each half derives its own.
+# -P 8 is a guess: UNTIMED on AA.
 
 
 # ===========================================================================
-# 13. [ADE] [NEEDS CODE: a MAAP variant of run_antarctic_tonc.sh]  netCDF.
+# 10. [ADE] [UNTESTED]  The four sectors.
 # ===========================================================================
-# scripts/run_antarctic_tonc.sh ends in `setup_slurm_run.py ...; sbatch`.  Its
-# release/root greps already work against MAAP_dps.txt, so only that tail
-# changes.  PUT THE VARIANT IN scripts/maap/ so the SLURM original stays
-# untouched.
-bash scripts/maap/run_antarctic_tonc.sh default_args/latest_release.txt \
-    default_args/MAAP_dps.txt
+setup_AA_sectors.py $south
+# Symlinks each half's 200 km tiles and per-tile outputs into A1-A4 and
+# writes each sector's bounds.txt and input_args_A{n}.txt (from
+# input_args_AA.txt).  Defaults: --north_name AA --south_name AA_44km.
 
 
 # ===========================================================================
-# 14. [ADE+DPS] [NEEDS CODE, as above]  The monthly variant.
+# 11. [ADE] [UNTESTED]  Mosaic, per sector.
 # ===========================================================================
-# Same 13 steps with monthly.txt, an --ATL14_reference_file, south_monthly in
-# every path (Q17), and setup_AA_sectors.py --near_pole_radius 0.
-#
-# --ATL14_reference_file: W5 (b293807) FIXED THE SILENT FAILURE HERE BUT NOT
-# THE USE CASE.  The discover workflow passes a GLOB PATTERN across sectors
-# ("rel005_0329/south/A*/ATL14_*_0329_100m_005_02.nc"), and a URI containing a
-# wildcard now RAISES ValueError instead of quietly yielding an empty reference
-# DEM -- correct, and better than before, but AA monthly still has no cloud
-# path.  GL's single-file case works; AA's does not.  Not on the quarterly
-# critical path, so this is where it stops for now.
-#
-# OPEN, and it is a small one: the ValueError says "Name the granules
-# explicitly, one --ATL14_reference_file each", but the argument is a plain
-# type=path_or_uri with no action='append' (ATL11_to_ATL15.py:987), so a second
-# occurrence overwrites the first.  Either the message or the argument is
-# wrong.  Decide which when AA monthly is picked up.
+cd $runs
+for s in A1 A2 A3 A4; do
+    make_200km_to_mosaic_jobs.py -b $south/$s -rr $s -t $tspan    # NO --run: it would sbatch
+    ( cd mosaic_run_$s; seq 1 $(ls queue | wc -l) | xargs -P 4 -I{} env SLURM_ARRAY_TASK_ID={} bash slurm_run.sh )
+    check_mosaic_outputs.py $runs/mosaic_run_$s --values
+done
+cd $repo
+# Its run directory is mosaic_run_<sector>; it has no --run_name and no -e
+# (the template's environment defaults to ATL14, which is right here).
+# THIS IS THE STEP THE ADE MAY NOT MANAGE: time one sector before the others.
 
 
 # ===========================================================================
-# 15. [ADE] [SUGGESTION, NO SOFTWARE]  Annotate the run's build history.
+# 12. [ADE] [UNTESTED]  netCDF, per sector.
 # ===========================================================================
-# The run's last step, quarterly or monthly: the git history across the
-# builds its tiles ran, annotated with what changed and which tiles were
-# rerun on which build.  The procedure is howto_MAAP_ogc O12b; it is not
-# repeated here.
+# In place of scripts/run_antarctic_tonc.sh, which queues the same eight
+# commands for sbatch (and with discover's env, IS2):
+for s in A1 A2 A3 A4; do
+    mkdir -p $runs/AA_${cyc}_nc_$s
+    ( cd $runs/AA_${cyc}_nc_$s
+      ATL14_write2nc.py @$south/$s/input_args_$s.txt > ATL14.log 2>&1
+      ATL15_write2nc.py @$south/$s/input_args_$s.txt > ATL15.log 2>&1 )
+done
+# No INVALID line; XO rows NOT_SET in four attributes only (arctic 10).
+
+
+# ===========================================================================
+# 13. [ADE] [NO SOFTWARE]  Compare with the previous product.
+# ===========================================================================
+# Ben's bar: no >10 m errors, no major gaps.  Method: plan_cycles_03_32.sh T8
+# "I9g6" (IS, against rel005).
+
+
+# ===========================================================================
+# 14. [ADE] [UNTESTED]  Publish the sector products.
+# ===========================================================================
+for s in A1 A2 A3 A4; do
+    for f in $south/$s/ATL1[45]_${s}_${cyc}_*_${rel}_${ver}.nc; do
+        aws s3 cp $f $s3_root/ATL14_processing/rel$rel/south/$s/
+    done
+done
+
+
+# ===========================================================================
+# 15. [ADE] [SUGGESTION, NO SOFTWARE]  Annotate the build history.  (ogc O12b)
+# ===========================================================================
+
+
+# ===========================================================================
+# 16. [ADE+DPS] [NEEDS CODE: a multi-file --ATL14_reference_file]  Monthly.
+# ===========================================================================
+# As IS monthly (arctic 11-18) for both halves, with south_monthly in every
+# path and setup_AA_sectors.py --near_pole_radius 0 -- EXCEPT the reference
+# DEM.  AA's quarterly ATL14 is FOUR sector files, and the solver takes ONE:
+# discover passes a glob ("rel005_0329/south/A*/ATL14_*_0329_100m_005_02.nc"),
+# and a URI with a wildcard RAISES (by design: a glob over s3:// used to
+# return nothing and silently edit away every point).  The error says "Name
+# the granules explicitly, one --ATL14_reference_file each", but the argument
+# is not action='append' (ATL11_to_ATL15.py), so a second one overwrites the
+# first.  Either the message or the argument is wrong; deciding which is the
+# first job of AA monthly.  Nothing else in this file blocks on it.
+
+
+# ===========================================================================
+# 17. [ADE] [OK on IS]  Take the no-data centers out of the list.
+# ===========================================================================
+# ONE list serves both halves, so a center in the overlap band comes out only
+# if it had no data in EVERY half that solved it.
+python - <<EOF
+import os, re
+root = '$south'
+nd = {}
+for h, name in (('60km', 'AA'), ('44km', 'AA_44km')):
+    f = os.path.join(root, name, 'prelim', 'no_data_tiles.txt')
+    nd[h] = {l.strip() for l in open(f)} if os.path.isfile(f) else set()
+ext = lambda n: max(abs(int(v)) for v in re.match(r'E(-?\d+)_N(-?\d+)\.h5', n).groups()) * 1000
+halves = lambda n: [h for h, ok in (('60km', ext(n) >= 360000), ('44km', ext(n) <= 440000)) if ok]
+drop = {n for n in nd['60km'] | nd['44km'] if all(n in nd[h] for h in halves(n))}
+lines = open('$tile_list').readlines()
+open('$tile_list', 'w').writelines(l for l in lines if l.strip() not in drop)
+print(f'removed {len(drop)} of {len(lines)}')
+EOF
+git commit -m "Drop no-data centers from the AA tile list" $tile_list && git push
