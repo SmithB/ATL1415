@@ -167,7 +167,7 @@ aws s3 cp $region_dir/input_args_$reg.txt $s3_run/
 
 
 # ===========================================================================
-# 5. [ADE] [NEEDS CODE: make_ATL1415_queue.py --xy_out; STILL OPEN]  Tile centers.
+# 5. [ADE] [SUPERSEDED 2026-09-18 -- the centers are ATL1415/resources/<region>/40km_tile_list.txt, step 6]  Tile centers.
 # ===========================================================================
 # Same four blockers as GL step 4, but NOT the 1 km mask work (Q6/Q16):
 # CONFIRMED 2026-09-06 that none of it applies here.  make_ATL1415_queue.py's

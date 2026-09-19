@@ -364,7 +364,7 @@ scripts/maap/submit_MAAP_jobs.py --xy_file region_files/IS_0332_monthly_smoke_xy
 #     product's 79, so the monthly run read the same inputs.
 #   - bucket prelim/ and local prelim/ list the same 28 tiles.
 #
-# QM5. [OPEN -- for Ben]  E1020_N-2580 fails the monthly FIT for want of any
+# QM5. [ANSWERED 2026-09-18 -- see AM5, QM7, QM8]  E1020_N-2580 fails the monthly FIT for want of any
 #      reference-DEM coverage.  What should happen to such a center?
 #      WHY IT IS A QUESTION, not settled: Ben's 2026-09-16 decision ("tiles
 #      that fail on the uncertainty step are not critical") covers the
@@ -572,7 +572,7 @@ ATL15_write2nc.py @$monthly_dir/input_args_IS.txt > ATL15.log 2>&1
 #     >3x a 0.09 m sigma, which would account for the 64% without the
 #     sigmas being wrong.  Resolving that cycle is what monthly is for.
 #
-# QM6. [OPEN -- for Ben]  Does the monthly product pass your bar?
+# QM6. [ANSWERED 2026-09-18 -- A, pass]  Does the monthly product pass your bar?
 #      Same structure as QM1: the >10 m differences are confined to where
 #      the solution is weakly constrained.
 #        - gaps: none major (1.0% one way, 3.9% the other, monthly wider);
