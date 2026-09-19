@@ -35,14 +35,20 @@ written down is a worker-hour that cannot be collected, so:
     the run continues (Q11: record-and-continue, not retry).
 
 Usage:
-  submit_MAAP_jobs.py --xy_file <f> --step prelim|matched --args_url <uri|path>
+  submit_MAAP_jobs.py (--tile_list <f> | --xy_file <f>)
+                      --step prelim|matched --args_url <uri|path>
                       [--ledger <f>] [--queue <q>] [--tag <prefix>]
                       [--tile_prefix <s3://...>]
                       [--limit N] [--rate S] [--max_in_flight N]
                       [--replace] [--dry-run]
 
-  --xy_file        one "<x0> <y0>" per line, in meters, e.g.
-                   region_files/IS_prelim_xy.txt
+  --tile_list      THE FAN-OUT INPUT (docs/plan_tile_lists.sh TL2, Ben's AM8):
+                   one tile file name per line, E<x km>_N<y km>.h5, e.g.
+                   ATL1415/resources/IS/40km_tile_list.txt.  Pruned of
+                   no-data centers by scripts/maap/prune_tile_list.py.
+  --xy_file        one "<x0> <y0>" per line, in meters -- for the one-center
+                   smoke and retry files.  The region_files/*_prelim_xy.txt
+                   center lists are retired for fan-outs.
   --args_url       the composed input_args_<REGION>.txt, on the bucket
   --tag            identifier prefix; default "<REGION>_<step>", with REGION
                    read out of the args file's name
@@ -55,6 +61,12 @@ Usage:
   --rate S         seconds between submissions (default 2)
   --max_in_flight  hold at N un-finished jobs, polling until one finishes
 
+MATCHED PRE-FLIGHT.  With --step matched, every center's own prelim tile must
+already exist at <tile_prefix>/prelim/.  If any is missing, nothing is
+submitted and the missing names are printed: each is either a no-data center
+not yet pruned from the list, or a failed prelim under investigation, and a
+matched job for it could only fail on DPS.
+
 Written for the IS run (docs/plan_IS_run.sh I2) and intended for GL next.
 """
 import argparse
@@ -62,6 +74,7 @@ import csv
 import datetime
 import os
 import re
+import subprocess
 import sys
 import time
 
@@ -101,6 +114,59 @@ def read_centers(path):
             sys.exit(2)
         centers.append((x0, y0))
     return centers
+
+
+TILE_NAME = re.compile(r'^E(-?\d+)_N(-?\d+)\.h5$')
+
+
+def tile_name(x0, y0):
+    """'E%d_N%d.h5', truncated toward zero -- ATL11_to_ATL15's own name."""
+    return 'E%d_N%d.h5' % (int(x0 / 1000), int(y0 / 1000))
+
+
+def read_tile_list(path):
+    """The resource tile list: "E<x km>_N<y km>.h5" per line -> meters.
+
+    The same rule as read_centers: every non-blank line must be a tile name,
+    and one that is not is an error rather than a skip -- a list that has
+    picked up something else (a directory name from an `ls`, say) is not a
+    list to submit from.
+    """
+    centers = []
+    for n, line in enumerate(open(path), 1):
+        text = line.strip()
+        if not text:
+            continue
+        m = TILE_NAME.match(text)
+        if not m:
+            print(f'{path}:{n}: not a tile name (E<x km>_N<y km>.h5): {text!r}',
+                  file=sys.stderr)
+            sys.exit(2)
+        centers.append((int(m.group(1)) * 1000, int(m.group(2)) * 1000))
+    return centers
+
+
+def s3_names(prefix):
+    """The .h5 names directly under an s3:// prefix, as a set.
+
+    ONE listing for the whole region rather than one call per tile.  A
+    listing that fails is an error, not an empty set: an empty set would
+    read as "every prelim tile is missing".
+    """
+    p = subprocess.run(['aws', 's3', 'ls', prefix.rstrip('/') + '/'],
+                       capture_output=True, text=True, timeout=600)
+    if p.returncode not in (0, 1) or (p.returncode == 1 and p.stderr.strip()):
+        print(f'could not list {prefix}: {p.stderr.strip()[:300]}', file=sys.stderr)
+        sys.exit(2)
+    return {line.split()[-1] for line in p.stdout.splitlines()
+            if line.strip().endswith('.h5') and not line.lstrip().startswith('PRE')}
+
+
+def missing_prelim_tiles(centers, tile_prefix, lister=s3_names):
+    """Centers whose OWN prelim tile is not at <tile_prefix>/prelim/."""
+    present = lister(f'{tile_prefix.rstrip("/")}/prelim')
+    return [tile_name(x0, y0) for x0, y0 in centers
+            if tile_name(x0, y0) not in present]
 
 
 def config_declares(config, name):
@@ -155,7 +221,9 @@ def wait_for_slot(maap, live, limit):
 def main():
     parser = argparse.ArgumentParser(
         description='Submit one DPS job per tile center for one region.')
-    parser.add_argument('--xy_file', required=True)
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument('--tile_list')
+    source.add_argument('--xy_file')
     parser.add_argument('--step', required=True, choices=['prelim', 'matched'])
     parser.add_argument('--args_url', required=True)
     parser.add_argument('--ledger')
@@ -196,7 +264,9 @@ def main():
               file=sys.stderr)
         sys.exit(2)
 
-    centers = read_centers(args.xy_file)
+    source = args.tile_list or args.xy_file
+    centers = read_tile_list(args.tile_list) if args.tile_list \
+        else read_centers(args.xy_file)
     if args.limit:
         centers = centers[:args.limit]
 
@@ -230,10 +300,20 @@ def main():
               ' neighbours\'\n  prelim tiles and has no other way to find'
               ' them (plan_IS_run.sh I7).', file=sys.stderr)
         sys.exit(2)
+    if args.step == 'matched':
+        missing = missing_prelim_tiles(centers, args.tile_prefix)
+        if missing:
+            print(f'{len(missing)} of {len(centers)} centers have no prelim tile'
+                  f' at {args.tile_prefix}/prelim/:\n    ' + '\n    '.join(missing) +
+                  '\n  Nothing submitted.  Each is a no-data center not yet pruned'
+                  '\n  (scripts/maap/prune_tile_list.py) or a failed prelim still'
+                  '\n  to be investigated; its matched job could only fail.',
+                  file=sys.stderr)
+            sys.exit(2)
 
     print(f'process {name}:{version}  processID={pid}'
           f"  (modified {process.get('lastModifiedTime')})")
-    print(f'{len(centers)} centers from {args.xy_file}  step={args.step}'
+    print(f'{len(centers)} centers from {source}  step={args.step}'
           f'  queue={args.queue}')
     print(f'args  {args.args_url}')
     print(f'ledger {ledger}\n')

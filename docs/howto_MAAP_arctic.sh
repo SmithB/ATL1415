@@ -198,8 +198,14 @@ make_ATL1415_queue.py prelim $region_dir/input_args_$reg.txt --xy_out ${reg}_pre
 # (9) cannot run without it.  -16gb was enough: IS prelim peaked at 9.09 GiB.
 # Keep ledgers OUTSIDE the checkout: an untracked file makes
 # register_algorithm.py refuse.
+# THE CENTERS COME FROM THE REGION'S TILE LIST, ATL1415/resources/$reg/
+# 40km_tile_list.txt (Ben, 2026-09-18; docs/plan_tile_lists.sh TL2) -- no
+# longer region_files/${reg}_prelim_xy.txt, which IS used and which is
+# retired for fan-outs.  The list is kept pruned of no-data centers (step 8).
+# [UNTESTED on DPS -- --tile_list is new; dry-run verified on IS]
 ledgers=~/ATL14_processing/maap_ledgers
-scripts/maap/submit_MAAP_jobs.py --xy_file region_files/${reg}_prelim_xy.txt \
+tile_list=ATL1415/resources/$reg/40km_tile_list.txt
+scripts/maap/submit_MAAP_jobs.py --tile_list $tile_list \
     --step prelim --args_url $s3_run/input_args_$reg.txt \
     --tile_prefix $s3_out --queue maap-dps-worker-16gb \
     --tag ${reg}_rel006_prelim --ledger $ledgers/${reg}_prelim_jobs.csv
@@ -231,17 +237,30 @@ scripts/maap/fetch_tiles.py $ledgers/${reg}_prelim_jobs.csv $region_dir --step p
 # prelim sigma_dz == dz/dz, and a report for every tile.  Exit 0 OK, 1
 # problems, 2 the check did not happen.  [OK on IS 2026-09-17, plan I5]
 scripts/check_field_sizes.py $region_dir/prelim @$region_dir/input_args_$reg.txt
+# PRUNE THE TILE LIST of centers that had no data (Ben, AM5; plan_tile_lists.sh
+# TL3): a successful job that left no tile.  Failed jobs are kept and listed
+# to investigate -- they are real faults until their logs are read.  Refuses
+# while any job is unfinished.  Dry run first; --write edits the list, and the
+# change is COMMITTED so it can be reviewed.  Exit 0 clean, 1 something to
+# investigate, 2 could not decide.  [UNTESTED with --write; dry run matches
+# both IS ledgers]
+scripts/maap/prune_tile_list.py $ledgers/${reg}_prelim_jobs.csv $tile_list
+scripts/maap/prune_tile_list.py $ledgers/${reg}_prelim_jobs.csv $tile_list --write
 
 
 # ===========================================================================
 # 9. [DPS] [OK on IS 2026-09-16, plan_IS_run.sh I6-I8]  Matched.  (as GL step 9)
 # ===========================================================================
-# The matched list is the prelim tiles that EXIST -- not
-# make_ATL1415_queue.py matched, and not the prelim list minus a hand-kept
-# exclusion.  IS: 29 centers, 28 tiles -> region_files/IS_matched_xy.txt.
+# FROM THE SAME, NOW-PRUNED TILE LIST (AM8: the lists drive prelim AND
+# matched).  After step 8's prune it holds exactly the centers with a prelim
+# tile -- the rule IS followed by hand (region_files/IS_matched_xy.txt).
+# submit_MAAP_jobs.py CHECKS THAT: with --step matched it lists
+# $s3_out/prelim/ once and refuses, naming them, if any listed center has no
+# prelim tile -- an unpruned no-data center, or a failed prelim still under
+# investigation.  Nothing is submitted until that is resolved.
 # Each matched job fetches its own and its neighbours' prelim tiles from
 # --tile_prefix; missing neighbours are logged, not fatal.
-scripts/maap/submit_MAAP_jobs.py --xy_file region_files/${reg}_matched_xy.txt \
+scripts/maap/submit_MAAP_jobs.py --tile_list $tile_list \
     --step matched --args_url $s3_run/input_args_$reg.txt \
     --tile_prefix $s3_out --queue maap-dps-worker-16gb \
     --tag ${reg}_rel006_matched --ledger $ledgers/${reg}_matched_jobs.csv
@@ -321,7 +340,8 @@ s3_run_m=s3://maap-ops-workspace/ben_smith/ATL1415/run_args/rel006/north_monthly
 s3_out_m=s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/north_monthly/$reg
 aws s3 cp $m_dir/input_args_$reg.txt $s3_run_m/
 
-# c. Smoke ONE prelim tile, then fan out (plan M6-M7), exactly as step 6 with
+# c. Smoke ONE prelim tile, then fan out (plan M6-M7), exactly as step 6 --
+#    the SAME --tile_list: one list per region serves both periods -- with
 #    --args_url $s3_run_m/input_args_$reg.txt --tile_prefix $s3_out_m and a
 #    _monthly_ tag.  Smoke on the quarterly memory high-water tile.
 #    THE GATE THAT MATTERS: N_fit the same order as that tile's quarterly
@@ -329,11 +349,13 @@ aws s3 cp $m_dir/input_args_$reg.txt $s3_run_m/
 #    valid, and _expand_reference_files guards local paths, not URIs.
 #    check_field_sizes.py reads -g=...,1/12 (plan M3): expect
 #    dz/dz [25, 25, 94] for -W 60000.
-#    EXPECT A FAILED JOB for any center the quarterly ATL14 does not cover:
-#    the reference is all NaN there, and the FIT exits 1 with
-#    "smooth_fit: no valid data".  IS: E1020_N-2580, which also writes no
-#    quarterly tile.  It is deterministic -- do not retry it.  Whether to
-#    skip such centers up front is open (plan QM5).
+#    A center the quarterly ATL14 does not cover has an all-NaN reference and
+#    NO DATA for the fit ("smooth_fit: no valid data").  Normally it never
+#    gets here: it wrote no quarterly tile either, so step 8 pruned it from
+#    the list first.  On a build before plan_tile_lists.sh TL1 such a fit
+#    FAILED the job (IS E1020_N-2580, 9266c3d7, deterministic -- do not
+#    retry); from TL1 on it is a successful job with no tile, which step 8's
+#    prune removes.
 
 # d. Matched, from the prelim tiles that EXIST (plan M8), as step 9.
 
