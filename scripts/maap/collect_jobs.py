@@ -35,6 +35,15 @@ not a warning, since a run that reruns patched tiles mixes builds on purpose
 WARNS only if a tile ran with MAAP_PGT unset (no NSIDC).  Jobs from before
 per-tile stamping show '-'.
 
+WHAT MACHINE RAN EACH TILE, and how much CPU each step really got
+(docs/plan_dps_speed.sh D1): the instance type is a column, from run.sh's
+WORKER: line; each step line adds the cores it averaged (CPU time / wall),
+the median node load, and the hypervisor steal and cgroup throttling over
+the step, from run_with_rusage.py's "=== cpu" line.  After the table, the
+workers: one line per EC2 instance, with how many of the ledger's jobs ran
+on it -- more than one means jobs shared a node.  A bench job's BENCH: line
+is printed under it.  Jobs from before D1 show '-'.
+
 Time and peak memory are what the job reports about ITSELF
 (scripts/run_with_rusage.py, one line per fit / error / matched step);
 get_job_metrics() is used only for the wall clock, because its machine and
@@ -54,7 +63,7 @@ import sys
 from maap.maap import MAAP
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ogc_jobs import read_logs  # noqa: E402
+from ogc_jobs import read_logs, parse_worker, parse_cpu, parse_bench  # noqa: E402
 
 if len(sys.argv) != 2 or sys.argv[1].startswith('-'):
     print(__doc__.strip().rsplit('Usage:', 1)[-1], file=sys.stderr)
@@ -107,18 +116,21 @@ def collect(maap, row):
     out['version'] = fields.get('algorithm_version', '-')
     out['built'] = fields.get('built', '-')
     out['maap_pgt'] = fields.get('maap_pgt', '-')
+    worker = parse_worker(text)
+    out['instance'] = worker.get('instance_type', '-')
+    out['_worker'], out['_cpu'], out['_bench'] = worker, parse_cpu(text), parse_bench(text)
     return out, steps
 
 
 COLUMNS = (('tile', 26), ('status', 11), ('secs', 7), ('max_mem_GiB', 11),
            ('N_ATL11', 9), ('N_AT', 8), ('N_XO', 7), ('N_fit', 8), ('iters', 5),
-           ('commit', 7), ('queue', 22))
+           ('commit', 7), ('queue', 22), ('instance', 12))
 
 
 def main():
     maap = MAAP(maap_host=os.environ.get('MAAP_API_HOST', 'api.maap-project.org'))
     print(' '.join(f'{name:>{width}}' for name, width in COLUMNS))
-    builds, no_pgt = {}, []
+    builds, no_pgt, workers = {}, [], {}
     for row in csv.DictReader(open(LEDGER)):
         try:
             fields, steps = collect(maap, row)
@@ -130,15 +142,34 @@ def main():
             builds[key] = builds.get(key, 0) + 1
         if fields.get('maap_pgt') == 'unset':
             no_pgt.append(fields['tile'])
+        worker = fields.get('_worker', {})
+        if worker.get('instance_id', 'unreachable') != 'unreachable':
+            workers.setdefault(worker['instance_id'], [worker, []])[1].append(fields['tile'])
         fields['tile'] = fields['tile'][-26:]
         print(' '.join(f'{fields.get(name, "-"):>{width}}' for name, width in COLUMNS))
+        cpu = fields.get('_cpu', {})
         for label, (secs, gib) in steps.items():
-            print(f"{'':26} {'step ' + label:>11} {secs:7.0f} {gib:11.2f}")
+            line = f"{'':26} {'step ' + label:>11} {secs:7.0f} {gib:11.2f}"
+            if label in cpu:
+                c = cpu[label]
+                line += (f"   cores {c['cores']}, load {c['load']}, steal {c['steal_s']} s,"
+                         f" throttled {c['throttled_s']} s")
+            print(line)
+        if fields.get('_bench'):
+            print(f"{'':26} {'bench':>11} " +
+                  ' '.join(f'{k}={v}' for k, v in fields['_bench'].items()))
 
     if builds:
         print('\nBuilds that ran these tiles:')
         for (commit, version, built), n in builds.items():
             print(f'  {commit[:7]}  {version}  built {built}  {n} tile(s)')
+    if workers:
+        print('\nWorkers (EC2 instance: jobs from this ledger that ran on it):')
+        for iid, (w, tiles) in workers.items():
+            print(f"  {iid}  {w.get('instance_type', '-')}  {w.get('cpu', '-')}"
+                  f"  vcpus={w.get('vcpus', '-')} threads_per_core={w.get('threads_per_core', '-')}"
+                  f"  cpu_quota={w.get('cpu_quota', '-')}  blas={w.get('blas', '-')}"
+                  f"  {len(tiles)} job(s)")
     if no_pgt:
         print('\nWARNING: MAAP_PGT WAS UNSET on the workers for: ' + ', '.join(no_pgt) +
               ' -- they could not get NSIDC credentials.')

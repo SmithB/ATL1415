@@ -198,6 +198,43 @@ def read_logs(result):
     return '', None, []
 
 
+
+# WHAT RAN WHERE (docs/plan_dps_speed.sh D1).  run.sh prints one WORKER: line
+# per job (scripts/worker_facts.py) and run_with_rusage.py one "=== cpu"
+# line per step; the bench step ends with one BENCH: line.  Parsed here, once,
+# for collect_jobs.py and for anyone reading a ledger by hand.
+WORKER_RE = re.compile(r'^WORKER: (.*)$', re.M)
+CPU_RE = re.compile(r'^=== cpu \[(\w+)\]: cpu_time ([\d.]+) s = ([\d.]+|na) cores avg, '
+                    r'load1 min/med/max (\S+)(?: \(n=\d+\))?, steal (\S+)(?: s)?, '
+                    r'throttled (\S+)(?: s \(n=(\d+)\))?', re.M)
+BENCH_RE = re.compile(r'^BENCH: (.*)$', re.M)
+
+
+def _key_values(line):
+    return dict(f.split('=', 1) for f in line.split() if '=' in f)
+
+
+def parse_worker(text):
+    """The job's WORKER: fields as a dict; {} for a job from before D1."""
+    m = WORKER_RE.search(text)
+    return _key_values(m.group(1)) if m else {}
+
+
+def parse_cpu(text):
+    """{step: {cpu_s, cores, load, steal_s, throttled_s, n_throttled}}, strings."""
+    out = {}
+    for label, cpu, cores, load, steal, thr, n_thr in CPU_RE.findall(text):
+        out[label] = {'cpu_s': cpu, 'cores': cores,
+                      'load': load.split('/')[1] if '/' in load else load,
+                      'steal_s': steal, 'throttled_s': thr, 'n_throttled': n_thr or '-'}
+    return out
+
+
+def parse_bench(text):
+    """The bench step's BENCH: fields as a dict; {} if there is none."""
+    m = BENCH_RE.search(text)
+    return _key_values(m.group(1)) if m else {}
+
 def image_digest(text):
     """
     The digest of OUR image, from the docker pull the runner logs.

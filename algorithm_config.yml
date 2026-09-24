@@ -89,7 +89,7 @@ inputs:
     type: string
   - name: step
     label: step
-    doc: processing step -- prelim, matched, or build_id (print the build stamp and exit)
+    doc: processing step -- prelim, matched, build_id (print the build stamp and exit), or bench (time a saved solve; args_file is then its directory)
     type: string
     default: prelim
   # A STRING, not a File (howto_MAAP_ogc QA): whether the runner can stage an

@@ -3,7 +3,8 @@
 # PLAN: find out why the SuiteSparse solves run 2-5x slower on DPS than on
 # the ADE.
 # Written 2026-09-24, before any code.  TENTATIVE.  Every step carries its
-# own status tag.  Ben asked: "track down why the DPS cholmod runs are slow"
+# own status tag.  STATUS 2026-09-24 late: Ben said "Go ahead with D1-D3";
+# D1-D2 WRITTEN (tests/test_worker_facts.py); D3 = Ben registers.  Ben asked: "track down why the DPS cholmod runs are slow"
 # (the SPQR solves in LSsurf iterate_fit; SPQR sits on CHOLMOD).
 # ===========================================================================
 # Provenance per claim: STATEMENT = verified 2026-09-24, with how;
@@ -54,7 +55,7 @@
 #
 #
 # ===========================================================================
-# D1. [ADE] [NEEDS CODE: run.sh, collect_jobs.py]  Every job reports its worker.
+# D1. [ADE] [DONE 2026-09-24, needs D3 to deploy]  Every job reports its worker.
 # ===========================================================================
 # One "WORKER:" line at job start and a load line after each solve, cheap
 # and always on (like BUILD_ID, so every tile records it):
@@ -67,10 +68,23 @@
 # collect_jobs.py gains instance, cpu and load columns.  instance_id tells
 # which jobs shared a node (H3).
 # No change to the solve.
+# AS BUILT: scripts/worker_facts.py prints the WORKER: line (build_id report,
+#   every tile job's header, the bench job).  scripts/run_with_rusage.py adds
+#   one "=== cpu [step]:" line per solve: CPU time / wall = cores actually
+#   got, load1 min/med/max sampled every 10 s, /proc/stat steal, cgroup
+#   cpu.stat throttled time -- the direct test of H2 (a quota or too few real
+#   cores shows as cores << threads, or throttled > 0).  ogc_jobs.py
+#   parse_worker / parse_cpu / parse_bench; collect_jobs.py: instance column,
+#   cores/load/steal/throttled on each step line, a Workers summary (one line
+#   per EC2 instance with its job count).  Old ledgers read unchanged ('-').
+# ADE, for reference (STATEMENT): r5.4xlarge, 8259CL, vcpus 16,
+#   threads_per_core 2, cpu_quota 15.39, blas openblas-0.3.34-SkylakeX-
+#   pthreads, AND mem_limit_gib 14.9 -- the ADE's cgroup memory limit is
+#   16.0 GB although MemTotal is 124 GiB.
 #
 #
 # ===========================================================================
-# D2. [ADE] [NEEDS CODE: run.sh step=bench]  One identical system, both places.
+# D2. [ADE] [DONE 2026-09-24, needs D3 to deploy]  One identical system, both places.
 # ===========================================================================
 # step=bench: fetch the saved E1340_N-2420 iteration-0 system (A0.npz,
 #   b0.npy, 17+15 MB, staged to the bucket), time sparseqr.solve at 1, 2
@@ -78,6 +92,15 @@
 #   The same script runs on the ADE (numbers above).  Separates H1 (all
 #   times slower by one factor) from H2 (1 thread fine, 4 threads do not
 #   scale) directly, with no ATL11 read or S3 noise.
+# AS BUILT: run.sh step=bench (args_file = the system's directory; default
+#   s3://maap-ops-workspace/ben_smith/ATL1415/bench/E1340_N-2420_it0, staged
+#   2026-09-24, byte-identical to the local copy); scripts/maap/bench_solve.py
+#   (every timed solve is checked against x0 -- a wrong answer fails the job);
+#   scripts/maap/submit_bench.py <n> [--queue q] writes a ledger for
+#   collect_jobs.py.
+# ADE BASELINE (STATEMENT: run.sh step=bench on this ADE, 2026-09-24):
+#   BENCH: qr_t1=173.2 qr_t2=114.6 qr_t4=83.0 dgemm1=0.261 spmv=2.4 (seconds);
+#   every solve matches x0 to <1e-9; peak RSS 3.49 GiB, 377 s total.
 #
 #
 # ===========================================================================

@@ -31,6 +31,10 @@
 # ONE cheap job says which commit the image was built from.  --build-id does the
 # same from a shell.  See "BUILD ID" below.
 #
+# step=bench times one saved least-squares system on this worker and exits
+# (docs/plan_dps_speed.sh D2); args_file then names the DIRECTORY holding the
+# system, not an args file.  See "BENCH" below.
+#
 # There is ONE registered algorithm rather than one per stage (see
 # docs/Transition_to_maap.md): a MAAP algorithm has a single run_command, and
 # the conda+SuiteSparse build is the expensive part.  Only the per-tile solve
@@ -88,6 +92,15 @@ config_version () {
 stamp_field () {
     [ -f "$build_id_file" ] || return 0
     sed -n "s/^$1=//p" "$build_id_file" | head -1
+}
+
+# WHAT MACHINE THIS IS (docs/plan_dps_speed.sh D1): instance type and id, CPU,
+# cores, cgroup quota, OpenBLAS kernel, load.  DPS reports none of it.  One
+# greppable "WORKER:" line; never fails the job, whatever it cannot read.
+worker_facts () {
+    conda run --no-capture-output -n "$env_name" \
+        python "${repo_dir}/scripts/worker_facts.py" 2>/dev/null \
+        || echo "WORKER: unavailable (worker_facts.py did not run)"
 }
 
 # THE ONE-LINE SUMMARY, shared by --build-id and the header of EVERY tile job.
@@ -173,6 +186,9 @@ print_build_id () {
         echo "  WARNING: MAAP_PGT IS NOT SET -- NSIDC credentials will not be brokered"
         echo "           here, and every ATL11 read from NSIDC will fail."
     fi
+
+    echo "--- this worker ---"
+    worker_facts
 
     # ONE greppable line, so a collector need not parse the block above.
     echo "=========================================================="
@@ -262,6 +278,7 @@ fi
 
 if [ -z "$x0" ] || [ -z "$y0" ] || [ -z "$step" ]; then
     echo "usage: run.sh --x0 <m> --y0 <m> --step <prelim|matched> --args_file <uri|path>" >&2
+    echo "       run.sh --x0 0 --y0 0 --step bench [--args_file <dir of A0.npz, b0.npy, x0.npy>]" >&2
     echo "       run.sh <x0> <y0> <prelim|matched>      (args file found in input/)" >&2
     echo "       run.sh --build-id" >&2
     exit 2
@@ -272,13 +289,41 @@ for v in "$x0" "$y0"; do
     fi
 done
 
+# ===========================================================================
+# BENCH -- the same solve on every machine (docs/plan_dps_speed.sh D2).
+# ===========================================================================
+# Times the saved E1340_N-2420 iteration-0 system at 1, 2 and 4 threads with
+# scripts/maap/bench_solve.py, which the ADE runs too, so a DPS worker and the
+# ADE are compared on identical work.  x0/y0 are ignored (the CWL requires
+# them).  Wrapped like a solve, so the job also reports the cores it got.
+# The report goes to output/ as well: the CWL's output glob needs something.
+bench_default=s3://maap-ops-workspace/ben_smith/ATL1415/bench/E1340_N-2420_it0
+bench_and_exit () {
+    local src=${args_src:-$bench_default}
+    mkdir -p output
+    {
+        echo "=========================================================="
+        echo "  ATL1415 DPS bench job"
+        echo "  system      : ${src}"
+        echo "  nproc       : $(nproc)"
+        echo "=========================================================="
+        build_id_summary unchecked
+        worker_facts
+        "${repo_dir}/scripts/run_with_rusage.py" bench \
+            conda run --no-capture-output -n "$env_name" \
+            python "${repo_dir}/scripts/maap/bench_solve.py" "$src"
+    } 2>&1 | tee output/bench.txt
+    exit "${PIPESTATUS[0]}"
+}
+
 case "$step" in
     prelim|matched) ;;
+    bench) bench_and_exit ;;
     # The pre-scan above catches build_id as a bare token; this catches every
     # other spelling that parses to it, e.g. --step=build_id, which the first
     # version rejected with "must be ... 'build_id', got 'build_id'".
     build_id|build-id) build_id_and_exit ;;
-    *) echo "ERROR: step must be 'prelim', 'matched' or 'build_id', got '${step}'" >&2; exit 2 ;;
+    *) echo "ERROR: step must be 'prelim', 'matched', 'build_id' or 'bench', got '${step}'" >&2; exit 2 ;;
 esac
 
 mkdir -p output
@@ -358,6 +403,7 @@ echo "=========================================================="
 # on.  collect_jobs.py reports it per tile.  maap_py=unchecked: reading it
 # costs a conda start, and the build_id job reports it.
 build_id_summary unchecked
+worker_facts
 echo "=========================================================="
 # ...and hands the same facts to the solver, which writes them into the tile's
 # /meta as build_commit / build_version / build_completed (howto_MAAP_ogc
