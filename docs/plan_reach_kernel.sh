@@ -7,7 +7,7 @@
 # own status tag.  STATUS 2026-09-24 (late): RK0-RK4 DONE.  Ben merged
 # reach_kernel into LSsurf main (87ed699); the ADE ATL14 env is reinstalled
 # from it.  RK3 tests on LSsurf branch reach_kernel_tests (65779e8) for Ben
-# to merge.  NEXT: RK6 (Ben registers), then RK7 (needs Ben's go).
+# to merge.  RK6 DONE (59589a1 MATCH).  NEXT: RK7 (needs Ben's go).
 # ===========================================================================
 # WHAT BEN DECIDED (2026-09-24, in his words):
 #   "Error estimates that differ by 5% are functionally identical."
@@ -196,7 +196,8 @@
 #
 #
 # ===========================================================================
-# RK6. [BEN] [NOT STARTED]  Register; check_build_id --expect <new sha> MATCH.
+# RK6. [BEN] [DONE 2026-09-24: Ben registered; check_build_id --expect 59589a1 VERDICT MATCH,
+#   built 22:12:30-22:15:37Z (after the LSsurf merge), maap_py=5.1.0]  Register; check_build_id MATCH.
 # ===========================================================================
 # ONLY AFTER RK5's merge: the build pulls LSsurf main at build time, so a
 # registration before the merge rebuilds the OLD kernel and still MATCHes.
