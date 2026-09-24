@@ -4,7 +4,9 @@
 # with a sparse-reach, multithreaded solve, and stop recomputing Ip_c.Rinv
 # once per averaging operator.
 # Written 2026-09-24, before the code.  TENTATIVE.  Every step carries its
-# own status tag.  RK0 is done; nothing else is written.
+# own status tag.  STATUS 2026-09-24: RK0-RK2 DONE and pushed on LSsurf branch
+# reach_kernel (ec79a3f, 556bb8a); QR1/QR2 answered.  RK3+ wait on Ben
+# restarting the MAAP instance for memory.
 # ===========================================================================
 # WHAT BEN DECIDED (2026-09-24, in his words):
 #   "Error estimates that differ by 5% are functionally identical."
@@ -12,6 +14,11 @@
 #    We can replace inv_tr_upper."
 #   On the uncommitted np.float -> np.float64 edits: "B" (delete the two
 #   unused modules), "then write the plan".
+#   On the plan: "Once LSsurf is committed, I'll merge into main, then LSsurf
+#   should get reinstalled on MAAP.  I'd trust that reinstall, so I'd say
+#   'no' to QR2 -- the build ID can just check the ATL1415 commit.  Before
+#   RK3/4 I'll need to restart the MAAP instance to get a larger memory
+#   allocation."
 #
 # Provenance per claim: STATEMENT = verified 2026-09-24, with how;
 # DECIDED = Ben said so; RECOMMENDATION = mine; QUESTION = open.
@@ -74,7 +81,7 @@
 #
 #
 # ===========================================================================
-# RK1. [ADE] [NEEDS CODE: LSsurf/inv_tr_upper.pyx]  Replace the kernel.
+# RK1. [ADE] [DONE 2026-09-24, LSsurf 556bb8a -- formal tests are RK3]  Replace the kernel.
 # ===========================================================================
 # Keep the module, function name and return contract so the four callers
 # (smooth_fit + three in deprecated/) need nothing beyond RK2:
@@ -83,29 +90,49 @@
 #   column descending -- the order the old kernel emits (verified identical).
 #   status=1 when more than `nnz` entries would be stored, as today, so the
 #   nnz_max retry loop in smooth_fit.py:276-282 still works.
+#   `tol` stays a C float, as in the old signature, so the threshold is the
+#   same float32-rounded 1e-5 and the stored entries stay identical.
 # Inside: one CSC copy of R (sorted indices; diagonal = last entry per
-#   column); columns split into blocks (prototype: 256, equal column counts)
-#   handed to a thread pool; each thread owns its x / mark work vectors;
-#   each block writes its own buffer with the GIL released.
-# MEMORY -- RECOMMENDATION: assemble the blocks into ONE preallocated output
-#   (np.empty(nnz), as today) block by block, freeing each part as it is
-#   copied, so the peak is about the result plus one block, not 2x the
+#   column); columns cut into fixed 256-column blocks, highest first, so the
+#   blocks and the output do not depend on the thread count; each thread
+#   owns its x / mark work vectors; each block solves with the GIL released
+#   into a buffer bounded by min(block cols x col_hi, nnz) entries.
+# MEMORY: blocks are copied, in order, into ONE preallocated output
+#   (np.empty(nnz), as today) and dropped; at most 2 x threads blocks are in
+#   flight, so the peak is about the result plus a few blocks, not 2x the
 #   result.  Rinv is 113M entries = 1.8 GB on E1340_N-2420, and the error
 #   step already peaks at 8.3 GiB of 16 on the densest tiles.  The CSC copy
 #   of R adds nnz(R) x 12 B (~350 MB on E1340_N-2420).
 # DEFAULT threads=1 keeps the deprecated/ callers unchanged.
+# AS BUILT, two things the prototype did not tell us (STATEMENT, measured on
+#   the saved E1180_N-2420 R, same machine, back to back):
+#   - comparing the C-float tol against a double in the inner loop cost 14%;
+#     the kernel takes a double (the public argument stays a float, so the
+#     float32-rounded threshold and the stored entries are unchanged);
+#   - LSsurf builds at -O2 by default; setup.py now passes -O3 for this
+#     extension (111 -> 100 s before the tol fix).
+#   Final: 86 s (1 thread), 47 s (2), 41 s (4) vs 443 s; entries identical to
+#   the old kernel's; block width (32-1024 cols) makes no difference.
+#   Pre-commit check only: dense-inverse reference on random R (N=1..1000,
+#   1 and 3-4 threads), overflow -> status=1.
 #
 #
 # ===========================================================================
-# RK2. [ADE] [NEEDS CODE: LSsurf/smooth_fit.py]  Threads in; hoist Ip_c.Rinv.
+# RK2. [ADE] [DONE 2026-09-24, LSsurf 556bb8a]  Threads in; hoist Ip_c.Rinv.
 # ===========================================================================
 # a. smooth_fit.py:279: pass threads=args['THREADS'] (already set from
 #    --THREADS / nproc by run.sh and used for sparseqr at :244).
 # b. smooth_fit.py:302-306: compute Ip_c.dot(Rinv) ONCE before the loop,
 #    `del Rinv` after E0 and that product, and pass the product to every
 #    op.grid_error.  Same arithmetic, same result; removes 40 rebuilds.
+# c. (added while writing) `del RR, CC, VV` once Rinv is built: the triplets
+#    were held to the end of the function, ~16 B per Rinv entry.
 #
 #
+# ===========================================================================
+# GATE: BEN RESTARTS THE MAAP INSTANCE (more memory) BEFORE RK3/RK4.
+# The restart likely clears /tmp, including the 2026-09-24 scratch captures;
+# RK4 re-runs the real error step, so nothing there is needed.
 # ===========================================================================
 # RK3. [ADE] [NEEDS CODE: LSsurf/tests/test_inv_tr_upper.py]  Unit tests.
 # ===========================================================================
@@ -130,27 +157,27 @@
 #
 #
 # ===========================================================================
-# RK5. [BEN] [NOT STARTED]  Get the LSsurf commit into the DPS build.
+# RK5. [BEN] [NOT STARTED]  Merge LSsurf; reinstall it on MAAP.
 # ===========================================================================
-# QUESTION QR1: how does DPS pick up the new LSsurf?
-#   A. Merge reach_kernel into LSsurf main and push.  The next DPS build
-#      takes it automatically -- and so does every discover install.  An
-#      ATL1415 rebuild still needs a new ATL1415 commit to register.
-#   B. (RECOMMENDATION) A, AND pin ATL1415 pyproject.toml:47 to that LSsurf
-#      commit (git+...LSsurf.git@<sha>).  That pin IS the new ATL1415 commit
-#      to register, the build becomes reproducible, and a later LSsurf push
-#      cannot change DPS jobs silently.
-#   C. Pin ATL1415 to the reach_kernel branch without merging to main.
-# QUESTION QR2: record the LSsurf commit in the build stamp?
-#   RECOMMENDATION: yes -- build-env.sh already imports LSsurf in its
-#   verification block; print LSsurf's direct_url.json commit there, and
-#   have check_build_id.py report it beside the ATL1415 commit.  Otherwise a
-#   MATCH says nothing about which kernel ran.
+# RECOMMENDATION: merge after RK4 passes -- RK3/RK4 are the real tests.
+# QR1 DECIDED (Ben): I commit on LSsurf branch reach_kernel; BEN merges it
+#   into LSsurf main.  No pin -- ATL1415 stays on the unpinned
+#   git+https://github.com/smithb/LSsurf.git, so the next DPS build takes
+#   main.  (Every discover install takes it too.)
+# Then reinstall LSsurf on MAAP:
+#   ADE:  conda run -n ATL14 python -m pip install --force-reinstall \
+#           --no-deps git+https://github.com/smithb/LSsurf.git
+#         (--no-deps: only LSsurf changes; the rest of the env stays put).
+#   DPS:  the rebuild at RK6 reinstalls it.
+# QR2 DECIDED (Ben): NO -- the build ID checks the ATL1415 commit only; the
+#   reinstall is trusted.
 #
 #
 # ===========================================================================
 # RK6. [BEN] [NOT STARTED]  Register; check_build_id --expect <new sha> MATCH.
 # ===========================================================================
+# ONLY AFTER RK5's merge: the build pulls LSsurf main at build time, so a
+# registration before the merge rebuilds the OLD kernel and still MATCHes.
 # No DPS jobs may be in flight (split-build trap, plan_IS_run.sh).
 #
 #
