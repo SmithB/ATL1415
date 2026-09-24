@@ -4,9 +4,10 @@
 # with a sparse-reach, multithreaded solve, and stop recomputing Ip_c.Rinv
 # once per averaging operator.
 # Written 2026-09-24, before the code.  TENTATIVE.  Every step carries its
-# own status tag.  STATUS 2026-09-24: RK0-RK2 DONE and pushed on LSsurf branch
-# reach_kernel (ec79a3f, 556bb8a); QR1/QR2 answered.  RK3+ wait on Ben
-# restarting the MAAP instance for memory.
+# own status tag.  STATUS 2026-09-24 (late): RK0-RK4 DONE.  Ben merged
+# reach_kernel into LSsurf main (87ed699); the ADE ATL14 env is reinstalled
+# from it.  RK3 tests on LSsurf branch reach_kernel_tests (65779e8) for Ben
+# to merge.  NEXT: RK6 (Ben registers), then RK7 (needs Ben's go).
 # ===========================================================================
 # WHAT BEN DECIDED (2026-09-24, in his words):
 #   "Error estimates that differ by 5% are functionally identical."
@@ -134,7 +135,7 @@
 # The restart likely clears /tmp, including the 2026-09-24 scratch captures;
 # RK4 re-runs the real error step, so nothing there is needed.
 # ===========================================================================
-# RK3. [ADE] [NEEDS CODE: LSsurf/tests/test_inv_tr_upper.py]  Unit tests.
+# RK3. [ADE] [DONE 2026-09-24, LSsurf 65779e8 on branch reach_kernel_tests]  Unit tests.
 # ===========================================================================
 # Reference = dense inverse of small random upper-triangular sparse R
 #   (scipy.linalg.solve_triangular), thresholded at tol, in the kernel's
@@ -142,10 +143,19 @@
 #   threads=1 and threads=4 identical; a too-small nnz returns status=1; a
 #   1x1 and a diagonal R.  Mutation check: break the reach skip and confirm a
 #   test fails.
+# AS DONE (STATEMENT): tests/test_inv_tr_upper.py, 12 tests; LSsurf suite 13
+#   passed.  Mutants built in scratch: dropping the reach bound (`lo`) fails 6;
+#   keeping the diagonal only when above tol failed NOTHING at first (every
+#   test diagonal of Rinv was > tol) -- test_diagonal now has 1/1e6 and
+#   catches it.  TRAP: the LSsurf checkout holds a stale, git-ignored in-place
+#   inv_tr_upper.cpython-313 .so (Sep 3, OLD kernel); `python -m pytest` or
+#   `python -c` run from the checkout imports it.  test_new_kernel_is_installed
+#   fails loudly on it (TypeError: 'threads') -- verified.  Run the tests with
+#   the `pytest` executable, or delete that .so (Ben's call; not deleted).
 #
 #
 # ===========================================================================
-# RK4. [ADE] [NOT STARTED]  End to end on real tiles, locally.
+# RK4. [ADE] [DONE 2026-09-24, PASS]  End to end on real tiles, locally.
 # ===========================================================================
 # pip install the branch into the ATL14 env (reversible: reinstall main).
 # Run the ERROR step only (--calc_error_for_xy, on scratch copies, as on
@@ -154,10 +164,22 @@
 # Pass: every sigma field within 1e-10 relative of the existing tile (Ben's
 #   bar is 5%; anything above round-off means a bug, not an approximation);
 #   error-step time and peak RSS recorded against the DPS numbers above.
+# AS DONE (STATEMENT): LSsurf main 87ed699 installed in ATL14 (git+https,
+#   --no-deps, the RK5 command).  Error step on scratch copies of the fetched
+#   0332 prelim tiles, --THREADS=4, both tiles at once on the 16-core ADE,
+#   under run_with_rusage.py.  Compared every dataset against the original:
+#                   DPS old kernel (step error)   ADE new kernel
+#     E1340_N-2420     1270 s   6.43 GiB            168 s   4.83 GiB
+#     E1340_N-2460     1553 s   8.30 GiB            257 s   5.82 GiB
+#   Worst |dsigma|/sigma over all 45 sigma fields: 6.8e-15 / 8.3e-15 (pass
+#   bar 1e-10); no NaN-pattern change; every non-sigma field identical except
+#   bias/sigma/val (also a sigma, 2.3e-15).  Caveat: different hardware from
+#   DPS, whose core count is still unknown -- RK7 gives the DPS number.
+#   Peak RSS FELL ~1.6-2.5 GiB (triplets freed, Ip_c.Rinv built once).
 #
 #
 # ===========================================================================
-# RK5. [BEN] [NOT STARTED]  Merge LSsurf; reinstall it on MAAP.
+# RK5. [BEN] [MERGED 2026-09-24 (87ed699); ADE reinstalled; RK3 tests branch still to merge]  Merge LSsurf; reinstall it on MAAP.
 # ===========================================================================
 # RECOMMENDATION: merge after RK4 passes -- RK3/RK4 are the real tests.
 # QR1 DECIDED (Ben): I commit on LSsurf branch reach_kernel; BEN merges it
