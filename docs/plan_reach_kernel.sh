@@ -77,7 +77,7 @@
 # RK1. [ADE] [NEEDS CODE: LSsurf/inv_tr_upper.pyx]  Replace the kernel.
 # ===========================================================================
 # Keep the module, function name and return contract so the four callers
-# need nothing beyond RK2:
+# (smooth_fit + three in deprecated/) need nothing beyond RK2:
 #     inv_tr_upper(R, nnz, tol, threads=1) -> (rows, cols, vals, status)
 #   rows/cols int32, vals float64, columns in descending order, rows within a
 #   column descending -- the order the old kernel emits (verified identical).
