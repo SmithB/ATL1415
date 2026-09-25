@@ -187,6 +187,16 @@
 # B3 RERUN SUBMITTED ~17:45Z: 28 monthly prelim, -16gb, on d59b140 (see D),
 #   ledger IS_0332_monthly_cholmod_prelim_rerun_jobs.csv; both monthly
 #   prefixes were empty.
+# B3 RESULT ~18:30Z: 28/28 successful (all d59b140), fetched, 28/28 field
+#   sizes OK.  vs the archive, REPORTED CELLS ONLY (cell_area > 0, Ben
+#   2026-09-25; zero-area cells never reach a product): up to 22 m and 31%
+#   sigma, except E1020_N-2420 (isolated, no seams) at 1.8e-12 m.
+#   STATEMENT: E1260_N-2540 rerun locally against the ARCHIVED ATL14 matches
+#   the archived tile to 2.1e-12 m, sigma 1e-14, 0/25693 edit flips.  So the
+#   monthly differences are ALL from the new reference ATL14 (QT6 z0 -w fix),
+#   none from the code.  Checker: session_tools_2026-09-25/compare_reported.py.
+# B4 SUBMITTED ~18:35Z: 28 monthly matched, -16gb, ledger
+#   IS_0332_monthly_cholmod_matched_jobs.csv.
 # B1. quarterly prelim, 29 centers from ATL1415/resources/IS/40km_tile_list.txt
 #     (E1020_N-2580 is out already), -16gb, --tile_prefix = canonical.
 # B2. quarterly matched.  B3. monthly prelim.  B4. monthly matched.
@@ -230,6 +240,10 @@
 #   says the image is d59b140 (MATCH, pre-fix).  E480_N-1040 NOT retried:
 #   it would fail the same way.  Retry once check_build_id shows >= 2c64b87.
 #   pyTMD bug write-up for Ben: ~/ATL14_processing/pyTMD_inconsistent_chunks_bug.txt
+# D DONE ~18:10Z: registration deployed (check_build_id MATCH d00568c, built
+#   17:46Z; process lastModifiedTime still read 03:01Z -- not a deploy signal).
+#   E480_N-1040 retried alone (GL_transect_cholmod_retry_jobs.csv): successful,
+#   778 s, peak 9.42 GiB, m5.2xlarge.  GL transect 19/19.
 # D1. howto_MAAP_GL steps 1-2: compose + publish input_args_GL.txt (and the
 #     monthly one), + --solver=cholmod.
 # D2. 19 tiles, -32gb (the howto's choice until GL memory is measured):
