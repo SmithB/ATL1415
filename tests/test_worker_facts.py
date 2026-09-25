@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.join(REPO, 'scripts', 'maap'))
 from ogc_jobs import parse_bench, parse_cpu, parse_worker  # noqa: E402
 import bench_solve  # noqa: E402
 
-WORKER_KEYS = {'instance_type', 'instance_id', 'az', 'cpu', 'vcpus', 'affinity',
+WORKER_KEYS = {'instance_type', 'instance_id', 'az', 'lifecycle', 'cpu', 'vcpus', 'affinity',
                'threads_per_core', 'cpu_quota', 'mem_gib', 'mem_limit_gib',
                'blas', 'load1'}
 

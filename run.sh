@@ -382,11 +382,25 @@ else
 fi
 args_file=$(readlink -f "$args_file")
 
-# One thread per available core.  ATL11_to_ATL15 sets MKL/OPENBLAS/NUMEXPR/OMP
-# from a --THREADS= it scrapes out of sys.argv at import time -- it does not look
-# inside the @argsfile -- so this has to be an explicit command-line argument to
-# take effect.  It goes BEFORE @${args_file} so the args file can still override.
-threads=${ATL1415_THREADS:-$(nproc)}
+# One thread per PHYSICAL core, not per vCPU.  On DPS's t3.xlarge (4 vCPUs =
+# 2 cores x 2 hyperthreads) SPQR at 4 threads was SLOWER than at 2 on every
+# undisturbed bench job (129-135 s vs 121-125 s, docs/plan_dps_speed.sh D4),
+# and the queue's instance type varies job to job, so it is worked out here,
+# per machine.  ATL1415_THREADS still overrides it.
+# ATL11_to_ATL15 sets MKL/OPENBLAS/NUMEXPR/OMP from a --THREADS= it scrapes
+# out of sys.argv at import time -- it does not look inside the @argsfile --
+# so this has to be an explicit command-line argument to take effect.  It goes
+# BEFORE @${args_file} so the args file can still override.
+physical_cores () {
+    local n per siblings
+    n=$(nproc)
+    siblings=$(cat /sys/devices/system/cpu/cpu0/topology/thread_siblings_list 2>/dev/null || true)
+    # "0,2" or "0-1" -> 2 hyperthreads per core; anything unreadable -> 1
+    per=$(printf '%s\n' "$siblings" | awk -F, '{n=0; for(i=1;i<=NF;i++){split($i,r,"-"); n+=(r[2]==""?1:r[2]-r[1]+1)} print (n>0?n:1)}')
+    n=$(( n / ${per:-1} ))
+    echo $(( n > 0 ? n : 1 ))
+}
+threads=${ATL1415_THREADS:-$(physical_cores)}
 
 echo "=========================================================="
 echo "  ATL1415 DPS tile job"

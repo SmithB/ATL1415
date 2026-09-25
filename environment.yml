@@ -15,6 +15,11 @@ dependencies:
   - c-compiler
   - cxx-compiler
   - suitesparse
+  # CHOLMOD from Python, for the opt-in --solver=cholmod fit solve (LSsurf
+  # ls_solvers; docs/plan_cholmod_fit.sh).  From conda-forge, so it links the
+  # same suitesparse as sparseqr and nothing compiles at build time.  0.5 is
+  # the API LSsurf uses (CholeskyFactor(A, order=...)); 0.4 is incompatible.
+  - scikit-sparse>=0.5
   # LSsurf/smooth_fit.py imports threadpool_limits, but LSsurf's requirements.txt
   # (which feeds its install_requires) omits threadpoolctl, so pip never pulls
   # it.  smooth_fit is the core solve, so this would fail on every tile job, not

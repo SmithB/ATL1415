@@ -492,6 +492,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
             previous_product=None,\
             previous_product_sigma=0.2,\
             previous_product_earthaccess=False,\
+            solver='spqr',\
             THREADS=1):
     '''
     Function to generate DEMs and height-change maps based on ATL11 surface height data.
@@ -832,6 +833,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
                       z0_average_scale = z0_average_scale,
                       erode_source_mask=erode_source_mask,
                       avg_scales=avg_scales,
+                      solver=solver,
                       THREADS=THREADS)
     S['file_list'] = file_list
     S['lineage'] = lineage
@@ -1171,6 +1173,10 @@ def parse_args(argv=None):
     parser.add_argument('--verbose','-v', action="store_true")
     parser.add_argument('--write_data_only', action='store_true', help='save data without processing')
     parser.add_argument('--THREADS', type=int, default=1, help='number of threads to use in suitesparse calculations')
+    parser.add_argument('--solver', choices=['spqr', 'cholmod'], default='spqr',
+                        help="least-squares solver for the fit iterations: 'spqr' (QR, the default) or "
+                        "'cholmod' (normal equations + refinement, LSsurf ls_solvers; opt-in, "
+                        "docs/plan_cholmod_fit.sh).  The error step always uses SPQR.")
     args, unknown=parser.parse_known_args(argv[1:])
     if len(unknown) > 0:
         # Report, do not raise: the args files are shared between entry points,
@@ -1184,7 +1190,27 @@ def parse_args(argv=None):
               + ' '.join(unknown))
     if args.THREADS == 1 and int(N_THREADS) > 1:
         args.THREADS = int(N_THREADS)
+    if args.solver == 'cholmod':
+        require_cholmod()
     return args
+
+
+def require_cholmod():
+    """
+    Stop, before any data are read, if --solver=cholmod cannot be honoured.
+    LSsurf's smooth_fit accepts any keyword, so an LSsurf without ls_solvers
+    would take solver='cholmod' and silently solve with SPQR.
+    """
+    try:
+        import LSsurf.ls_solvers  # noqa: F401
+    except ImportError as e:
+        raise ImportError('--solver=cholmod needs an LSsurf with ls_solvers '
+                          '(LSsurf branch cholmod_fit or later); this one has none') from e
+    try:
+        import sksparse.cholmod  # noqa: F401
+    except ImportError as e:
+        raise ImportError('--solver=cholmod needs scikit-sparse >= 0.5 '
+                          '(conda-forge scikit-sparse, in environment.yml)') from e
 
 def resolve_run_config(args):
     # handle arguments with commas
@@ -1357,6 +1383,7 @@ def build_fit_kwargs(args, cfg):
            previous_product=args.previous_product,
            previous_product_sigma=args.previous_product_sigma,
            previous_product_earthaccess=args.previous_product_earthaccess,
+           solver=args.solver,
            THREADS=args.THREADS)
 
 def main():

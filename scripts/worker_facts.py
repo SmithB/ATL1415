@@ -8,7 +8,11 @@ solves run 2-5x slower on DPS than on the ADE for reasons the logs cannot
 show (docs/plan_dps_speed.sh).  Every field is a fact about THIS machine at
 job start:
 
-  instance_type, instance_id, az   EC2 instance metadata (IMDSv2, then v1).
+  instance_type, instance_id, az,  EC2 instance metadata (IMDSv2, then v1).
+  lifecycle                        spot or on-demand (instance-life-cycle):
+                                   Ben expects DPS workers to be spot, which
+                                   would explain why a queue's instance type
+                                   varies from job to job.
                                    instance_id says which jobs shared a node.
                                    "unreachable" when the container cannot
                                    reach it (an IMDSv2 hop limit of 1 blocks
@@ -120,7 +124,8 @@ def blas():
 
 
 def main():
-    meta = imds(['instance-type', 'instance-id', 'placement/availability-zone'])
+    meta = imds(['instance-type', 'instance-id', 'placement/availability-zone',
+                 'instance-life-cycle'])
     try:
         affinity = str(len(os.sched_getaffinity(0)))
     except Exception:
@@ -130,6 +135,7 @@ def main():
         'instance_type': meta.get('instance-type', 'unreachable'),
         'instance_id': meta.get('instance-id', 'unreachable'),
         'az': meta.get('placement/availability-zone', 'unreachable'),
+        'lifecycle': meta.get('instance-life-cycle', 'unreachable'),
         'cpu': cpu_model().replace(' ', '_'),
         'vcpus': str(os.cpu_count()),
         'affinity': affinity,
