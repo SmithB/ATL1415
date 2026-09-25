@@ -108,7 +108,7 @@ def test_defaults_to_anonymous_access(monkeypatch):
     fake_zarr = types.ModuleType('zarr')
     fake_zarr.storage = types.SimpleNamespace(FsspecStore=lambda fs, path=None: ('store', path))
     fake_xr = types.ModuleType('xarray')
-    fake_xr.open_zarr = lambda store, group=None, zarr_format=None: 'ds'
+    fake_xr.open_zarr = lambda store, group=None, zarr_format=None: types.SimpleNamespace(unify_chunks=lambda: 'ds')
     fake_pytmd = types.ModuleType('pyTMD')
     fake_pytmd.io = types.SimpleNamespace(
         model=lambda **kw: types.SimpleNamespace(from_database=lambda n: 'model'))
@@ -124,6 +124,32 @@ def test_defaults_to_anonymous_access(monkeypatch):
     monkeypatch.setenv('ATL1415_TIDE_ANON', '0')
     tides.open_tide_dataset('s3://pytmd', 'Gr1km-v2')
     assert seen == {'anon': False}
+
+
+def test_inconsistent_store_chunks_are_unified(monkeypatch):
+    """
+    Gr1km-v2's zarr store chunks its variables differently along x, so
+    Dataset.chunks raises -- and pyTMD's extrapolation path asks for it.  That
+    stopped GL E480_N-1040, the first Gr1km-v2 job with floating ice
+    (2026-09-25).  open_tide_dataset must hand back a dataset whose chunks read.
+    """
+    import dask.array as da
+    import xarray as xr
+    bad = xr.Dataset({'a': (('y', 'x'), da.zeros((4, 6), chunks=(2, 3))),
+                      'b': (('y', 'x'), da.zeros((4, 6), chunks=(2, 2)))})
+    with pytest.raises(ValueError, match='inconsistent chunks'):
+        bad.chunks
+    fake_s3fs = types.ModuleType('s3fs'); fake_s3fs.S3FileSystem = lambda **kw: None
+    fake_zarr = types.ModuleType('zarr')
+    fake_zarr.storage = types.SimpleNamespace(FsspecStore=lambda fs, path=None: None)
+    fake_pytmd = types.ModuleType('pyTMD')
+    fake_pytmd.io = types.SimpleNamespace(
+        model=lambda **kw: types.SimpleNamespace(from_database=lambda n: 'model'))
+    for name, mod in [('s3fs', fake_s3fs), ('zarr', fake_zarr), ('pyTMD', fake_pytmd)]:
+        monkeypatch.setitem(sys.modules, name, mod)
+    monkeypatch.setattr(xr, 'open_zarr', lambda store, group=None, zarr_format=None: bad)
+    ds, _ = tides.open_tide_dataset('s3://pytmd', 'Gr1km-v2')
+    assert set(ds.chunks) == {'y', 'x'}
 
 
 # ---------------------------------------------------------------------------

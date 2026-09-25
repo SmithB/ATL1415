@@ -78,6 +78,12 @@ def open_tide_dataset(tide_directory, tide_model, group='z', anon=None):
     fs = s3fs.S3FileSystem(anon=anon)
     store = zarr.storage.FsspecStore(fs, path=_store_path(tide_directory, tide_model))
     ds = xr.open_zarr(store, group=group, zarr_format=3)
+    # Gr1km-v2's store has variables chunked differently along x, so
+    # Dataset.chunks raises "inconsistent chunks" -- which pyTMD's
+    # extrapolation path (interp -> extrap_like -> crop) asks for.  It stopped
+    # the first Gr1km-v2 job with floating ice, GL E480_N-1040 on 2026-09-25
+    # (plan_rerun_timing D2).  Unifying the chunks changes no values.
+    ds = ds.unify_chunks()
     # verify=False: nothing local to verify, and the model object is wanted only
     # for its metadata (corrections), not to locate files
     m = pyTMD.io.model(verify=False).from_database(tide_model)
