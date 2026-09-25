@@ -282,6 +282,15 @@
 #   cProfile to the first solve (scratchpad prof_e220/run_prof.py) was stopped
 #   unfinished.  Error step: 1691 of 1703 s is uncertainty propagation, peak
 #   20.0 GiB (was 11.6 on SPQR/old kernel) -- a memory note for the budget.
+# E STATUS 2026-09-25 ~20:50Z: E1-E3 DONE, DRAFT FOR BEN'S REVIEW, NOT SENT.
+#   ~/ATL14_processing/maap_resource_estimate.txt rewritten (previous kept as
+#   maap_resource_estimate_2026-09-19.txt).  Discover logs are GONE (/tmp was
+#   wiped), so E2 used old/new MAAP ratios on the same tiles instead of
+#   new-MAAP/discover: IS q prelim 4.0x, q matched 4.3x, m prelim 2.0x,
+#   m matched 2.4x; AA q prelim 2.7x; GL q prelim measured directly (median
+#   12 min).  AA/GL matched + monthly scaled by the IS ratio, marked est.
+#   TOTAL ~6,000-7,500 job-hours (was ~18,000); AA quarterly ~2 days at 100
+#   concurrent (was 5-6).  Ratio script: session scratchpad budget/ratios.py.
 # E1. collect_jobs on every ledger: time per step, peak RSS, instance type,
 #     lifecycle, cores got, steal.  Workers are SPOT and of mixed type, so
 #     every number is reported with the instance type it ran on.
