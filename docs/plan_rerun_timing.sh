@@ -52,7 +52,7 @@
 #          (Taken with the recommendation: recompose at 0332 + --solver=cholmod.)
 #   QT5  The GL transect (D below, 19 tiles): OK?
 #        QT5 answer: OK.
-#   QT6  (OPEN, 2026-09-25 ~15:30Z; B5 is PAUSED on it.)  Should the z0.h5
+#   QT6  (ANSWERED 2026-09-25: -w; DONE, see B5.)  Should the z0.h5
 #        mosaic tasks pass -w (weighted, like the 10 km dz/dzdt tasks)?
 #        STATEMENT: make_mosaic_jobs.py writes the z0 tasks (all six matched
 #        fields, and sigma_z0 from prelim) WITHOUT -w, but with -p 5000
@@ -78,7 +78,13 @@
 #        sigma_z0), ADE-only (no registration), then rebuild IS z0.h5 and
 #        carry on with B5.  The old product cannot then be compared on z0;
 #        compare new-weighted vs archive-tiles-weighted instead (3.4e-8 m above).
-#        QT6 answer:
+#        QT6 answer: The -w flag is needed.  Note this as something that has been fixed that will lead to minor differences between new products and archived products.
+#          DONE: make_mosaic_jobs.py z0 tasks (6 matched fields + sigma_z0) pass
+#          -w; tests/test_make_mosaic_jobs.py (fails without it); suite 181
+#          passed 2 skipped.  Noted as fixed in howto_MAAP_arctic step 9.
+#          STATEMENT: the differences vs archived products are small in the
+#          median but NOT small at seams -- IS z0 on ice: median 1.7 cm,
+#          18.7k of 1.13M cells > 10 m, max 412 m (sigma_z0 max 193 m).
 #
 #
 # ===========================================================================
@@ -167,6 +173,11 @@
 #   no error logs, check_mosaic_outputs --values 0 problems.  40/41 files
 #   match the archive; z0.h5 does NOT -> QT6.  PAUSED: no netCDF written,
 #   nothing published, monthly (B3) still waits.
+# B5 MOSAIC RERUN ~16:00Z with -w (runs/IS_0332_cholmod_w_mosaic): 41/41,
+#   42 s, no error logs, 0 problems.  z0.h5 vs the ARCHIVED TILES mosaicked
+#   the same way (-w, scratchpad): model 3.4e-8 m, sigma 4.9e-7 rel, no NaN
+#   flips.  The other 40 files vs the archive: <=1.5e-7.  NEXT: netCDF
+#   (howto step 10), compare, publish (step 11), then B3 monthly.
 # B1. quarterly prelim, 29 centers from ATL1415/resources/IS/40km_tile_list.txt
 #     (E1020_N-2580 is out already), -16gb, --tile_prefix = canonical.
 # B2. quarterly matched.  B3. monthly prelim.  B4. monthly matched.

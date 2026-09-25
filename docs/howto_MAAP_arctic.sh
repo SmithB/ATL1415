@@ -260,6 +260,11 @@ cd $repo
 # EXIT CODES ARE NOT ENOUGH: check_mosaic_outputs.py --values reads every
 # field and flags all-NaN ones.  Then error_logs/ must be empty and done/
 # must hold every task.  Values come from matched/, sigmas from prelim/.
+# FIXED 2026-09-25 (plan_rerun_timing QT6): the z0 tasks now pass -w.  Before,
+# overlapping tiles resolved in fetch order, so a tile's outer edge could win.
+# z0 products made since then DIFFER from earlier ones at tile seams: IS
+# quarterly vs the archived 0332 z0, on ice, median 1.7 cm, 18.7k of 1.13M
+# cells > 10 m, max 412 m (sigma_z0 max 193 m).  Expected; not a regression.
 # KNOWN, NOT FIXED: on IS quarterly, sigma_dzdt is finite on only ~44% of the
 # cells dzdt is (plan_cycles_03_32.sh T8).  Flagged, not pursued.
 

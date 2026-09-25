@@ -117,9 +117,13 @@ def make_mosaic_jobs(base, region, lags,
                 write_task(task, cmd, mosaic_run, environment, append=append)
                 append = True
         else:
+            # -w: without it make_mosaic.py ignores -p/-f and overlapping
+            # tiles resolve in glob (fetch) order, so a tile's unreliable
+            # outer edge can win.  Fixed 2026-09-25: z0 products differ
+            # slightly from earlier ones (plan_rerun_timing QT6).
             for field in field_list:
                 cmd = (
-                    f"make_mosaic.py {crop} {this_replace} "
+                    f"make_mosaic.py {crop} {this_replace} -w "
                     f"-d {base} -g {glob_str} -p {pad} -f {feather} "
                     f"-O {base}/z0.h5 --in_group {group}/ -F {field}"
                 )
@@ -128,7 +132,7 @@ def make_mosaic_jobs(base, region, lags,
                 append = True
             if compute_sigma:
                 cmd = (
-                    f"make_mosaic.py {crop} {this_replace} "
+                    f"make_mosaic.py {crop} {this_replace} -w "
                     f"-d {base} -g 'prelim/*.h5' -p {pad} -f {feather} "
                     f"-O {base}/z0.h5 --in_group {group}/ -F sigma_z0"
                 )
