@@ -116,6 +116,19 @@
 #   <ledger> ~/ATL14_processing/rel006/north[_monthly]/IS --step prelim;
 #   check_field_sizes.py; then B2/B4 matched (same tile list, same prefix).
 #   Helper scripts: ~/ATL14_processing/session_tools_2026-09-25/.
+# B RESULTS 2026-09-25 ~05:30Z:
+#   B1 quarterly prelim: 27/28 successful, fetched, 27/27 field sizes OK; vs
+#     the archive: 0 edit flips on every tile, worst model 1.6e-7 m
+#     (E1340_N-2500), worst sigma 8.5e-6 rel.  E1300_N-2620 FAILED in MAAP's
+#     own get_maap_pgt_token.py (connect timeout to api.maap-project.org; no
+#     NSIDC credentials) -> retried, ledger IS_0332_cholmod_prelim_retry_jobs.csv.
+#   B3 monthly prelim: 28/28 FAILED -- MY MISTAKE: A moved the quarterly
+#     ATL14_IS_0332_100m_006_02.nc, which the monthly args name as
+#     --ATL14_reference_file, and monthly was launched before the quarterly
+#     ATL14 exists (howto order: quarterly prelim -> matched -> mosaic+nc ->
+#     monthly).  FIX: rerun B3 AFTER B5 writes the NEW quarterly ATL14 (not a
+#     copy of the old one back).  pointCollection's mosaic.from_list reports
+#     the missing file as UnboundLocalError 'temp' (upstream, unfixed).
 # B1. quarterly prelim, 29 centers from ATL1415/resources/IS/40km_tile_list.txt
 #     (E1020_N-2580 is out already), -16gb, --tile_prefix = canonical.
 # B2. quarterly matched.  B3. monthly prelim.  B4. monthly matched.
