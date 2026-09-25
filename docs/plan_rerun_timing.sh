@@ -178,6 +178,15 @@
 #   the same way (-w, scratchpad): model 3.4e-8 m, sigma 4.9e-7 rel, no NaN
 #   flips.  The other 40 files vs the archive: <=1.5e-7.  NEXT: netCDF
 #   (howto step 10), compare, publish (step 11), then B3 monthly.
+# B5 netCDF ~17:40Z (runs/IS_0332_cholmod_nc): ATL14 + 4 ATL15, rc 0, no
+#   INVALID.  vs archive: ATL15 all <=6.1e-5 (float32 rounding).  ATL14 h /
+#   h_sigma differ exactly as QT6 predicts (18,721 cells > 10 m, max 412 m;
+#   23 NaN flips); data_count / misfit_* gain or lose 3,632 NaN cells (now
+#   weighted too).  PUBLISHED (step 11), S3 sizes == local.  Monthly args
+#   (S3 == local) name this ATL14 and --solver=cholmod.
+# B3 RERUN SUBMITTED ~17:45Z: 28 monthly prelim, -16gb, on d59b140 (see D),
+#   ledger IS_0332_monthly_cholmod_prelim_rerun_jobs.csv; both monthly
+#   prefixes were empty.
 # B1. quarterly prelim, 29 centers from ATL1415/resources/IS/40km_tile_list.txt
 #     (E1020_N-2580 is out already), -16gb, --tile_prefix = canonical.
 # B2. quarterly matched.  B3. monthly prelim.  B4. monthly matched.
@@ -216,6 +225,11 @@
 #   Dataset.chunks.  Deterministic; reproduced locally.  FIXED 2c64b87
 #   (tides.py: ds.unify_chunks(); values unchanged).  NEEDS A REGISTRATION,
 #   then retry E480_N-1040 alone -- only when NO jobs are in flight.
+# D STATUS ~17:40Z: Ben reports the registration done, but list_algorithms
+#   still shows atl1415_tile_solve:on_s3 modified 03:01Z and check_build_id
+#   says the image is d59b140 (MATCH, pre-fix).  E480_N-1040 NOT retried:
+#   it would fail the same way.  Retry once check_build_id shows >= 2c64b87.
+#   pyTMD bug write-up for Ben: ~/ATL14_processing/pyTMD_inconsistent_chunks_bug.txt
 # D1. howto_MAAP_GL steps 1-2: compose + publish input_args_GL.txt (and the
 #     monthly one), + --solver=cholmod.
 # D2. 19 tiles, -32gb (the howto's choice until GL memory is measured):
