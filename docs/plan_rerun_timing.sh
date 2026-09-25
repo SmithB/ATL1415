@@ -263,6 +263,14 @@
 # ===========================================================================
 # E. THE TIMING BUDGET.  [ADE]
 # ===========================================================================
+# E NOTE 2026-09-25 (TABLED by Ben): where AA 44km_E220_N20's fit time goes.
+#   STATEMENT (DPS log): fit 3488 s, cpu 1317 s (0.38 cores); first solve at
+#   ~52 min; 3 cholmod solves ~270 s wall.  So ~3200 s before the solve,
+#   mostly idle -> predicted mostly data reads (ATL11/xover/previous product
+#   from S3), with ~800-900 cpu-s of pre-solve compute.  NOT profiled: a local
+#   cProfile to the first solve (scratchpad prof_e220/run_prof.py) was stopped
+#   unfinished.  Error step: 1691 of 1703 s is uncertainty propagation, peak
+#   20.0 GiB (was 11.6 on SPQR/old kernel) -- a memory note for the budget.
 # E1. collect_jobs on every ledger: time per step, peak RSS, instance type,
 #     lifecycle, cores got, steal.  Workers are SPOT and of mixed type, so
 #     every number is reported with the instance type it ran on.
