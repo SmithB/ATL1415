@@ -290,7 +290,7 @@
 #   m matched 2.4x; AA q prelim 2.7x; GL q prelim measured directly (median
 #   12 min).  AA/GL matched + monthly scaled by the IS ratio, marked est.
 #   TOTAL ~6,000-7,500 job-hours (was ~18,000); AA quarterly ~2 days at 100
-#   concurrent (was 5-6).  Ratio script: session scratchpad budget/ratios.py.
+#   concurrent (was 5-6).  Ratio script: ~/ATL14_processing/session_tools_2026-09-25/budget_ratios.py.
 # E1. collect_jobs on every ledger: time per step, peak RSS, instance type,
 #     lifecycle, cores got, steal.  Workers are SPOT and of mixed type, so
 #     every number is reported with the instance type it ran on.
