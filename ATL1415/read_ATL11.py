@@ -76,7 +76,11 @@ def lineage_for_granules(files, fs=None):
         if basename in lineage:
             continue
         try:
-            with pc.io_utils.open_h5(name, fs=fs) as h5f:
+            # a few attributes, not the file: at s3fs's default 50 MiB block
+            # this reopen re-downloaded most of every granule (IS tile:
+            # ~0.74 GB of 1.0 GB read, 2026-09-25)
+            with pc.io_utils.open_h5(name, fs=fs,
+                                     block_size=pc.io_utils.DEFAULT_REMOTE_BLOCK_SIZE) as h5f:
                 lineage[basename] = lineage_attributes(h5f)
         except Exception as e:
             # includes a local index whose stored paths do not resolve from here

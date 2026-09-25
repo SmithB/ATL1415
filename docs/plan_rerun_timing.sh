@@ -307,6 +307,17 @@
 #   RECOMMENDATION: blockcache in pointCollection io_utils.open_remote; then
 #   rewrite estimate section 1 (AA ~180 TB as deployed, ~30 TB with the fix).
 #   AWAITS BEN.  Scripts: session_tools_2026-09-25/read_fix.py, read_attrib.py.
+#   DONE 2026-09-26 (Ben: "add blockcache to pointCollection open_remote"):
+#   pointCollection branch blockcache_reads 2d438e1 (pushed; BEN TO MERGE --
+#   DPS installs pointCollection from main), + ATL1415 read_ATL11.py lineage
+#   reopen now passes DEFAULT_REMOTE_BLOCK_SIZE (s3fs's default block is
+#   50 MiB; that reopen alone was ~0.74 GB of the IS tile's 1.0 GB).  With
+#   BOTH, committed code paths: IS 141->53 s, 1.71->0.26 GB; AA E900
+#   525->262 s, 9.90->1.54 GB; identical solve inputs, all lineage read.
+#   CORRECTION to the E NOTE above: the refetching is INSIDE one range read
+#   (45 range reads for the IS tile, one per granule and pair; ~30 MB each
+#   on readahead, ~7 MB with blockcache), not many ranges.  Estimate section 1
+#   rewritten for the fixed code.  Deploy = merge + register + check_build_id.
 # E1. collect_jobs on every ledger: time per step, peak RSS, instance type,
 #     lifecycle, cores got, steal.  Workers are SPOT and of mixed type, so
 #     every number is reported with the instance type it ran on.
