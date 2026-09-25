@@ -5,7 +5,8 @@
 # iterate_fit.
 # Written 2026-09-24, before any code.  TENTATIVE.  Every step carries its
 # own status tag.  Ben: "Go ahead with the bench jobs and the CHOLMOD plan."
-# QC1-QC3 answered 2026-09-24; C0-C4 under way.
+# QC1-QC3 answered 2026-09-24.  C0-C4 DONE, ALL FIVE TILES PASS.  NEXT: Ben merges
+# LSsurf cholmod_fit (00eef0c), then registers (C5-C6); C7 needs Ben's go.
 # ===========================================================================
 # Provenance per claim: STATEMENT = verified 2026-09-24, with how;
 # DECIDED = Ben said so; RECOMMENDATION = mine; QUESTION = open.
@@ -74,7 +75,7 @@
 #
 #
 # ===========================================================================
-# C0. [ADE] [NOT STARTED]  The dependency.
+# C0. [ADE] [DONE 2026-09-24, ATL1415 8f3456b]  The dependency.
 # ===========================================================================
 # STATEMENT: conda-forge ships scikit-sparse 0.5.0 for py313 (conda search,
 #   2026-09-24), linked against conda-forge suitesparse -- the same stack
@@ -86,7 +87,12 @@
 #
 #
 # ===========================================================================
-# C1. [ADE] [NEEDS CODE: LSsurf smooth_fit.py]  The solver.
+# C1. [ADE] [DONE 2026-09-24, LSsurf cholmod_fit 00eef0c; ATL1415 --solver 8f3456b]  The solver.
+# AS BUILT: LSsurf/ls_solvers.py; up to 3 refinement steps (stop at 1e-10);
+#   fallback also when rcond(A'A) < 1e-14 (a repeated column gave 2.9e-16 and
+#   NO CHOLMOD error).  ATL11_to_ATL15 --solver checks LSsurf.ls_solvers and
+#   sksparse at PARSE time: smooth_fit ignores unknown keywords, so an old
+#   LSsurf would otherwise run SPQR silently.
 # ===========================================================================
 # One function, used by iterate_fit where sparseqr.solve is called now:
 #   solve_ls(A, b, threads, solver) -> x
@@ -107,7 +113,10 @@
 #
 #
 # ===========================================================================
-# C2. [ADE] [NEEDS CODE: LSsurf/tests/test_solve_ls.py]  Unit tests.
+# C2. [ADE] [DONE 2026-09-24, LSsurf tests/test_ls_solvers.py, 22 passed]  Unit tests.
+# Note: column scaling did NOT make a test the unrefined solve fails;
+#   near-collinear columns (eps 1e-4, 1e-5) do.  Mutants caught: refinement
+#   disabled (2 fail), rcond check removed (rank-deficient case fails).
 # ===========================================================================
 # Random sparse least-squares problems, well and badly conditioned: cholmod
 #   matches spqr within 1e-9 relative; a rank-deficient A falls back to SPQR
@@ -116,7 +125,9 @@
 #
 #
 # ===========================================================================
-# C3. [ADE] [NOT STARTED]  Install into the ATL14 env (reversible).
+# C3. [ADE] [DONE 2026-09-24]  Install into the ATL14 env (reversible).
+# Dry run: scikit-sparse 0.5.0 the ONLY new package, nothing changed.
+#   LSsurf cholmod_fit installed --no-deps from the checkout.
 # ===========================================================================
 # conda install -n ATL14 -c conda-forge scikit-sparse=0.5.0, dry-run first:
 #   it must NOT change suitesparse, numpy or scipy (if it would, stop and
@@ -124,7 +135,22 @@
 #
 #
 # ===========================================================================
-# C4. [ADE] [NOT STARTED]  Validate on real tiles, both solvers, same run.
+# C4. [ADE] [DONE 2026-09-24: ALL PASS]  Validate on real tiles.
+# AS RUN: --solver=cholmod prelim fit + error step, --THREADS=4, locally,
+#   compared with the DPS SPQR tiles (0332 quarterly / monthly, 61a19af) --
+#   earlier the local SPQR rerun of E1340_N-2420 matched DPS's edits exactly.
+#   STATEMENT:
+#   tile               solve s/iter  rcond      edit flips   worst model |d|  fit peak
+#   q E1340_N-2420     18            2e-13..1e-12  0/65207      1.2e-9 m      5.16 GiB
+#   q E1340_N-2460     28-29         2e-12..7e-12  0/273383     4.2e-9 m      7.89 GiB (DPS SPQR 9.52)
+#   q E1180_N-2420     14            2e-12..4e-12  0/159        3.4e-9 m      4.24 GiB
+#   q E1020_N-2420     15            3e-12..1e-11  0/6819       1.1e-9 m      4.35 GiB
+#   m E1340_N-2460     5-5.5         8e-13..4e-12  0/280956     5.1e-11 m     2.41 GiB
+#   Worst sigma |d|/sigma 5e-11.  No fallback.  Refinement converged in 1-2
+#   steps.  SPQR for comparison: E1340_N-2420 84-98 s/iter locally; DPS
+#   185-461 (q 2420), 311-726 (q 2460), ~210 (monthly 2460) s/iter.
+#   Whole local fit, E1340_N-2420: 463 s SPQR -> 220 s cholmod (the rest is
+#   mostly the S3 ATL11 read).  Logs: session scratchpad c4/.
 # ===========================================================================
 # Full prelim fit + error step, spqr vs cholmod, --THREADS=4 (and 2, the DPS
 #   physical-core count), scratch output only:
