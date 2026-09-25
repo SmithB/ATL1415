@@ -104,11 +104,49 @@
 #
 #
 # ===========================================================================
-# D3. [BEN] [NOT STARTED]  Register; check_build_id MATCH.
-# D4. [DPS] [NOT STARTED -- needs Ben's go]  Run bench x2 alone, then bench
-#     x8 at once (H3), on the 16gb queue; optionally one on -32gb to compare
-#     instance types.
-# D5. [ADE] [NOT STARTED]  Read, decide.  If the cause is the instance type or
+# D3. [BEN] [DONE 2026-09-24]  Ben registered; check_build_id --expect 4d2c9ae
+#     VERDICT MATCH.  That build_id job (default queue -32gb) ran on an
+#     r5.xlarge: 8259CL, vcpus 4, threads_per_core 2, no cpu quota, 31 GiB.
+# D4. [DPS] [DONE 2026-09-24, Ben: "Go ahead with the bench jobs"]  bench x2
+#     alone, then x8 at once on -16gb, plus x1 on -32gb.  Ledgers
+#     ~/ATL14_processing/maap_ledgers/bench_16gb_2x_20260924T234029_jobs.csv,
+#     bench_16gb_8x_20260924T235345_jobs.csv, bench_32gb_1x_20260924T235348_jobs.csv.
+#     STATEMENT (collect_jobs.py + job metrics), seconds, SPQR on the saved system:
+#       machine                  qr_t1  qr_t2  qr_t4  steal    n
+#       ADE r5.4xlarge            173    115     83    0       1
+#       -16gb t3.xlarge, steal<1s 181-189 121-125 129-135 <1 s  5
+#       -16gb t3.xlarge, steal>40s 212-342 118-316 139-175 45-397 s 5
+#       -32gb c5.4xlarge (8275CL 3.0 GHz, 16 vcpus)
+#                                 148    103     76    0.1     1
+#     - EVERY -16gb job ran on a t3.xlarge: BURSTABLE, 4 vcpus = 2 physical
+#       cores, same 8259CL CPU as the ADE.  -32gb is NOT one type: r5.xlarge
+#       (build_id) and c5.4xlarge (bench) on the same night.
+#     - H1 (slower CPU): NO -- same model; with no steal, 1 thread is within
+#       5-9% of the ADE.
+#     - H2 (fewer real cores): YES -- 2 physical cores.  4 threads is SLOWER
+#       than 2 on every no-steal t3 (129-135 vs 121-125 s); run.sh uses nproc=4.
+#     - STEAL: half the t3 jobs lost 45-397 s of CPU to the hypervisor
+#       (13% of all vcpu time at worst), and those ran 1.2-2.5x slower.  NOT
+#       simple credit exhaustion: instance ...cf1642 lost 334 s on its second
+#       job and 0.7 s on its third, straight after.  Cause unknown from here
+#       (burstable hosts are shared; credit mode not visible to the job).
+#     - H3 (jobs sharing a node): NO for these -- every instance ran one job
+#       at a time (start/end times; instances are reused back to back).
+#     - The prelim fan-out's slow iteration 0 (up to 855 s) is therefore more
+#       likely steal on t3s than co-located jobs; the cpu line on the next
+#       real tiles will say (steal per step).
+# D5. [ADE] [IN PROGRESS]  Read, decide.  RECOMMENDATIONS (for Ben):
+#     R1  threads = physical cores (nproc / threads_per_core) in run.sh: 2 on
+#         a t3.xlarge.  Small (~6% on the QR), free, and it stops 4 threads
+#         fighting over 2 cores in the error kernel too.
+#     R2  run CPU-bound steps on a non-burstable queue.  The best t3 is ~1.7x
+#         slower than the c5.4xlarge -32gb gave, and the worst ~3x -- but
+#         -32gb is a mix of types.  QUESTION for the MAAP admins: which
+#         instance types does each queue map to, can -16gb avoid t3, and are
+#         the t3s in standard or unlimited credit mode?
+#     R3  a real prelim tile on -32gb vs -16gb (E1340_N-2420) to measure the
+#         whole job, not just the bench.  Needs Ben's go.
+# Original D5 text:  If the cause is the instance type or
 #     node packing, the fix is a queue choice or a MAAP admin question, not
 #     code; ~/ATL14_processing/maap_resource_estimate.txt gets the numbers.
 # ===========================================================================
