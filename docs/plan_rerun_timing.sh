@@ -4,6 +4,7 @@
 # south-to-north GL transect -- all on the new code -- and rebuild the timing
 # budget (~/ATL14_processing/maap_resource_estimate.txt) from them.
 # Written 2026-09-25, before anything was moved or submitted.  TENTATIVE.
+# QT1-QT5 ANSWERED by Ben 2026-09-25 (below); A under way.
 # Ben: "Archive the old outputs for Antarctica and Iceland in a separate
 # directory for reference.  Rerun Iceland the Antarctic transect and run a
 # south-to-north Greenland transect, and use these to repopulate the timing
@@ -22,12 +23,12 @@
 #        prefix must be empty before the rerun: matched reads neighbours from
 #        it, and must not pick up an old tile); the AA tiles are COPIED out of
 #        dps_output (the job records stay where the ledgers point).
-#        QT1 answer:
+#        QT1 answer:  Agree with recommendation
 #   QT2  Iceland: rerun all four job types (quarterly + monthly, prelim +
 #        matched) AND the ADE mosaic + netCDF, then compare the products with
 #        the archive?  RECOMMENDATION: yes -- the comparison is the end-to-end
 #        test of cholmod + the reach kernel, and the ADE steps are minutes.
-#        QT2 answer:
+#        QT2 answer: Agree with recommendation
 #   QT3  Transects: which job types?  The budget needs prelim AND matched for
 #        AA and GL, quarterly AND monthly.  A matched job on an isolated
 #        transect tile has no neighbours, so it would run fast and mislead.
@@ -37,7 +38,9 @@
 #        runs with a full neighbourhood.  Transect tiles go to a TRANSECT
 #        prefix (.../ATL14_processing/transects/2026-09-25/<region>), not the
 #        production tree.
-#        QT3 answer:
+#        QT3 answer:  Just run quarterly prelim for the transects
+#          DECIDED: no monthly, no 3x3 blocks, no matched on AA/GL.  So AA/GL
+#          matched and monthly budget lines are ESTIMATES (E2), not measured.
 #   QT4  AA's args are still at 0331 (below), and 0331 is gone from CMR.
 #        RECOMMENDATION: recompose both AA args files at 0332 the way IS was
 #        (setup_ATL1415_region.py with rel_006_0332.txt), adding
@@ -45,9 +48,10 @@
 #        0332 t_crop runs to 2026.5 (GL's mask ends 2026.0): is that
 #        acceptable for a TIMING run?  (It is a science question for
 #        production.)
-#        QT4 answer:
+#        QT4 answer:  The limited masks are OK for timing.
+#          (Taken with the recommendation: recompose at 0332 + --solver=cholmod.)
 #   QT5  The GL transect (D below, 19 tiles): OK?
-#        QT5 answer:
+#        QT5 answer: OK.
 #
 #
 # ===========================================================================
@@ -67,7 +71,7 @@
 #   rel006/south/AA{,_44km}/input_args_AA*.txt.  The 17-tile cost transect
 #   (scripts/maap/AA_cost_results.csv, 2026-09-11, build ab84687, 0331) left
 #   its tiles in dps_output; ledger maap_ledgers/AA_transect_ab84687_jobs.csv
-#   (and AA_xo_check_jobs.csv for the crossover check jobs -- archive too?).
+#   (and AA_xo_check_jobs.csv for the crossover check jobs: archived too).
 # AA args (local == run_args on S3): --cycles=0331, --version=01,
 #   --ATL11_release=007_cycle_03_31_v04, --t_crop=2019,2026.25.  The ATL11
 #   index on S3 is 0332 only (ATL11_index_0332_007_05, both hemispheres).
@@ -112,6 +116,7 @@
 # C2. The same 17 tiles as 2026-09-11, same halves, -32gb (their peaks were
 #     up to 21.5 GiB), quarterly prelim; C3 monthly prelim; C4 (QT3) the 3x3
 #     block around 60km_E420_N20 and its matched job(s).
+#     QT3: C3 and C4 DROPPED -- quarterly prelim only.
 #
 #
 # ===========================================================================
@@ -130,6 +135,7 @@
 #     (all 19 checked present in ATL1415/resources/GL/40km_tile_list.txt).
 #     Quarterly prelim; D3 monthly prelim; D4 (QT3) the 3x3 block around
 #     E200_N-1880 and its matched job(s).
+#     QT3: D3 and D4 DROPPED -- quarterly prelim only.
 #
 #
 # ===========================================================================
@@ -142,6 +148,9 @@
 #     time per tile, median per region and job type, times the discover
 #     totals -- now with the new code's MAAP times.  Old-vs-new on the SAME
 #     tiles (IS, AA transect) is reported alongside.
+#     QT3: AA/GL matched and monthly are not run.  They are ESTIMATED as
+#     discover time x (IS new MAAP / discover) for the same job type, and
+#     labelled as estimates in the budget.
 # E3. Rewrite sections 2 (CPU) and 4 (time) and the memory section; keep
 #     the 2026-09-19 numbers as history.  Ben reviews before it is sent.
 # ===========================================================================
