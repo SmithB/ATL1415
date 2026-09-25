@@ -85,16 +85,23 @@
 # ===========================================================================
 # A. ARCHIVE.  [ADE]
 # ===========================================================================
-# A1. [NOT STARTED]  Manifest first: list every object/file to be moved or
+# A DONE 2026-09-25 (VERIFY OK): s3 .../ATL14_processing/archive/2026-09-25_spqr/
+#   (370 objects, 5.79 GB) and ~/ATL14_processing/archive/2026-09-25_spqr/
+#   (2.3 GB): rel006/north{,_monthly}/IS (MOVED; args as used, i.e. without
+#   --solver), AA_transect_ab84687/<identifier>/ and AA_xo_check/<identifier>/
+#   (whole job prefixes COPIED from dps_output: tile, report, logs),
+#   AA_transect_ab84687/AA_cost_results.csv, AA_args_0331/.  MANIFEST.json in
+#   both.  Canonical IS prefixes now hold only the live args files.
+# A1. [DONE]  Manifest first: list every object/file to be moved or
 #     copied, with sizes, into the archive's MANIFEST.txt.
-# A2. [NOT STARTED]  S3 IS: aws s3 mv --recursive (never the FUSE mount) each
+# A2. [DONE]  S3 IS: aws s3 mv --recursive (never the FUSE mount) each
 #     canonical prefix into the archive; the args as used go alongside.
-# A3. [NOT STARTED]  Local IS: mv the region dirs' contents (not the new args
+# A3. [DONE]  Local IS: mv the region dirs' contents (not the new args
 #     files, which stay for the rerun) into the local archive.
-# A4. [NOT STARTED]  AA transect: aws s3 cp each of the 17 tiles (and each
+# A4. [DONE]  AA transect: aws s3 cp each of the 17 tiles (and each
 #     job's _stderr.txt, the timing record) from its dps_output prefix into
 #     AA_transect_ab84687/<half>/.  Plus scripts/maap/AA_cost_results.csv.
-# A5. [NOT STARTED]  Verify against the manifest: counts and sizes equal,
+# A5. [DONE]  Verify against the manifest: counts and sizes equal,
 #     the canonical IS prefixes empty.  Only then does B start.
 #
 #
