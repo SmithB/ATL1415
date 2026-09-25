@@ -161,6 +161,12 @@
 #   checked), + --solver=cholmod, published.  D2 SUBMITTED: 19 prelim, -32gb,
 #   prefix .../transects/2026-09-25/GL; ledger GL_transect_cholmod_jobs.csv.
 #   FIRST GL SOLVES EVER ON MAAP (Gr1km-v2 tides, geotiff mask, scaling maps).
+# D2 RESULT (~05:40Z): 18/19 successful.  E480_N-1040 (79N tongue, the tide
+#   tile) FAILED in pyTMD extrapolation: Gr1km-v2's zarr store has
+#   inconsistent chunks along x -> "Object has inconsistent chunks" from
+#   Dataset.chunks.  Deterministic; reproduced locally.  FIXED 2c64b87
+#   (tides.py: ds.unify_chunks(); values unchanged).  NEEDS A REGISTRATION,
+#   then retry E480_N-1040 alone -- only when NO jobs are in flight.
 # D1. howto_MAAP_GL steps 1-2: compose + publish input_args_GL.txt (and the
 #     monthly one), + --solver=cholmod.
 # D2. 19 tiles, -32gb (the howto's choice until GL memory is measured):
