@@ -108,6 +108,14 @@
 # ===========================================================================
 # B. ICELAND RERUN.  [DPS + ADE]  docs/howto_MAAP_arctic.sh, IS only.
 # ===========================================================================
+# B STATUS 2026-09-25 ~04:45Z: B1 and B3 SUBMITTED together (28 + 28, -16gb,
+#   canonical prefixes, build d59b140, --solver=cholmod in both args files):
+#   ledgers ~/ATL14_processing/maap_ledgers/IS_0332_cholmod_prelim_jobs.csv
+#   and IS_0332_monthly_cholmod_prelim_jobs.csv.  DO NOT REGISTER while they
+#   (or B2/B4) run.  When done: collect_jobs.py <ledger>; fetch_tiles.py
+#   <ledger> ~/ATL14_processing/rel006/north[_monthly]/IS --step prelim;
+#   check_field_sizes.py; then B2/B4 matched (same tile list, same prefix).
+#   Helper scripts: ~/ATL14_processing/session_tools_2026-09-25/.
 # B1. quarterly prelim, 29 centers from ATL1415/resources/IS/40km_tile_list.txt
 #     (E1020_N-2580 is out already), -16gb, --tile_prefix = canonical.
 # B2. quarterly matched.  B3. monthly prelim.  B4. monthly matched.
