@@ -197,6 +197,17 @@
 #   none from the code.  Checker: session_tools_2026-09-25/compare_reported.py.
 # B4 SUBMITTED ~18:35Z: 28 monthly matched, -16gb, ledger
 #   IS_0332_monthly_cholmod_matched_jobs.csv.
+# B4 RESULT ~20:15Z: 28/28 successful (all d00568c), fetched, 28/28 field
+#   sizes OK.  vs archive on reported cells: E1020_N-2420 1.3e-12 m, worst
+#   14.7 m (E1380_N-2500) -- the reference-ATL14 change, as for B3.
+# B5 MONTHLY DONE ~20:25Z: mosaic runs/IS_0332_cholmod_monthly_mosaic (44/44,
+#   41 s, lags 1 3 6 12 24 36 48 60 72 84, no z0 task, 0 problems); ATL15
+#   runs/IS_0332_cholmod_monthly_nc (4 files, rc 0, no INVALID).  vs archived
+#   monthly ATL15 delta_h: max 9.3 m (2.5 km) / 3.0 (10 km) / 1.2 (20 km) /
+#   1.1 (40 km), none > 10 m, no NaN flips; delta_h_sigma max 0.026 m.
+#   Monthly - new quarterly (10 km): median -0.067 m; >10 m in 20 values in
+#   the same 6 weak cells at the record ends (archive: 22 values, 6 cells).
+#   PUBLISHED (step 18), S3 sizes == local.  B (IS rerun) COMPLETE.
 # B1. quarterly prelim, 29 centers from ATL1415/resources/IS/40km_tile_list.txt
 #     (E1020_N-2580 is out already), -16gb, --tile_prefix = canonical.
 # B2. quarterly matched.  B3. monthly prelim.  B4. monthly matched.
