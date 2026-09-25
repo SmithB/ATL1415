@@ -5,6 +5,7 @@
 # iterate_fit.
 # Written 2026-09-24, before any code.  TENTATIVE.  Every step carries its
 # own status tag.  Ben: "Go ahead with the bench jobs and the CHOLMOD plan."
+# QC1-QC3 answered 2026-09-24; C0-C4 under way.
 # ===========================================================================
 # Provenance per claim: STATEMENT = verified 2026-09-24, with how;
 # DECIDED = Ben said so; RECOMMENDATION = mine; QUESTION = open.
@@ -16,15 +17,19 @@
 #        RECOMMENDATION: identical editing (same in_TSE on every iteration)
 #        and max |d model| <= 1e-4 m on every tile tested; anything else is
 #        reported tile by tile for Ben to judge.
-#        QC1 answer:
+#        QC1 answer (Ben, 2026-09-24): "10^-3 m is the standard."  DECIDED:
+#          pass = max |d model| <= 1e-3 m on every model field; editing
+#          (in_TSE) identity is reported, not required.
 #   QC2  Default solver once validated: cholmod-with-SPQR-fallback for every
 #        caller, or opt-in (ATL1415 passes it; discover and the deprecated/
 #        callers keep SPQR)?  RECOMMENDATION: an LSsurf argument
 #        solver='spqr'|'cholmod', default 'spqr'; ATL1415 passes 'cholmod'.
 #        Nothing changes for anyone who does not ask.
-#        QC2 answer:
+#        QC2 answer (Ben): "Cholmod should be opt-in."  DECIDED: LSsurf
+#          solver='spqr' default; ATL11_to_ATL15 --solver {spqr,cholmod}, default
+#          spqr -- a region opts in with --solver=cholmod in its args file.
 #   QC3  Which tiles to validate on (C4).  RECOMMENDATION: the list in C4.
-#        QC3 answer:
+#        QC3 answer (Ben): "go ahead with those tiles."  DECIDED: the C4 list.
 #
 #
 # ===========================================================================
