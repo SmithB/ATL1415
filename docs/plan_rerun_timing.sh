@@ -126,6 +126,12 @@
 # ===========================================================================
 # C. ANTARCTIC TRANSECT.  [ADE + DPS]
 # ===========================================================================
+# C STATUS 2026-09-25 ~05:00Z: C1 DONE -- both AA args recomposed at 0332
+#   (diff vs 0331: exactly --cycles, --version, --ATL11_release, --t_crop),
+#   + --solver=cholmod, published to run_args (S3 == local).  C2 SUBMITTED:
+#   13 (60km) + 4 (44km) prelim, -32gb, tile prefixes
+#   .../ATL14_processing/transects/2026-09-25/AA and .../AA_44km (separate:
+#   E420_N20 is in both halves); ledgers AA_transect_cholmod_{60km,44km}_jobs.csv.
 # C1. (QT4) recompose input_args_AA.txt and input_args_AA_44km.txt at 0332
 #     + --solver=cholmod; publish to run_args (the 0331 files go to the archive).
 # C2. The same 17 tiles as 2026-09-11, same halves, -32gb (their peaks were
@@ -137,6 +143,11 @@
 # ===========================================================================
 # D. GREENLAND SOUTH-TO-NORTH TRANSECT.  [ADE + DPS]
 # ===========================================================================
+# D STATUS 2026-09-25 ~05:00Z: D1 DONE -- default_args/GL_latest.txt ->
+#   GL_0331.txt committed; input_args_GL.txt composed (all masks on S3,
+#   checked), + --solver=cholmod, published.  D2 SUBMITTED: 19 prelim, -32gb,
+#   prefix .../transects/2026-09-25/GL; ledger GL_transect_cholmod_jobs.csv.
+#   FIRST GL SOLVES EVER ON MAAP (Gr1km-v2 tides, geotiff mask, scaling maps).
 # D1. howto_MAAP_GL steps 1-2: compose + publish input_args_GL.txt (and the
 #     monthly one), + --solver=cholmod.
 # D2. 19 tiles, -32gb (the howto's choice until GL memory is measured):
