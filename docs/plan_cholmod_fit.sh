@@ -8,7 +8,8 @@
 # QC1-QC3 answered 2026-09-24.  C0-C4 DONE, ALL FIVE TILES PASS.  NEXT: Ben merges
 # LSsurf cholmod_fit (00eef0c), then registers (C5-C6); C7 needs Ben's go.
 # UPDATE 2026-09-25: C5-C8 DONE.  --solver=cholmod is IN the IS quarterly
-# args file (local + run_args on S3); the IS monthly args file is unchanged.
+# args file (local + run_args on S3); and, at Ben's request, in the IS
+# MONTHLY args file too (local + run_args on S3), 2026-09-25.
 # ===========================================================================
 # Provenance per claim: STATEMENT = verified 2026-09-24, with how;
 # DECIDED = Ben said so; RECOMMENDATION = mine; QUESTION = open.
