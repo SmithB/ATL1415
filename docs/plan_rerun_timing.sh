@@ -291,6 +291,22 @@
 #   12 min).  AA/GL matched + monthly scaled by the IS ratio, marked est.
 #   TOTAL ~6,000-7,500 job-hours (was ~18,000); AA quarterly ~2 days at 100
 #   concurrent (was 5-6).  Ratio script: ~/ATL14_processing/session_tools_2026-09-25/budget_ratios.py.
+# E NOTE 2026-09-25 ~23:30Z: ATL11 READ VOLUME -- the draft's section 1 is WRONG.
+#   Ben doubted the "<= ~10 TB" input estimate (tiles are 68-91% copied data).
+#   STATEMENT (local, eth0 + per-object s3fs counts, fit to first solve):
+#     IS E1340_N-2460  1.71 GB (ATL11 read 3.3x the granules' 0.50 GB)
+#     GL E200_N-1880   4.37 GB (2.4x of 1.78 GB)
+#     AA 60km_E900_N20 9.90 GB (1.4x of 6.74 GB)
+#   CAUSE: pointCollection DOES merge index ranges (query_xy cleanup); the
+#   waste is inside a range read -- fields' compressed chunks interleave and
+#   open_remote's 256 KiB readahead cache keeps one block, so blocks are
+#   refetched.  FIX MEASURED (fs.open cache_type='blockcache'), identical
+#   solve inputs (sha of A and b):  IS 141->51 s, 1.71->0.26 GB;  GL 252->109 s,
+#   4.37->0.58 GB;  AA 525->279 s, 9.90->1.54 GB.  Whole-file download is
+#   faster on IS/GL but pulls the previous ATL14/15 whole (AA 20 GB): NOT rec.
+#   RECOMMENDATION: blockcache in pointCollection io_utils.open_remote; then
+#   rewrite estimate section 1 (AA ~180 TB as deployed, ~30 TB with the fix).
+#   AWAITS BEN.  Scripts: session_tools_2026-09-25/read_fix.py, read_attrib.py.
 # E1. collect_jobs on every ledger: time per step, peak RSS, instance type,
 #     lifecycle, cores got, steal.  Workers are SPOT and of mixed type, so
 #     every number is reported with the instance type it ran on.
