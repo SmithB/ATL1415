@@ -205,7 +205,9 @@
 #
 #
 # ===========================================================================
-# RK7. [DPS] [NOT STARTED -- needs Ben's go]  One smoke prelim job.
+# RK7. [DPS] [DONE 2026-09-25, PASS, via plan_cholmod_fit C7 (job bb01eeea, d59b140)]
+#   error step 254 s (was 1270), peak 4.76 GiB, sigma within 4.2e-11 of the old
+#   tile; worker t3.xlarge = 2 physical cores (threads 2).  One smoke prelim job.
 # ===========================================================================
 # E1340_N-2420 prelim on the new build.  Pass: successful; step error well
 # under its 1270 s (expect ~100-200 s including setup and rz); sigma fields
@@ -215,7 +217,7 @@
 #
 #
 # ===========================================================================
-# RK8. [ADE] [NOT STARTED]  Records.
+# RK8. [ADE] [DONE 2026-09-25]  Records.
 # ===========================================================================
 # Update ~/ATL14_processing/maap_resource_estimate.txt (the error step was
 # about half of every prelim job) and this plan's status tags.

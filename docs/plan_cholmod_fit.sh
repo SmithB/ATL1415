@@ -7,6 +7,8 @@
 # own status tag.  Ben: "Go ahead with the bench jobs and the CHOLMOD plan."
 # QC1-QC3 answered 2026-09-24.  C0-C4 DONE, ALL FIVE TILES PASS.  NEXT: Ben merges
 # LSsurf cholmod_fit (00eef0c), then registers (C5-C6); C7 needs Ben's go.
+# UPDATE 2026-09-25: C5-C8 DONE.  --solver=cholmod is IN the IS quarterly
+# args file (local + run_args on S3); the IS monthly args file is unchanged.
 # ===========================================================================
 # Provenance per claim: STATEMENT = verified 2026-09-24, with how;
 # DECIDED = Ben said so; RECOMMENDATION = mine; QUESTION = open.
@@ -168,11 +170,20 @@
 #
 #
 # ===========================================================================
-# C5. [BEN] [NOT STARTED]  Merge the LSsurf branch; environment.yml commit.
-# C6. [BEN] [NOT STARTED]  Register; check_build_id MATCH.
-# C7. [DPS] [NOT STARTED -- needs Ben's go]  One smoke prelim (E1340_N-2420):
+# C5. [BEN] [DONE 2026-09-25]  LSsurf main 04abfbb (merged 02:50:21Z).
+# C6. [BEN] [DONE 2026-09-25]  Registered; check_build_id --expect d59b140 MATCH,
+#     built 02:52:57-02:55:55Z (after the merge).  That job: c5.4xlarge, lifecycle=spot.
+# C7. [DPS] [DONE 2026-09-25, PASS]  Ben: add --solver=cholmod to input_args_IS.txt.
+#     Job bb01eeea (ledger IS_cholmod_smoke_jobs.csv), NO --tile_prefix (the
+#     canonical tile was not overwritten; the smoke tile is in dps_output).
+#     t3.xlarge spot, threads 2 (physical cores): fit 263 s (was 1214),
+#     error 254 s (was 1270), job 530 s (was 2510), peak 5.13 GiB (was 6.43).
+#     cholmod 25-26 s/iter, rcond 1.9e-13..1.2e-12, no fallback; vs the SPQR
+#     tile: 0/65207 edit flips, worst model 1.2e-9 m, sigma 4.2e-11.
+#   (original C7 text:) One smoke prelim (E1340_N-2420):
 #     the fit's QR lines replaced by cholmod timing lines, the WORKER and cpu
 #     lines (plan_dps_speed D1) for the cores it got, and the tile compared
 #     with the SPQR one as in C4.
-# C8. [ADE] [NOT STARTED]  Records: maap_resource_estimate.txt, this plan.
+# C8. [ADE] [DONE 2026-09-25]  maap_resource_estimate.txt: dated UPDATE appended
+#     (one-tile numbers; GL/AA totals deliberately NOT rescaled).
 # ===========================================================================
