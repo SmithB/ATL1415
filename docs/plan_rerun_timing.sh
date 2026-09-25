@@ -52,6 +52,33 @@
 #          (Taken with the recommendation: recompose at 0332 + --solver=cholmod.)
 #   QT5  The GL transect (D below, 19 tiles): OK?
 #        QT5 answer: OK.
+#   QT6  (OPEN, 2026-09-25 ~15:30Z; B5 is PAUSED on it.)  Should the z0.h5
+#        mosaic tasks pass -w (weighted, like the 10 km dz/dzdt tasks)?
+#        STATEMENT: make_mosaic_jobs.py writes the z0 tasks (all six matched
+#        fields, and sigma_z0 from prelim) WITHOUT -w, but with -p 5000
+#        -f 10000.  pointCollection's make_mosaic.py sets pad and feather to
+#        None when -w is absent, so they are ignored; where tiles overlap, the
+#        value comes from whichever file glob.glob lists last, i.e.
+#        directory order = fetch order.  True since the python port (1861c6d).
+#        STATEMENT (scratchpad rebuilds, today's code):
+#          - archived tiles -> archived z0.h5 exactly (code did not change);
+#          - new tiles -> new z0.h5 exactly;
+#          - every one of the 28 tiles' z0/z0 matches the archive to <=4e-8 m;
+#          - yet the two z0.h5 differ by up to 2053 m, and 585 m inside both
+#            ice masks (509k of 1.13M masked cells differ by >1 cm).
+#          - WITH -w, new vs archived tiles agree to 3.4e-8 m.
+#        STATEMENT: worst ice cell x=1360100 y=-2510000: the two tiles whose
+#        cores cover it (E1340_N-2500, E1380_N-2500, 10 km from centre) say
+#        837-838 m; E1340_N-2540 and E1380_N-2540, 30 km from centre (their
+#        outer edge), say 1423-1426 m.  The archive took 838, the new run 1423.
+#        The other 40 mosaics match the archive to <=3.1e-7 (model and sigma).
+#        So the old (archived) ATL14, and presumably every z0 made with this
+#        script (discover too), carries edge values at random tile seams.
+#        RECOMMENDATION: add -w to the z0 tasks (matched fields and
+#        sigma_z0), ADE-only (no registration), then rebuild IS z0.h5 and
+#        carry on with B5.  The old product cannot then be compared on z0;
+#        compare new-weighted vs archive-tiles-weighted instead (3.4e-8 m above).
+#        QT6 answer:
 #
 #
 # ===========================================================================
@@ -129,6 +156,17 @@
 #     monthly).  FIX: rerun B3 AFTER B5 writes the NEW quarterly ATL14 (not a
 #     copy of the old one back).  pointCollection's mosaic.from_list reports
 #     the missing file as UnboundLocalError 'temp' (upstream, unfixed).
+# B2 RESULT 2026-09-25 ~15:10Z: quarterly matched 28/28.  27 first time;
+#   E1340_N-2420 FAILED in MAAP's stage_in (connect timeout to
+#   api.maap-project.org, the same infra fault as the prelim retry), retried
+#   alone (ledger IS_0332_cholmod_matched_retry_jobs.csv), successful.  All 28
+#   fetched, 28/28 field sizes OK; vs the archive: 0 edit flips on every tile,
+#   worst model 2.0e-7 m (E1380_N-2460).  Nothing in flight after B2.
+# B5 STATUS ~15:30Z: quarterly mosaic run (runs/IS_0332_cholmod_mosaic -- a
+#   NEW run name; the old runs/IS_0332_mosaic is untouched): 41/41 tasks, 56 s,
+#   no error logs, check_mosaic_outputs --values 0 problems.  40/41 files
+#   match the archive; z0.h5 does NOT -> QT6.  PAUSED: no netCDF written,
+#   nothing published, monthly (B3) still waits.
 # B1. quarterly prelim, 29 centers from ATL1415/resources/IS/40km_tile_list.txt
 #     (E1020_N-2580 is out already), -16gb, --tile_prefix = canonical.
 # B2. quarterly matched.  B3. monthly prelim.  B4. monthly matched.
