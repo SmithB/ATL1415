@@ -14,17 +14,18 @@
 #        tile centers y >= -1520 km: 557 prelim + <=557 matched jobs.
 #        (By COUNT it would be y >= -1440 km, 498 tiles.)  GL centers run
 #        y = -3320 .. -640 km; 1483 in all.
-#        QN1 answer:
+#        QN1 answer (Ben 2026-09-29): cut at -1520.  DECIDED.
 #   QN2  How far.  RECOMMENDATION: prelim + matched + mosaic (N3-N6); no
 #        netCDF, no monthly.  The DPS load MAAP asked about is prelim +
 #        matched; the mosaic is ADE-only but is the one GL-scale step never
 #        timed.  A netCDF of a third of GL would be mostly empty.
-#        QN2 answer:
+#        QN2 answer (Ben 2026-09-29): go as far as netCDF.  DECIDED:
+#          N3-N7 (N7 = ATL14 + ATL15 netCDF, local only); no monthly.
 #   QN3  Concurrency.  RECOMMENDATION: --max_in_flight 100 and ask MAAP
 #        whether they want it higher -- how the cluster behaves at 100+
 #        concurrent jobs is part of what they want to learn.  IS ran 29 at
 #        once; nothing larger has run.
-#        QN3 answer:
+#        QN3 answer (Ben 2026-09-29): try 100 at a time.  DECIDED.
 #   QN4  Output prefix.  RECOMMENDATION: the CANONICAL GL prefix
 #        (.../ATL14_processing/rel006/north/GL), so these tiles count toward
 #        the full run, which then submits only the remaining centers.
@@ -32,7 +33,7 @@
 #        without its southern neighbours and must be re-run as part of the
 #        full run.  The alternative is a dated test prefix (as the transects
 #        used), which throws the tiles away afterwards.
-#        QN4 answer:
+#        QN4 answer (Ben 2026-09-29): standard GL output location.  DECIDED.
 #
 # WHAT IS KNOWN (statements, with provenance):
 #   - GL transect, 19 tiles, quarterly prelim, on d00568c (2026-09-25,
@@ -85,7 +86,8 @@ scripts/maap/check_build_id.py $s3_run/input_args_GL.txt maap-dps-worker-32gb
 
 
 # ===========================================================================
-# N1. [ADE] TODO.  The subset list (in ledgers, NOT in the checkout).
+# N1. [ADE] DONE 2026-09-29: 557 centers, both N2 smoke tiles included.
+#     The subset list (in ledgers, NOT in the checkout).
 # ===========================================================================
 sed 's/.*_N\(-\{0,1\}[0-9]*\).*/\1 &/' ATL1415/resources/GL/40km_tile_list.txt \
     | awk -v ymin=$ymin '$1 >= ymin {print $2}' > ${L}_tile_list.txt   # mawk: no match() arrays
@@ -146,7 +148,7 @@ nohup scripts/maap/submit_MAAP_jobs.py --tile_list ${L}_tile_list.txt \
 
 
 # ===========================================================================
-# N6. [ADE] TODO (QN2).  Mosaic, timed.
+# N6. [ADE] TODO.  Mosaic, timed.
 # ===========================================================================
 cd $runs
 make_mosaic_jobs.py -b $region_dir -rr GL -t $tspan -e ATL14 \
@@ -159,10 +161,31 @@ cd $repo
 
 
 # ===========================================================================
-# N7. [ADE] TODO.  Numbers for MAAP.
+# N7. [ADE] TODO (QN2).  netCDF, timed.  LOCAL ONLY -- do not publish.
+# ===========================================================================
+mkdir -p $runs/GL_${cyc}_north_nc && cd $runs/GL_${cyc}_north_nc
+python $repo/scripts/run_with_rusage.py ATL14 \
+    ATL14_write2nc.py @$region_dir/input_args_GL.txt > ATL14.log 2>&1
+python $repo/scripts/run_with_rusage.py ATL15 \
+    ATL15_write2nc.py @$region_dir/input_args_GL.txt > ATL15.log 2>&1
+cd $repo
+# No INVALID line in either log; XO rows NOT_SET in four attributes only
+# (as IS).  The files take the CANONICAL names
+# (ATL14_GL_0332_100m_006_02.nc ...) in $region_dir, but hold one third of
+# GL and a mask ending 2026.0: NOT products.  Do NOT copy them to $s3_out
+# (howto step 11 does, and the monthly args would then read this partial
+# ATL14 as the reference).  The full run overwrites them.
+# NEW: a netCDF of a partial region has never been written; the rest of
+# the grid should come out empty (fill), not as an error.  Look at a quick
+# plot of h and delta_h before calling it done.  Compare with rel005 over
+# the northern third only (Ben's bar: no >10 m errors, no major gaps).
+
+
+# ===========================================================================
+# N8. [ADE] TODO.  Numbers for MAAP.
 # ===========================================================================
 # From the collect files: per-job time, peak memory, instance mix, queue
-# wait, failures; ADE time for N4/N5 passes; mosaic time/memory.  Replace
+# wait, failures; ADE time for N4/N5 passes; mosaic and netCDF time/memory.  Replace
 # the GL rows of ~/ATL14_processing/maap_resource_estimate.txt (prelim
 # measured at 557, matched measured instead of scaled from IS) -- Ben
 # reviews before anything is sent.
