@@ -129,7 +129,10 @@ scripts/maap/collect_jobs.py ${L}_smoke_jobs.csv > ${L}_smoke_collect.txt
 
 
 # ===========================================================================
-# N3. [DPS] TODO.  Prelim fan-out.
+# N3. [DPS] SUBMITTING since 2026-09-29 (Ben's go; start time in
+#     ${L}_prelim_start.txt): 555 centers, 100 in flight, on 18e3936.
+#     Ledger ${L}_prelim_jobs.csv, log ${L}_prelim_submit.log.
+#     Prelim fan-out.
 # ===========================================================================
 grep -vxE "E80_N-920\.h5|E480_N-1040\.h5" ${L}_tile_list.txt > ${L}_N3_tile_list.txt   # N2 tiles done (555)
 nohup scripts/maap/submit_MAAP_jobs.py --tile_list ${L}_N3_tile_list.txt \
