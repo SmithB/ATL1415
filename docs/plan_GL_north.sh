@@ -132,19 +132,33 @@ scripts/maap/collect_jobs.py ${L}_smoke_jobs.csv > ${L}_smoke_collect.txt
 # N3. [DPS] SUBMITTING since 2026-09-29 (Ben's go; start time in
 #     ${L}_prelim_start.txt): 555 centers, 100 in flight, on 18e3936.
 #     Ledger ${L}_prelim_jobs.csv, log ${L}_prelim_submit.log.
-#     FIRST 100 (collected 18:25Z): 96 successful (mean 703 s, peak 12.35
-#     GiB), 4 FAILED -- all CONNECT TIMEOUTS to api.maap-project.org while
-#     the first 100 started at once (17:57-18:00Z):
-#       E-160_N-1280, E160_N-680: in MAAP's runner, before our code
-#         (/api/environment/config) -- a platform failure.
-#       E0_N-1400, E0_N-1440: pointCollection's MAAP credential call
-#         (/api/members/...) timed out, fell back to earthaccess, which has
-#         no store on a worker -> AttributeError 'get_s3_filesystem'.
-#     FOR MAAP: their API did not take 100 simultaneous job starts.
-#     FOR US (QUESTION, not now): pointCollection should fail with a clear
-#     message when the MAAP credential call fails, not the AttributeError
-#     (memory: fail loudly).  Retry ALL failures after the fan-out, with a
-#     NEW ledger (arctic step 5).
+#     RESULT (2026-09-29 ~23:10Z): 522 successful, 32 FAILED, 1 STUCK
+#     "running" (E280_N-1240, 47fdc904, submitted 18:20:51; ~5 h).  Failures
+#     spread over 17:57-19:02Z, interleaved with successes -- NOT only the
+#     start-up burst (an earlier note here said so; corrected).  By log:
+#       5  MAAP runner /app/create_inputs.py -> stage_in.py: TCP connect
+#          timeout (Errno 110, ~130 s) to api.maap-project.org
+#          /api/environment/config; job ends before our container.
+#       8  MAAP runner /app/get_maap_pgt_token.py: same connect timeout on
+#          /api/members/ben_smith; runner STILL starts our container with
+#          MAAP_PGT set; our credential step then fails in ~6 s.
+#       10 our credential step (pC _s3fs_from_maap) fails after 135-140 s at
+#          ~0 CPU -> earthaccess fallback -> AttributeError.  INFERRED (timing
+#          only) to be the same connect timeout: the reason is not logged
+#          because pointCollection/ps_scale_for_lat.py line 3 calls
+#          warnings.filterwarnings("ignore") on import, silencing
+#          _s3fs_from_maap's warning.
+#       1  E-40_N-760: botocore NoCredentialsError at 8.6 s.  Undiagnosed.
+#       8  no logs (get_job_result {} / one HTTP 500), all submitted
+#          18:12-18:21Z.  Unknown.
+#     NOT KNOWN: where connections failed (API, load balancer, network
+#     path) or whether load caused it.  Draft note to MAAP with job IDs:
+#     ~/ATL14_processing/maap_note_api_timeouts_2026-09-29.txt (Ben sends).
+#     QUESTIONS (not now): pC ps_scale_for_lat global warnings filter;
+#     credential failure should stop with a clear error (memory: fail
+#     loudly) instead of falling back to earthaccess on a worker.
+#     RETRY 1 (Ben's go): the 32 failed, submitted ~23:10Z, ledger
+#     ${L}_prelim_retry1_jobs.csv.  E280_N-1240 not included (still running).
 #     Prelim fan-out.
 # ===========================================================================
 grep -vxE "E80_N-920\.h5|E480_N-1040\.h5" ${L}_tile_list.txt > ${L}_N3_tile_list.txt   # N2 tiles done (555)
