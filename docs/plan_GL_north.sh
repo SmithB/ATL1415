@@ -159,6 +159,10 @@ scripts/maap/collect_jobs.py ${L}_smoke_jobs.csv > ${L}_smoke_collect.txt
 #     loudly) instead of falling back to earthaccess on a worker.
 #     RETRY 1 (Ben's go): the 32 failed, submitted ~23:10Z, ledger
 #     ${L}_prelim_retry1_jobs.csv.  E280_N-1240 not included (still running).
+#     RETRY 1 DONE 23:30Z: 32/32 successful (mean 557 s, peak 12.32 GiB)
+#     -- consistent with transient failures.  Prelim now 556/557 (incl. N2);
+#     E280_N-1240 still 'running' at 23:32Z (~5 h 10 min) -- AWAITS BEN
+#     (dismiss + retry?).  Not yet fetched: N4 fetch/check still to do.
 #     Prelim fan-out.
 # ===========================================================================
 grep -vxE "E80_N-920\.h5|E480_N-1040\.h5" ${L}_tile_list.txt > ${L}_N3_tile_list.txt   # N2 tiles done (555)
