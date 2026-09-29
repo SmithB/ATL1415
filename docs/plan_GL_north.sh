@@ -74,7 +74,10 @@ ymin=-1520                                              # QN1, km
 
 
 # ===========================================================================
-# N0. [ADE] BLOCKED on Ben.  Register, then prove the build.
+# N0. [ADE] DONE 2026-09-29: Ben registered; check_build_id MATCH at
+#     18e3936 (built 17:14Z, maap_pgt=set; output saved as
+#     maap_ledgers/GL_0332_north_check_build_id.txt).
+#     Register, then prove the build.
 # ===========================================================================
 # Ben registers (checkout must be clean and pushed).  The new image installs
 # pointCollection and LSsurf main at build time (pyproject.toml is unpinned),
@@ -95,7 +98,18 @@ wc -l ${L}_tile_list.txt                      # expect 557 for ymin=-1520
 
 
 # ===========================================================================
-# N2. [DPS] TODO.  Smoke on the new build: two transect tiles re-run.
+# N2. [DPS] DONE 2026-09-29 on 18e3936, canonical prefix, ALL GATES PASS
+#     (ledger maap_ledgers/GL_0332_north_smoke_jobs.csv, _collect.txt):
+#                  job s (transect)   fit s (transect)   peak GiB   instance
+#     E80_N-920     889  (1049)        418  (584)         12.07      r5.xlarge
+#     E480_N-1040   621  (778)         319  (534)          9.54      r5.xlarge
+#     N_ATL11/N_AT/N_XO/N_fit identical to the transect.  Tiles vs transect,
+#     reported cells: E80 identical (0 m), E480 4.3e-12 m.  check_field_sizes
+#     2/2 OK.  The read fix is live on DPS: fit step -28% / -40%; the error
+#     step is unchanged, so whole jobs are -15% / -20%.  Both tiles fetched
+#     to $region_dir/prelim; N3 uses ${L}_N3_tile_list.txt (555 centers,
+#     these two removed) so they are not re-run.
+#     Smoke on the new build: two transect tiles re-run.
 # ===========================================================================
 # E80_N-920 (the transect's memory peak) and E480_N-1040 (79N, Gr1km-v2
 # tides).  Both are in the subset.  Their d00568c results are the baseline,
@@ -117,7 +131,8 @@ scripts/maap/collect_jobs.py ${L}_smoke_jobs.csv > ${L}_smoke_collect.txt
 # ===========================================================================
 # N3. [DPS] TODO.  Prelim fan-out.
 # ===========================================================================
-nohup scripts/maap/submit_MAAP_jobs.py --tile_list ${L}_tile_list.txt \
+grep -vxE "E80_N-920\.h5|E480_N-1040\.h5" ${L}_tile_list.txt > ${L}_N3_tile_list.txt   # N2 tiles done (555)
+nohup scripts/maap/submit_MAAP_jobs.py --tile_list ${L}_N3_tile_list.txt \
     --step prelim --args_url $s3_run/input_args_GL.txt \
     --tile_prefix $s3_out --queue maap-dps-worker-32gb \
     --tag ${tag}_prelim --ledger ${L}_prelim_jobs.csv \
