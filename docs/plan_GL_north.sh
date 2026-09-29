@@ -132,6 +132,19 @@ scripts/maap/collect_jobs.py ${L}_smoke_jobs.csv > ${L}_smoke_collect.txt
 # N3. [DPS] SUBMITTING since 2026-09-29 (Ben's go; start time in
 #     ${L}_prelim_start.txt): 555 centers, 100 in flight, on 18e3936.
 #     Ledger ${L}_prelim_jobs.csv, log ${L}_prelim_submit.log.
+#     FIRST 100 (collected 18:25Z): 96 successful (mean 703 s, peak 12.35
+#     GiB), 4 FAILED -- all CONNECT TIMEOUTS to api.maap-project.org while
+#     the first 100 started at once (17:57-18:00Z):
+#       E-160_N-1280, E160_N-680: in MAAP's runner, before our code
+#         (/api/environment/config) -- a platform failure.
+#       E0_N-1400, E0_N-1440: pointCollection's MAAP credential call
+#         (/api/members/...) timed out, fell back to earthaccess, which has
+#         no store on a worker -> AttributeError 'get_s3_filesystem'.
+#     FOR MAAP: their API did not take 100 simultaneous job starts.
+#     FOR US (QUESTION, not now): pointCollection should fail with a clear
+#     message when the MAAP credential call fails, not the AttributeError
+#     (memory: fail loudly).  Retry ALL failures after the fan-out, with a
+#     NEW ledger (arctic step 5).
 #     Prelim fan-out.
 # ===========================================================================
 grep -vxE "E80_N-920\.h5|E480_N-1040\.h5" ${L}_tile_list.txt > ${L}_N3_tile_list.txt   # N2 tiles done (555)
