@@ -39,6 +39,7 @@
 #             disk size unknown (QD7).  No code change to the readers.
 #          C. Download only what each task reads (its group, from each
 #             tile).  Least transfer, most new code.
+# AD1: in place
 #
 #   QD2  Job granularity.
 #        RECOMMENDATION: ONE DPS JOB PER MOSAIC TASK, then the netCDF jobs.
@@ -53,6 +54,7 @@
 #        Other option: one job runs all 41 at -P 4 (the ADE way).  Fewer
 #          submissions, but one failure reruns everything, and one worker's
 #          walltime and disk hold the whole region.
+#  AD2: One DPS job per mosaic task
 #
 #   QD3  How are the new steps registered?
 #        RECOMMENDATION: the SAME algorithm (atl1415_tile_solve), new
@@ -66,6 +68,8 @@
 #          trip on.  One re-registration either way (you register from my
 #          checkout; memory: held commits block registration), then
 #          check_build_id MATCH.
+#
+#  AD3: Same algorithm
 #
 #   QD4  Where do mosaics and netCDFs go?
 #        RECOMMENDATION: mosaics at the region prefix, beside the tiles --
@@ -84,6 +88,16 @@
 #             RECOMMENDATION, B: no second input, and publishing stays a
 #             deliberate act, which N7 already required.
 #
+#  AD4: Allow additional text in the release directory (e.g. s3://.../ATL14_processing/rel006_0332_v1/north/IS/ATL14_IS_0332_*.nc).  /rel006/ remains the default, but scripting should allow different directory names
+#  AD4 (Ben 2026-09-30, follow-up): the nc output of B goes to a
+#       rel006_0332_testing release directory:
+#         s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006_0332_testing/north/GL/
+#       CONSEQUENCE (mine, stated): the nc job reads mosaics + prelim tiles
+#       from <tile_prefix> and writes somewhere else, so it needs an output
+#       prefix after all -- a second new input `out_prefix` (default "-" =
+#       write to <tile_prefix>).  Mosaics stay at the region prefix (QD4
+#       recommendation, not objected to).
+#
 #   QD5  Queue.  RECOMMENDATION: maap-dps-worker-32gb for every mosaic and
 #        nc job, as N3/N5, and measure (D0 gives the ADE peak first).
 #        ESTIMATE, not measured: the z0 grid for GL north is ~14,600 x 9,400
@@ -91,6 +105,7 @@
 #        field plus weight and invalid arrays, so a few GB.  Full GL ~3x.
 #        IS z0.h5 is 88 MB for 28 tiles -> GL north ~1.8 GB, under
 #        outdir_max 20 (algorithm_config.yml).
+#   AD5: 32gb for the Antarctic z0 jobs, 16GB for everything else, can revisit if there are problems
 #
 #   QD6  Where do the checks run?  RECOMMENDATION: on the ADE, READING
 #        through ~/my-private-bucket (the mountpoint-s3 view of
@@ -99,12 +114,14 @@
 #        read, and random reads work on that mount; nothing is copied to
 #        /home.  (mountpoint-s3 cannot WRITE an HDF5 file: no random writes,
 #        no rename -- memory: MAAP bucket is mountpoint-s3.)
+#   AD6: on the ADE
 #
 #   QD7  FOR MAAP (you ask the admin, if we need it): how much local disk
 #        does a DPS worker have, and is mountpoint-s3 (or any bucket
 #        mount) available on a worker?  Only matters for QD1 B, or if D0
 #        says in-place reads are too slow.
-#
+#   AD7: Not relevant b/c we're going with the in-place option
+# 
 # ===========================================================================
 # WHAT IS KNOWN (statements, with provenance)
 # ===========================================================================
@@ -148,6 +165,32 @@
 #     writers still read mosaics from -b and write the .nc into -b, so the
 #     job keeps -b local.  Tests beside the existing ATL1415 suite (181).
 #
+# D2b. [code, ATL1415] TODO.  DECIDED (Ben 2026-09-30, option b): a
+#     --no_data_group flag on ATL11_to_ATL15.py, OFF by default, so
+#     save_fit_to_file skips /data (80-92% of a matched tile: E80_N-920 192
+#     of 208 MiB, E520_N-920 21 of 26 MiB).  Nothing downstream reads a
+#     matched tile's /data (matched and error read the PRELIM tile; tile
+#     stats and lineage read --tiles_dir = prelim/; mosaics read grids only;
+#     only scripts/check_tile_data_vs_DEM.py, a diagnostic, reads any tile's).
+#     What a matched fit changes in /data, for the record: z_est and
+#     sigma_extra everywhere, three_sigma_edit possibly (up to 6 edit
+#     iterations), a few points dropped outside the grids (18 of 131,408 on
+#     E520_N-920), `editable` added.
+#     CONSTRAINT: prelim and matched share ONE args file on MAAP, and prelim
+#     MUST keep /data (matched and error reread it).  So the flag cannot live
+#     in input_args_<R>.txt.  RECOMMENDATION: run.sh passes it on the matched
+#     command line only (as it does --prior_edge_include), and
+#     ATL11_to_ATL15.py exits with an error if it is given without --matched
+#     (fail loudly, never a silent prelim tile without /data).
+#     The 557 GL-north matched tiles already on S3 keep their /data.
+#
+# D2c. [code, all scripts] TODO.  AD4: nothing may assume the release
+#     directory is exactly rel<NNN>.  Find every place that builds or parses
+#     .../ATL14_processing/rel<NNN>/<hemi>/<R> (setup_ATL1415_region.py,
+#     default_args, submit/collect/fetch scripts, run.sh comments) and let
+#     the release directory carry extra text (rel006_0332_testing), rel006
+#     staying the default.  List the hits before changing any.
+#
 # D3. [code, ATL1415] TODO.  run.sh: step `mosaic` --
 #       make_mosaic_jobs.py -b <local work dir> ... with -d s3://<tile_prefix>
 #       for the tile reads, run task $task, upload its one .h5 to
@@ -155,8 +198,9 @@
 #       stamp and worker facts as every job does, keep ./output* non-empty.
 #     step `nc` -- fetch the ~42 mosaics (a few GB) into the work dir, run
 #       ATL14_write2nc.py or ATL15_write2nc.py (task = ATL14 | ATL15) with
-#       --tiles_dir <tile_prefix>/prelim, upload to <tile_prefix>/nc/ (QD4 B).
-#     algorithm_config.yml: input `task`; update the description and the
+#       --tiles_dir <tile_prefix>/prelim, upload to <out_prefix>/ (AD4
+#       follow-up; out_prefix "-" = tile_prefix).
+#     algorithm_config.yml: inputs `task` and `out_prefix` (defaults "-"); update the description and the
 #     header that says mosaic stays in the ADE.
 #     submit_MAAP_jobs.py: a --step mosaic mode that submits task 1..N from
 #     the same make_mosaic_jobs.py count, ledgered like a tile run.
@@ -176,13 +220,16 @@
 #     path apart from the listing).
 #
 # D6. [DPS] TODO.  IS end to end: 41 mosaic jobs, then ATL14 and ATL15 nc
-#     jobs, to a TEST prefix (never over IS's canonical products).  GATE:
+#     jobs, to a TEST prefix (never over IS's canonical products) --
+#     RECOMMENDATION: .../ATL14_processing/rel006_0332_testing/north/IS,
+#     for BOTH the mosaics and the netCDFs here, since IS's canonical prefix
+#     already holds ADE-made products.  GATE:
 #     every mosaic identical to the ADE's; netCDFs identical in data and
 #     attributes apart from dates/build fields (list the differences, don't
 #     assume).  Record per-job time and peak memory.
 #
 # D7. [DPS] TODO.  GL north: 41 mosaic jobs, ATL14 + ATL15 nc jobs (to
-#     <tile_prefix>/nc/).  ADE checks read through the mount (QD6):
+#     out_prefix .../ATL14_processing/rel006_0332_testing/north/GL/, AD4).  ADE checks read through the mount (QD6):
 #     check_mosaic_outputs.py --values; quick plot of h and delta_h (N7).
 #     Times and memory go to plan_GL_north.sh N8 for MAAP.
 #
