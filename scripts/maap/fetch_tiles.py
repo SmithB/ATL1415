@@ -125,7 +125,9 @@ def s3_cp(src, dest, dry_run):
     p = subprocess.run(['aws', 's3', 'cp', src, dest],
                        capture_output=True, text=True, timeout=3600)
     if p.returncode != 0:
-        print(f'    cp FAILED: {p.stderr.strip()[:200]}')
+        # The whole message: a cut one hid the cause of 162 failures on
+        # 2026-09-30 (GL north matched).
+        print(f'    cp FAILED (rc={p.returncode}): {p.stderr.strip()}')
         return False
     return True
 
@@ -251,6 +253,16 @@ def main():
         print('  AFTER THE RUN: remove these from the region\'s tile list and'
               ' commit, e.g.\n'
               f'    grep -vxFf {path} <tile_list> > t && mv t <tile_list>')
+
+    # A job that failed is the ledger's business (a retry ledger re-runs it);
+    # a tile that exists but did not come down is this script's failure, and
+    # must not look like success to a driver that checks the exit status.
+    bad = sum(len(i) for v, i in verdicts.items()
+              if v == 'CP FAILED' or v.startswith('ERROR'))
+    if bad:
+        print(f'\nFETCH FAILED: {bad} tile(s) exist but were not copied '
+              '(see CP FAILED / ERROR above)', file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == '__main__':
