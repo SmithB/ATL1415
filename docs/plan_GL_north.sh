@@ -197,7 +197,7 @@ scripts/check_field_sizes.py $region_dir/prelim @$region_dir/input_args_GL.txt
 
 
 # ===========================================================================
-# N5. [DPS+ADE] 479/557; 78 FAILED, retry 1 in flight.  Submitted from 2026-09-30
+# N5. [DPS+ADE] 479/557; retry 1 78/78; MATCHED COMPLETE 557/557.  Submitted from 2026-09-30
 #     01:26:50Z on 615d5ef (Ben's go): 557 centers, dry run skipped none,
 #     100 in flight; ledger ${L}_matched_jobs.csv, log _matched_submit.log
 #     (stdout buffered -- watch the ledger), start _matched_start.txt.
@@ -213,7 +213,8 @@ scripts/check_field_sizes.py $region_dir/prelim @$region_dir/input_args_GL.txt
 #     RETRY 1 (Ben's go): the 78, submitted from 03:14:17Z, --max_in_flight 40
 #     (lower than 100 in case the bursts are load-related); list
 #     ${L}_matched_retry1_tile_list.txt, ledger _matched_retry1_jobs.csv.
-#     DO NOT REGISTER until it finishes.  Then collect/fetch/check as N4.
+#     RETRY 1 DONE 03:30:43Z: 78/78 successful.  557/557 matched tiles on
+#     the bucket.  Collect/fetch/check: NM0.
 # ===========================================================================
 nohup scripts/maap/submit_MAAP_jobs.py --tile_list ${L}_tile_list.txt \
     --step matched --args_url $s3_run/input_args_GL.txt \
@@ -258,7 +259,7 @@ cd $repo
 
 
 # ===========================================================================
-# NM. MONTHLY PRELIM, GL north.  WRITTEN 2026-09-30, TENTATIVE -- not run.
+# NM. MONTHLY PRELIM, GL north.  WRITTEN 2026-09-30; QM-A..C answered.
 # ===========================================================================
 # DECIDED (Ben 2026-09-30): after the current batch, take GL north through
 #   MONTHLY PRELIM (revises QN2's "no monthly"), and submit the ~500 jobs
@@ -283,10 +284,12 @@ cd $repo
 #        quarterly tile (557/557), so a north-only reference covers them.
 #        Other options: B. canonical $s3_out name (overwritten by the full
 #        run -- risky); C. rel005 ATL14 (not on the bucket; departs from IS).
+#        QM-A answer (Ben 2026-09-30): north ATL14 at the side key.  DECIDED.
 #   QM-B Smoke first?  RECOMMENDATION: yes, ONE center (E80_N-920, as N2)
 #        before the ~556.  A bad reference fails every job the same way
 #        (IS W5: a missing reference edits away every point), which would
 #        spoil the all-at-once test as well as the run.  ~10-20 min.
+#        QM-B answer (Ben 2026-09-30): yes, one center.  DECIDED.
 #   QM-C What "all at once" means.  RECOMMENDATION: no --max_in_flight and
 #        --rate 0 -- the submitter then POSTs back to back, as a user's
 #        plain loop would.  Queue maap-dps-worker-32gb, as N3/N5, so the
@@ -294,6 +297,7 @@ cd $repo
 #        needed ~2.3x less memory than quarterly, so 16gb would fit -- but
 #        that queue is burstable t3 (memory: DPS queue hardware) and would
 #        confound the comparison.)
+#        QM-C answer (Ben 2026-09-30): no cap, --rate 0, 32gb.  DECIDED.
 #
 # NM0. [ADE] TODO.  N5 finish: collect/fetch/check matched (main + retry1).
 # NM1. [ADE] TODO.  N6 mosaic, N7 ATL14 (+ATL15) netCDF, as written above.
