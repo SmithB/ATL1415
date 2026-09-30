@@ -309,7 +309,8 @@ cd $repo
 #   size-matched S3 and were deleted (list: $ledgers/
 #   GL_0332_north_local_delete_2026-09-30.txt); home 9.3 GiB after.
 #   DECIDED (Ben): mosaic (N6) and netCDF (N7) run as DPS JOBS, not on the
-#   ADE ("instances are too unpredictable").  TODO: a plan for that
+#   ADE ("instances are too unpredictable").  PLAN: docs/plan_dps_mosaic.sh
+#   (TENTATIVE, QD1-QD7 open for Ben).  TODO: agree a plan for that
 #   (entry points, CWL, registration, how a job reads the 557+557 tiles and
 #   where it writes) -- written and agreed before any code.  UNTIL THEN
 #   NM0-NM6 ARE BLOCKED and both drivers stay stopped; the drivers below
