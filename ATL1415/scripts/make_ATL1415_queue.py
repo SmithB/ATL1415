@@ -116,14 +116,19 @@ def main():
     else:
         hemisphere_name='south'
 
-    # figure out what directories we need to make
-    release_dir = os.path.join(defaults['--ATL14_root'], "rel"+defaults['--Release'])
-    hemi_dir=os.path.join(release_dir, hemisphere_name)
-    if "--base_directory" in defaults:
-        region_dir=defaults['--base_directory']
-    elif '-b' in defaults:
-        region_dir=defaults['-b']
+    # figure out what directories we need to make.  A composed args file names
+    # the region directory (-b, written last by setup_ATL1415_region.py), and
+    # its parents are the ones to check: the release directory may carry a
+    # suffix (rel006_0332_testing, --release_dir_suffix), and the hemisphere
+    # one a period (north_monthly), neither of which --Release says.
+    if "--base_directory" in defaults or '-b' in defaults:
+        region_dir=defaults.get('--base_directory', defaults.get('-b'))
+        hemi_dir=os.path.dirname(os.path.normpath(region_dir))
+        release_dir=os.path.dirname(hemi_dir)
     else:
+        release_dir = os.path.join(defaults['--ATL14_root'],
+                                   "rel"+defaults['--Release']+defaults.get('--release_dir_suffix', ''))
+        hemi_dir=os.path.join(release_dir, hemisphere_name)
         region_dir=os.path.join(hemi_dir, defaults['--region'])
 
     for this in [release_dir, hemi_dir, region_dir]:

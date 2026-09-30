@@ -170,3 +170,32 @@ def test_local_index_must_still_exist(tmp_path):
     lines = _base_lines(tmp_path, tmp_path / 'no_such_index.h5')
     with pytest.raises(OSError, match='does not exist'):
         _compose(tmp_path, lines)
+
+
+# ---------------------------------------------------------------------------
+# --release_dir_suffix (docs/plan_dps_mosaic.sh AD4)
+# ---------------------------------------------------------------------------
+
+def test_release_dir_suffix_names_the_directory_not_the_release(tmp_path):
+    """
+    rel006_0332_testing holds a test run: the directory carries the suffix,
+    -b points into it, --Release (which names the products) stays 006, and
+    the suffix itself is not written out -- -b already carries it.
+    """
+    index = tmp_path / 'GeoIndex.h5'
+    index.write_text('')
+    defaults = tmp_path / 'defaults.txt'
+    defaults.write_text('\n'.join(_base_lines(tmp_path, index)
+                                  + ['--release_dir_suffix=_0332_testing']) + '\n')
+    (tmp_path / 'ATL14_processing').mkdir()
+    old_argv, sys.argv = sys.argv, ['setup_ATL1415_region.py', str(defaults)]
+    try:
+        setup_region.main()
+    finally:
+        sys.argv = old_argv
+    region_dir = tmp_path / 'ATL14_processing' / 'rel006_0332_testing' / 'south' / 'AA'
+    composed = (region_dir / 'input_args_AA.txt').read_text().splitlines()
+    assert f'-b={region_dir}' in composed
+    assert '--Release=006' in composed
+    assert not any(line.startswith('--release_dir_suffix') for line in composed)
+    assert not (tmp_path / 'ATL14_processing' / 'rel006').exists()

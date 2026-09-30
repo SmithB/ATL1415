@@ -257,7 +257,17 @@
 #     (fail loudly, never a silent prelim tile without /data).
 #     The 557 GL-north matched tiles already on S3 keep their /data.
 #
-# D2c. [code, all scripts] TODO.  AD4: nothing may assume the release
+# D2c. [code] DONE 2026-10-01.  --release_dir_suffix (e.g. _0332_testing):
+#     setup_ATL1415_region.py and make_GL_ATL1415_queue.py name the directory
+#     rel<Release><suffix>; --Release (product names) stays 006; the suffix is
+#     not written to input_args (-b carries it, like --hemi_suffix).
+#     make_ATL1415_queue.py checks the parents of -b instead of a rebuilt
+#     rel<Release>/<hemi> (UNTESTED: that script has no tests).
+#     HITS LISTED AND LEFT ALONE (discover-only or docs): scripts/run_arctic_*.sh,
+#     scripts/run_antarctic_tonc.sh, link_200km_tiles_AA_monthly.py (hard-coded
+#     discover path), scripts/old/.  MAAP scripts take their s3 prefixes as
+#     given (submit/collect/fetch, s3_tiles.py, run.sh): nothing to change.
+#   D2c as planned: AD4: nothing may assume the release
 #     directory is exactly rel<NNN>.  Find every place that builds or parses
 #     .../ATL14_processing/rel<NNN>/<hemi>/<R> (setup_ATL1415_region.py,
 #     default_args, submit/collect/fetch scripts, run.sh comments) and let

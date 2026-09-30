@@ -105,7 +105,8 @@ else:
     hemisphere_name='south'
 
 # figure out what directories we need to make
-release_dir = os.path.join(defaults['--ATL14_root'], "rel"+defaults['--Release'])
+release_dir = os.path.join(defaults['--ATL14_root'],
+                           "rel"+defaults['--Release']+defaults.get('--release_dir_suffix', ''))
 hemi_dir=os.path.join(release_dir, hemisphere_name)
 region_dir=os.path.join(hemi_dir, defaults['--region'])
 

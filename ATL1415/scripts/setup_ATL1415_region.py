@@ -92,8 +92,12 @@ def main(argv=None):
     if '--hemi_suffix' in defaults:
         hemisphere_name += defaults['--hemi_suffix']
         
-    # figure out what directories we need to make
-    release_dir = os.path.join(defaults['--ATL14_root'], "rel"+defaults['--Release'])
+    # figure out what directories we need to make.  --release_dir_suffix names
+    # a release directory that carries more than the release -- e.g.
+    # rel006_0332_testing (docs/plan_dps_mosaic.sh AD4) -- while --Release, which
+    # also names the products, stays 006.
+    release_dir = os.path.join(defaults['--ATL14_root'],
+                               "rel"+defaults['--Release']+defaults.get('--release_dir_suffix', ''))
     hemi_dir=os.path.join(release_dir, hemisphere_name)
     region_dir=os.path.join(hemi_dir, defaults['--region'])
 
@@ -192,7 +196,8 @@ def main(argv=None):
     defaults_file=os.path.join(region_dir, f'input_args_{defaults["--region"]}.txt')
     with open(defaults_file, 'w') as fh:
         for key, val in defaults.items():
-            if key in ["--hemi_suffix"]:
+            # directory naming only: -b (written last) already carries both
+            if key in ["--hemi_suffix", "--release_dir_suffix"]:
                 continue
             if val is FLAG:
                 fh.write(f'{key}\n')
