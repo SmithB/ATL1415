@@ -175,7 +175,18 @@ nohup scripts/maap/submit_MAAP_jobs.py --tile_list ${L}_N3_tile_list.txt \
 
 
 # ===========================================================================
-# N4. [ADE] TODO.  Collect, fetch, check.
+# N4. [ADE] DONE 2026-09-30 ~01:00Z.  Collect, fetch, check.
+#     E280_N-1240: cancel_job -> HTTP 202 'dismissed', but status stayed
+#     'running' (checked 3 min); it never wrote a tile.  Retry 2 (531a4e12)
+#     successful, 743 s, 11.34 GiB.  PRELIM COMPLETE: 557/557 tiles, 82 GB
+#     local; check_field_sizes 557/557 OK (3 s); no no-data centers.
+#     All 557 successful jobs (main+retries+smoke): median 702 s, mean 644,
+#     p90 811, max 937 s; 99.6 job-hours.  Peak memory median 10.8 GiB, p90
+#     11.8, max 12.92 (none > 14).  Instances: 554 r5.xlarge, 2 m5.2xlarge.
+#     ADE TIME: collect_jobs 555 jobs 1962 s (3.5 s/job); fetch_tiles 555
+#     rows 2593 s (4.7 s/job, 522 tiles); retry1 fetch 32 tiles.
+#     Files: ${L}_prelim{,_retry1,_retry2}_{collect,fetch}.txt,
+#     ${L}_prelim_field_sizes.txt.
 # ===========================================================================
 scripts/maap/collect_jobs.py ${L}_prelim_jobs.csv > ${L}_prelim_collect.txt
 scripts/maap/fetch_tiles.py  ${L}_prelim_jobs.csv $region_dir --step prelim
