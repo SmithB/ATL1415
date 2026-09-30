@@ -308,8 +308,19 @@ cd $repo
 #   Matched failure evidence (N5): maap_ledgers/GL_0332_north_matched_evidence/.
 # NM0. [ADE] RUNNING (driver).  N5 finish: collect/fetch/check matched (main + retry1).
 # NM1. [ADE] QUEUED (driver).  N6 mosaic, N7 ATL14 (+ATL15) netCDF, as written above.
-# NM2. [ADE] TODO (QM-A).  Compare ATL14 with rel005 over the north; Ben's
-#      bar.  GATE: Ben passes it.
+# NM2-NM6 RUN UNATTENDED by driver 2 (launched 2026-09-30 ~04:00Z; waits for
+#   driver 1's ALL_DONE): ~/ATL14_processing/maap_ledgers/GL_0332_north_NM_driver2.sh,
+#   log _NM_driver2.log, markers GL_0332_monthly_NM_state/.  Helpers (tested
+#   on existing jobs/files): ~/ATL14_processing/session_tools_2026-09-30/.
+#   Ben 2026-09-30: "Go ahead regardless and we'll evaluate the ATL14 after
+#   the fact" -- NM2 is REPORT ONLY, not a gate.  Remaining hard stops:
+#   ref upload/readback, args upload/readback, smoke gate, field sizes.
+#   MONTHLY ARGS composed 03:55Z (setup_ATL1415_region.py as NM3); sorted diff
+#   vs quarterly = exactly IS M4's four (+ref, dzdt_lags, -b, -g) after I
+#   APPENDED --solver=cholmod by hand, as the quarterly GL args were
+#   (2026-09-25).  CHOICE MINE, flagged to Ben: monthly on cholmod is
+#   untested for accuracy (C4 was quarterly); reversible by re-running on QR.
+# NM2. [ADE] QUEUED (driver 2).  Compare ATL14 with rel005 over the north; REPORT ONLY.
 #   python ~/ATL14_processing/session_tools_2026-09-30/compare_rel005.py \
 #       $region_dir/ATL14_GL_0332_100m_006_02.nc $region_dir/ATL15_GL_0332_3mo_1km_006_02.nc \
 #       --region GL --ymin=-1540000 > ${L}_rel005_compare.txt
