@@ -258,6 +258,76 @@ cd $repo
 
 
 # ===========================================================================
+# NM. MONTHLY PRELIM, GL north.  WRITTEN 2026-09-30, TENTATIVE -- not run.
+# ===========================================================================
+# DECIDED (Ben 2026-09-30): after the current batch, take GL north through
+#   MONTHLY PRELIM (revises QN2's "no monthly"), and submit the ~500 jobs
+#   ALL AT ONCE -- no --max_in_flight -- because that is what most MAAP
+#   users do and it is the case our N3/N5 numbers do not cover.
+#
+# STATEMENT: monthly is NOT one more submit after N5.  Its args carry
+#   --ATL14_reference_file, the quarterly ATL14 of the same release, read by
+#   URI from the bucket (plan_monthly_on_maap.sh 2, M0-M1; howto_MAAP_GL
+#   11-18).  So N5 collect/fetch, N6 mosaic and N7 ATL14 netCDF come first.
+#   N7 as written says the partial ATL14 must NOT go to $s3_out, because the
+#   canonical name would then be read as the reference for the full run.
+#
+# QUESTIONS FOR BEN:
+#   QM-A Reference DEM.  RECOMMENDATION: the N7 north-only ATL14, after it
+#        passes your rel005 bar over the northern third (as QM1 for IS),
+#        copied to a NON-canonical key, e.g.
+#          $s3_root/ATL1415/run_args/rel006/north_monthly/GL/ref/
+#            ATL14_GL_0332_100m_006_02_north_partial.nc
+#        so nothing canonical exists until the full run.  Monthly reads the
+#        reference only at data points, and every GL-north center has a
+#        quarterly tile (557/557), so a north-only reference covers them.
+#        Other options: B. canonical $s3_out name (overwritten by the full
+#        run -- risky); C. rel005 ATL14 (not on the bucket; departs from IS).
+#   QM-B Smoke first?  RECOMMENDATION: yes, ONE center (E80_N-920, as N2)
+#        before the ~556.  A bad reference fails every job the same way
+#        (IS W5: a missing reference edits away every point), which would
+#        spoil the all-at-once test as well as the run.  ~10-20 min.
+#   QM-C What "all at once" means.  RECOMMENDATION: no --max_in_flight and
+#        --rate 0 -- the submitter then POSTs back to back, as a user's
+#        plain loop would.  Queue maap-dps-worker-32gb, as N3/N5, so the
+#        only change from N3 is the submission pattern.  (IS monthly
+#        needed ~2.3x less memory than quarterly, so 16gb would fit -- but
+#        that queue is burstable t3 (memory: DPS queue hardware) and would
+#        confound the comparison.)
+#
+# NM0. [ADE] TODO.  N5 finish: collect/fetch/check matched (main + retry1).
+# NM1. [ADE] TODO.  N6 mosaic, N7 ATL14 (+ATL15) netCDF, as written above.
+# NM2. [ADE] TODO (QM-A).  Compare ATL14 with rel005 over the north; Ben's
+#      bar.  GATE: Ben passes it.
+# NM3. [ADE] TODO (QM-A).  Copy the ATL14 to the reference key; compose the
+#      monthly args:
+#   ref=<QM-A key>
+#   setup_ATL1415_region.py default_args/MAAP_dps.txt default_args/latest_release.txt \
+#       default_args/GL_latest.txt default_args/monthly.txt --Hemisphere=1 \
+#       --ATL14_reference_file=$ref
+#   (paths _monthly: region_dir/s3_run/s3_out/tag/L carry north_monthly)
+#   aws s3 cp $region_dir/input_args_GL.txt $s3_run/
+#   GATE: the args name the s3:// ref; --hemi_suffix=_monthly; -g 1/12.
+# NM4. [DPS] TODO (QM-B).  Smoke E80_N-920, --step prelim, 32gb queue.
+#   GATE: successful; log names the s3:// reference; N_fit same order as
+#   quarterly E80_N-920; record wall time and peak memory.
+# NM5. [DPS] TODO (QM-C).  Fan-out ALL AT ONCE -- the other 556:
+#   grep -vx E80_N-920.h5 $ledgers/GL_0332_north_tile_list.txt > ${L}_north_NM5_tile_list.txt
+#   nohup scripts/maap/submit_MAAP_jobs.py --tile_list ${L}_north_NM5_tile_list.txt \
+#       --step prelim --args_url $s3_run/input_args_GL.txt \
+#       --tile_prefix $s3_out --queue maap-dps-worker-32gb \
+#       --tag ${tag}_north_prelim --ledger ${L}_north_prelim_jobs.csv \
+#       --rate 0 > ${L}_north_prelim_submit.log 2>&1 &
+#   RECORD for MAAP (the point of the test): how long the 556 POSTs take;
+#   any submit failures; queue wait (accepted -> started) and the number
+#   running over time, from job metrics -- this answers the open question of
+#   whether the 32gb queue's own cap is above 100; failures by class and
+#   whether they cluster when instances come up.
+# NM6. [ADE] TODO.  Collect/fetch/check as N4; retry failures (Ben's go).
+#   Monthly matched, mosaic and netCDF are NOT in scope.
+
+
+# ===========================================================================
 # N8. [ADE] TODO.  Numbers for MAAP.
 # ===========================================================================
 # From the collect files: per-job time, peak memory, instance mix, queue
