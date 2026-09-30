@@ -81,3 +81,45 @@ def exists(path):
         fs = pc.io_utils.get_s3fs(daac=None)
         return fs.exists(path)
     return os.path.exists(path)
+
+
+def list_tiles(tiles_dir, pattern='*.h5'):
+    """
+    The tile files in a local directory or under a URI prefix, SORTED.
+
+    On MAAP the netCDF writers read the prelim tiles in place on the bucket
+    (docs/plan_dps_mosaic.sh D2): nothing is copied to /home, whose quota is
+    150 GB.  Sorted in both cases, so what is read first -- and so which tile
+    set_lineage names for a granule -- does not depend on the filesystem.
+    """
+    if pc.io_utils.is_remote_path(tiles_dir):
+        return pc.io_utils.glob_remote(tiles_dir.rstrip('/') + '/' + pattern,
+                                       fs=pc.io_utils.get_s3fs(daac=None))
+    import glob
+    return sorted(glob.glob(os.path.join(tiles_dir, pattern)))
+
+
+def open_tile(path):
+    """
+    Open a tile for reading, from a local path or a URI; use as
+    `with open_tile(path) as h5f:`.
+
+    A remote tile is read with pointCollection's small block size and block
+    cache: these readers take a few datasets from each tile, and s3fs's
+    default block (50 MiB) would fetch most of the file for them.  The
+    session is the default AWS credential chain, since the tiles are in our
+    bucket, not a DAAC's.  Leaving the `with` closes the remote file object as
+    well as the HDF5 file (h5py does not close a file object it was given).
+    """
+    import contextlib
+    import h5py
+    if not pc.io_utils.is_remote_path(path):
+        return h5py.File(path, 'r')
+
+    @contextlib.contextmanager
+    def remote():
+        with pc.io_utils.open_remote(path, fs=pc.io_utils.get_s3fs(daac=None),
+                                     block_size=pc.io_utils.DEFAULT_REMOTE_BLOCK_SIZE,
+                                     daac=None) as fileobj, h5py.File(fileobj, 'r') as h5f:
+            yield h5f
+    return remote()

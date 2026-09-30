@@ -223,7 +223,16 @@
 #       ATL1415's, not pointCollection's; with the 200 km step each task's
 #       meta pass is ~36 tiles and runs in the pool.
 #
-# D2. [code, ATL1415] TODO.  --tiles_dir may be s3://: set_lineage and
+# D2. [code, ATL1415] DONE 2026-10-01.  paths.list_tiles/open_tile (sorted
+#     listing; remote = default AWS chain + pC small block, closed on exit);
+#     set_lineage and make_tile_stats_group use them.  Real data: 557 GL
+#     prelim tiles listed in 1.2 s; tile-stats reads 1.0 s/tile, identical to
+#     the mount read -> ~10 min per pass, two passes per writer (lineage,
+#     tile stats), serial.  A pool (as pC's) is the lever if that matters.
+#     Also: make_tile_stats_group imports make_nc_projection_variable by full
+#     path (`from ATL1415 import` gave the MODULE after __init__'s fallback
+#     lookup had imported the submodule -- test-order dependent).
+#   D2 as planned: --tiles_dir may be s3://: set_lineage and
 #     make_tile_stats_group list the prefix and open tiles by URI.  The
 #     writers still read mosaics from -b and write the .nc into -b, so the
 #     job keeps -b local.  Tests beside the existing ATL1415 suite (181).

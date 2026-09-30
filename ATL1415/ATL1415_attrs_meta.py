@@ -229,9 +229,11 @@ def set_lineage(dst,root_info,args):
     lineage = []
     ATL11_files={}
     stored_attrs={}
-    for tile in glob.iglob(os.path.join(tilepath,'*.h5')):
+    # tilepath may be an s3:// prefix: the tiles are read in place on MAAP
+    from ATL1415.paths import list_tiles, open_tile
+    for tile in list_tiles(tilepath):
         try:
-            with h5py.File(tile,'r') as h5f:
+            with open_tile(tile) as h5f:
                 inputs=str(h5f['/meta/'].attrs['input_files'])
                 if inputs[:1]=='b':
                     inputs=inputs[1:]
