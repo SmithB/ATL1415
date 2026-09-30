@@ -195,7 +195,18 @@
 #     ~/my-private-bucket (local-path glob) as a second data point.
 #     GATE for QD1 A: (b) finishes in a time you accept for a DPS job.
 #
-# D1. [code, pointCollection] IN PROGRESS.  One PR, you merge it:
+# D1. [code, pointCollection] PR OPEN, for Ben to merge:
+#     https://github.com/SmithB/pointCollection/pull/60 (branch
+#     mosaic_remote_parallel, 72ec08b).  306 tests pass.  Real data, 557 GL
+#     tiles on S3: 40 km avg 357 s -> 44.5 s (8 workers), z0 802 s -> 195 s
+#     (4 workers), both bit-identical to D0's serial mosaics.  Workers start by
+#     FORKSERVER (plain fork after s3fs: "This class is not fork-safe").  Each
+#     worker ~0.35 GiB: 8 workers + z0 was OOM-killed on the ADE, whose cgroup
+#     memory.max is 7.3 GiB (free shows the 30 GB host).  Also fixes a
+#     pre-existing add_to_band bug (in-memory 3-D mosaic + by_band; Ben: add).
+#     AFTER MERGE: reinstall pC in the ADE ATL14 env; DPS builds pick it up
+#     (LSsurf/pC unpinned on DPS -- memory: reach kernel).
+#   D1 as planned:
 #     a. io_utils.glob_remote(pattern): the remote glob.glob (sorted URIs).
 #     b. make_mosaic.py: --directory may be a URI (listed with a.); -O must
 #        then be a LOCAL absolute path (error otherwise -- a relative -O would
