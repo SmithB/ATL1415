@@ -310,6 +310,11 @@ cd $repo
 # NM1. [ADE] QUEUED (driver).  N6 mosaic, N7 ATL14 (+ATL15) netCDF, as written above.
 # NM2. [ADE] TODO (QM-A).  Compare ATL14 with rel005 over the north; Ben's
 #      bar.  GATE: Ben passes it.
+#   python ~/ATL14_processing/session_tools_2026-09-30/compare_rel005.py \
+#       $region_dir/ATL14_GL_0332_100m_006_02.nc $region_dir/ATL15_GL_0332_3mo_1km_006_02.nc \
+#       --region GL --ymin=-1540000 > ${L}_rel005_compare.txt
+#   (script VALIDATED: reproduces T8 I9g6 for IS exactly; rel005 GL =
+#   ATL14_GL_0329_100m_005_02.nc + ATL15_GL_0329_01km_005_02.nc, CMR.)
 # NM3. [ADE] TODO (QM-A).  Copy the ATL14 to the reference key; compose the
 #      monthly args:
 #   ref=<QM-A key>
