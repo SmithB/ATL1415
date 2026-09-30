@@ -197,7 +197,11 @@ scripts/check_field_sizes.py $region_dir/prelim @$region_dir/input_args_GL.txt
 
 
 # ===========================================================================
-# N5. [DPS+ADE] TODO.  Matched, then collect/fetch/check as N4.
+# N5. [DPS+ADE] IN FLIGHT -- DO NOT REGISTER.  Submitting since 2026-09-30
+#     01:26:50Z on 615d5ef (Ben's go): 557 centers, dry run skipped none,
+#     100 in flight; ledger ${L}_matched_jobs.csv, log _matched_submit.log
+#     (stdout buffered -- watch the ledger), start _matched_start.txt.
+#     Matched, then collect/fetch/check as N4.
 # ===========================================================================
 nohup scripts/maap/submit_MAAP_jobs.py --tile_list ${L}_tile_list.txt \
     --step matched --args_url $s3_run/input_args_GL.txt \
