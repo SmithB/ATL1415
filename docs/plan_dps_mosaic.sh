@@ -145,7 +145,40 @@
 # ===========================================================================
 # STEPS
 # ===========================================================================
-# D0. [ADE] TODO.  Probe in-place reads, no code change (QD1, QD5).
+# D0. [ADE] DONE 2026-09-30 20:51Z.  Probe in-place reads (QD1, QD5).
+#     RESULT, 557 GL-north matched tiles, ADE, one process, sequential
+#     (scratchpad d0_probe.py; outputs in /tmp only):
+#       run                         wall    net rx   peak RSS  CPU
+#       (a) avg_dz_40km  s3, 1 MiB   357 s   2.2 GB   0.29 GiB  0.06 cores
+#       (a)              mount       386 s   2.1 GB   0.08 GiB  0.01
+#       (b) z0/z0 -w     s3, 1 MiB   802 s   7.6 GB   4.49 GiB  0.14
+#       (b)              s3, 256 KiB 841 s   3.3 GB   4.33 GiB  0.13
+#       (b)              mount       854 s  13.2 GB   4.06 GiB  0.08
+#     Every output IDENTICAL (array_equal, NaN-aware) across s3 1 MiB /
+#     256 KiB / mount; z0 grid 9401 x 14601, 91.8 M finite cells.
+#     FINDING 1: pointCollection's mosaic.from_list does not pass a
+#       block_size to grid.data.from_h5, so s3:// tiles are read with
+#       s3fs's 50 MiB default: 4 tiles pulled ~1 GB for a few-kB group,
+#       ~3.8 s/tile.  The runs above force it (probe monkeypatch).  D1 must
+#       pass it through (1 MiB: fastest here; 256 KiB: half the bytes).
+#     FINDING 2: LATENCY-BOUND, not bandwidth- or CPU-bound: 0.6 s/tile for
+#       (a), whose data are tiny -- that is per-open cost (each tile is opened
+#       twice: setup_bounds_from_list's meta pass, then add()) -- and 1.4
+#       s/tile for (b); CPU <= 0.14 cores.  The mount is no faster.
+#     WHAT IT MEANS PER TASK (estimate from the above, not measured):
+#       make_mosaic_jobs.py writes the z0 task as 7 separate make_mosaic.py
+#       calls (6 matched fields + sigma_z0), each re-reading all 557 tiles
+#       -> ~7 x 13 min ~= 1.5 h for GL north's z0 task; the other 40 tasks
+#       are 2 calls each (matched + prelim sigma) at ~6-13 min -> ~15-25 min.
+#       Full GL (~1483 tiles) ~2.7x; AA far more.
+#     z0 peak 4.5 GiB for GL north -> full GL ~12 GiB, close to the 16gb
+#       queue (AD5 gives 32gb only to AA z0).
+#     POSSIBLE SPEEDUPS (none tried): (i) open tiles concurrently (threads;
+#       CPU is idle); (ii) read all z0 fields in ONE pass per tile instead of
+#       7; (iii) take bounds from the tile names (E<x>_N<y>) instead of the
+#       meta_only pass.  Each is a pointCollection/make_mosaic_jobs change.
+#     GATE (yours): are these times acceptable for DPS jobs, or do speedups
+#       go into D1?
 #     A short script in the scratchpad: pc.grid.mosaic().from_list() over
 #     the 557 s3:// matched URIs for (a) a cheap group, avg_dz_40000m, and
 #     (b) the heaviest field, z0/z0 with -p 5000 -f 10000; output to /tmp,
