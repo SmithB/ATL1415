@@ -888,13 +888,16 @@ def write_lineage(h5f, lineage):
             group.attrs[key] = value
 
 
-def save_fit_to_file(S,  filename, dzdt_lags=None, reference_epoch=0):
+def save_fit_to_file(S,  filename, dzdt_lags=None, reference_epoch=0, write_data=True):
+    # write_data=False (--no_data_group): no per-point /data group; /meta's
+    # first/last_delta_time still come from the data
     if os.path.isfile(filename):
         os.remove(filename)
     with h5py.File(filename,'w') as h5f:
-        h5f.create_group('/data')
-        for key in S['data'].fields:
-            h5f.create_dataset('/data/'+key, data=getattr(S['data'], key))
+        if write_data:
+            h5f.create_group('/data')
+            for key in S['data'].fields:
+                h5f.create_dataset('/data/'+key, data=getattr(S['data'], key))
         # metadata:
         h5f.create_group('/meta')
         h5f.create_group('/meta/timing')
@@ -1172,6 +1175,10 @@ def parse_args(argv=None):
     parser.add_argument('--previous_product_sigma', type=float, default=0.2, help='minimum sigma_extra (m) when pre-filtering against the previous product (default 0.2)')
     parser.add_argument('--verbose','-v', action="store_true")
     parser.add_argument('--write_data_only', action='store_true', help='save data without processing')
+    parser.add_argument('--no_data_group', action='store_true',
+                        help='do not write the per-point /data group into the tile (matched only: '
+                        '80-92%% of a matched tile, and nothing downstream reads it -- matched and '
+                        'error runs reread the PRELIM tile; docs/plan_dps_mosaic.sh D2b)')
     parser.add_argument('--THREADS', type=int, default=1, help='number of threads to use in suitesparse calculations')
     parser.add_argument('--solver', choices=['spqr', 'cholmod'], default='spqr',
                         help="least-squares solver for the fit iterations: 'spqr' (QR, the default) or "
@@ -1190,6 +1197,11 @@ def parse_args(argv=None):
               + ' '.join(unknown))
     if args.THREADS == 1 and int(N_THREADS) > 1:
         args.THREADS = int(N_THREADS)
+    if args.no_data_group and not args.matched:
+        # a prelim tile without /data would break the matched and error runs
+        # that reread it, and nothing would say so until they ran
+        parser.error('--no_data_group applies to --matched runs only: prelim tiles keep '
+                     '/data, which the matched and error steps reread')
     if args.solver == 'cholmod':
         require_cholmod()
     return args
@@ -1413,7 +1425,8 @@ def main():
     status=1
     if args.calc_error_file is None and 'm' in S and len(S['m'].keys()) > 0:
         # if this isn't an error-calculation run, save the gridded fit data to the output file
-        save_fit_to_file(S, args.out_name, dzdt_lags=args.dzdt_lags, reference_epoch=args.reference_epoch)
+        save_fit_to_file(S, args.out_name, dzdt_lags=args.dzdt_lags, reference_epoch=args.reference_epoch,
+                         write_data=not args.no_data_group)
         save_field_size_report(args.out_name)
         status=0
     elif 'E' in S and len(S['E'].keys()) > 0:

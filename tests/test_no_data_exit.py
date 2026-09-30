@@ -36,7 +36,7 @@ def run(monkeypatch, tmp_path, S, prelim=True, calc_error=False, stale=False):
     args = SimpleNamespace(
         xy0=[1020000, -2580000],
         base_directory=str(tmp_path), out_name=str(tile),
-        write_data_only=False, prelim=prelim, matched=not prelim,
+        write_data_only=False, no_data_group=False, prelim=prelim, matched=not prelim,
         calc_error_file=str(tile) if calc_error else None,
         error_res_scale=[5, 2], dzdt_lags=[1], reference_epoch=0)
     saved = []

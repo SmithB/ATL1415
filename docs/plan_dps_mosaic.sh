@@ -228,7 +228,8 @@
 #     writers still read mosaics from -b and write the .nc into -b, so the
 #     job keeps -b local.  Tests beside the existing ATL1415 suite (181).
 #
-# D2b. [code, ATL1415] TODO.  DECIDED (Ben 2026-09-30, option b): a
+# D2b. [code, ATL1415] DONE (code; deploys with the next registration).
+#     DECIDED (Ben 2026-09-30, option b): a
 #     --no_data_group flag on ATL11_to_ATL15.py, OFF by default, so
 #     save_fit_to_file skips /data (80-92% of a matched tile: E80_N-920 192
 #     of 208 MiB, E520_N-920 21 of 26 MiB).  Nothing downstream reads a

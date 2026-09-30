@@ -547,7 +547,13 @@ else
     # an args file that sets it still wins.
     prior_edge_include=${ATL1415_PRIOR_EDGE_INCLUDE:-1000}
 
-    run_solve matched --THREADS="${threads}" --matched \
+    # --no_data_group: a matched tile leaves out its per-point /data (80-92%
+    # of the file), which nothing downstream reads -- matched and error runs
+    # reread the PRELIM tile (docs/plan_dps_mosaic.sh D2b, Ben 2026-09-30).
+    # Here, not in the args file: prelim and matched share that file, and a
+    # prelim tile must keep /data (ATL11_to_ATL15 refuses the flag without
+    # --matched).
+    run_solve matched --THREADS="${threads}" --matched --no_data_group \
               --prior_edge_include "$prior_edge_include" \
               --data_file "$prelim_file" \
               "@${args_file}" \
