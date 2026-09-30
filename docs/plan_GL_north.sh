@@ -299,6 +299,21 @@ cd $repo
 #        confound the comparison.)
 #        QM-C answer (Ben 2026-09-30): no cap, --rate 0, 32gb.  DECIDED.
 #
+# REVISED 2026-09-30 ~17:00Z -- HOME QUOTA.  STATEMENT: /home/jovyan has a
+#   150 GB quota (MAAP admin, via Ben); df does not show it.  NM0's fetch
+#   filled it: 395 then 403 of 557 matched local, "[Errno 28] No space left
+#   on device" (visible once fetch_tiles.py printed the whole error).
+#   DECIDED (Ben): no DPS output is copied to /home.  The authoritative tiles
+#   are on $s3_out (557 prelim + 557 matched, verified); a local file of a
+#   different size is an error.  DONE: all 1920 local prelim/matched files
+#   size-matched S3 and were deleted (list: $ledgers/
+#   GL_0332_north_local_delete_2026-09-30.txt); home 9.3 GiB after.
+#   DECIDED (Ben): mosaic (N6) and netCDF (N7) run as DPS JOBS, not on the
+#   ADE ("instances are too unpredictable").  TODO: a plan for that
+#   (entry points, CWL, registration, how a job reads the 557+557 tiles and
+#   where it writes) -- written and agreed before any code.  UNTIL THEN
+#   NM0-NM6 ARE BLOCKED and both drivers stay stopped; the drivers below
+#   (NM0 fetch, local mosaic/nc) are superseded.
 # NM0-NM1 RUN UNATTENDED since 2026-09-30 03:42Z by a RESTARTABLE driver on
 #   the NFS home (survives the ADE instance closing; /tmp does not):
 #     ~/ATL14_processing/maap_ledgers/GL_0332_north_NM_driver.sh
@@ -306,8 +321,8 @@ cd $repo
 #   IF THE INSTANCE CLOSED: re-run it (command in its header); finished
 #   steps are skipped, interrupted mosaic tasks requeued.  It stops at NM2.
 #   Matched failure evidence (N5): maap_ledgers/GL_0332_north_matched_evidence/.
-# NM0. [ADE] RUNNING (driver).  N5 finish: collect/fetch/check matched (main + retry1).
-# NM1. [ADE] QUEUED (driver).  N6 mosaic, N7 ATL14 (+ATL15) netCDF, as written above.
+# NM0. [ADE] SUPERSEDED (no fetch; tiles verified on $s3_out).  N5 finish: collect/fetch/check matched (main + retry1).
+# NM1. BLOCKED (moves to DPS; plan TODO).  N6 mosaic, N7 ATL14 (+ATL15) netCDF, as written above.
 # NM2-NM6 RUN UNATTENDED by driver 2 (launched 2026-09-30 ~04:00Z; waits for
 #   driver 1's ALL_DONE): ~/ATL14_processing/maap_ledgers/GL_0332_north_NM_driver2.sh,
 #   log _NM_driver2.log, markers GL_0332_monthly_NM_state/.  Helpers (tested
