@@ -197,11 +197,20 @@ scripts/check_field_sizes.py $region_dir/prelim @$region_dir/input_args_GL.txt
 
 
 # ===========================================================================
-# N5. [DPS+ADE] IN FLIGHT -- DO NOT REGISTER.  Submitting since 2026-09-30
+# N5. [DPS+ADE] 479/557; 78 FAILED, retry awaits Ben.  Submitted from 2026-09-30
 #     01:26:50Z on 615d5ef (Ben's go): 557 centers, dry run skipped none,
 #     100 in flight; ledger ${L}_matched_jobs.csv, log _matched_submit.log
 #     (stdout buffered -- watch the ledger), start _matched_start.txt.
-#     Matched, then collect/fetch/check as N4.
+#     RESULT (03:10Z): all submitted by 01:55:41Z, 0 submit failures; nothing
+#     in flight.  479 successful (479 matched tiles on the bucket), 78 FAILED.
+#     Failures come in bursts: runs of 12-20 consecutive submissions
+#     (01:39:32-01:54:29), with successes between the bursts.  Evidence:
+#       74 no logs, no metrics, get_job_result {}, no triaged_job dir, no
+#          tile -- look like they never reached a worker (NOT KNOWN why)
+#        2 MAAP API ConnectTimeout at maap.MAAP() start-up (as N3)
+#        2 'cannot kill container: No such container' (docker daemon)
+#     Failed list: scratchpad only; the ledger + status re-derives it.
+#     RETRY of the 78 AWAITS BEN.  Matched, then collect/fetch/check as N4.
 # ===========================================================================
 nohup scripts/maap/submit_MAAP_jobs.py --tile_list ${L}_tile_list.txt \
     --step matched --args_url $s3_run/input_args_GL.txt \
