@@ -293,6 +293,55 @@
 #     'source activate IS2' and one make_mosaic call per field; it has had no
 #     tests.  Check it against make_mosaic_jobs.py before relying on it.
 #
+# D3 DETAILED DESIGN (written 2026-10-01; TENTATIVE until coded + tested)
+#   DECIDED (Ben 2026-10-01): every job reads the solve TILES from
+#   <tile_prefix> and reads and writes every DERIVED product -- 200 km tiles,
+#   region mosaics, netCDFs -- at <out_prefix> ("-" = tile_prefix).  GL north:
+#   tile_prefix .../rel006/north/GL, out_prefix
+#   .../rel006_0332_testing/north/GL for all three stages; nothing partial
+#   lands at the canonical region prefix.  (Supersedes QD4's "mosaics at the
+#   region prefix".)
+#   Three new run.sh steps, one DPS job each; new inputs `task`, `out_prefix`:
+#     step mosaic200  task = "<x>_<y>" (200 km center, m).  Stage 1.
+#       make_200km_tiles.py --center x y --tiles_base <tile_prefix> writes
+#       that one tile's task into a local work dir; its ~41 groups run in
+#       parallel (-P physical cores), each group's two lines (matched, then
+#       prelim sigma) in order; each make_mosaic call reads ~36 tiles by
+#       name (-r) straight from S3.  Uploads 200km_tiles/<group>/*.h5 to
+#       <out_prefix>.  WHY groups-in-parallel, not make_mosaic -j: every
+#       make_mosaic call is its own process, and -j would start a forkserver
+#       (~10 s) in each of 82 calls to save ~30 s of reads per call.
+#     step mosaic     task = <group> (z0, dz, dzdt_lag4, avg_dz_40000m, ...).
+#       Stage 2: make_200km_to_mosaic_jobs.py's commands for that group,
+#       reading <out_prefix>/200km_tiles/<group>/ with -j (one call per
+#       field, ~40 200 km tiles each), writing <group's file>.h5 locally,
+#       uploading to <out_prefix>.
+#     step nc         task = ATL14 | ATL15.  Fetches the mosaics from
+#       <out_prefix> into -b (a local work dir), --tiles_dir
+#       <tile_prefix>/prelim (D2, read in place), writes the .nc files,
+#       uploads them to <out_prefix>.
+#   Script changes (each with tests):
+#     D3a-1 make_200km_tiles.py: --tiles_base (where the tiles are read, -d,
+#           and where the centers are listed from; may be s3://; default
+#           region_dir) and --center X Y (write only that tile's task).
+#     D3a-2 make_200km_to_mosaic_jobs.py: callable per group (--group), reads
+#           from --in_base (may be s3://), writes into -b; z0 included by an
+#           explicit flag rather than a local isdir() check; the hard-coded
+#           'source activate IS2' becomes -e/--environment (as
+#           make_mosaic_jobs.py); first tests for it.
+#     D3-1  run.sh steps + algorithm_config.yml inputs task, out_prefix.
+#     D3-2  submit_MAAP_jobs.py: --step mosaic200 (centers from the tile list
+#           on S3), mosaic (groups from make_fields), nc; ledgered as tiles.
+#   STATEMENT, to check in D6: stage 1 crops time with --t_range [2019, ...]
+#     (dzdt: 2019 + lag*dt/2), so GL's 2018.75 band is dropped from the 200 km
+#     mosaics; make_mosaic_jobs.py's direct path keeps it.  The writers crop
+#     with --t_crop=2019,... -- whether the netCDFs then agree is D6's to show.
+#   CHECKED: make_200km_to_mosaic_jobs.py's groups, fields and output names
+#     match make_mosaic_jobs.py's (z0 7 fields; dz 7; dzdt_lagN and avg
+#     groups 3 each; dz_40km.h5, dzdt_40km_lag1.h5, ...); stage 1's pad/feather
+#     from W=60 km, spacing 40 km = 5000/10000, 0/0 for the 40 and 20 km
+#     averages -- as the direct path.
+#
 # D3. [code, ATL1415] TODO.  run.sh: step `mosaic` --
 #       make_mosaic_jobs.py -b <local work dir> ... with -d s3://<tile_prefix>
 #       for the tile reads, run task $task, upload its one .h5 to
