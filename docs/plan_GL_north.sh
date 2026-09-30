@@ -299,8 +299,15 @@ cd $repo
 #        confound the comparison.)
 #        QM-C answer (Ben 2026-09-30): no cap, --rate 0, 32gb.  DECIDED.
 #
-# NM0. [ADE] TODO.  N5 finish: collect/fetch/check matched (main + retry1).
-# NM1. [ADE] TODO.  N6 mosaic, N7 ATL14 (+ATL15) netCDF, as written above.
+# NM0-NM1 RUN UNATTENDED since 2026-09-30 03:42Z by a RESTARTABLE driver on
+#   the NFS home (survives the ADE instance closing; /tmp does not):
+#     ~/ATL14_processing/maap_ledgers/GL_0332_north_NM_driver.sh
+#     log  ..._NM_driver.log;  markers ..._NM_state/<step>.done
+#   IF THE INSTANCE CLOSED: re-run it (command in its header); finished
+#   steps are skipped, interrupted mosaic tasks requeued.  It stops at NM2.
+#   Matched failure evidence (N5): maap_ledgers/GL_0332_north_matched_evidence/.
+# NM0. [ADE] RUNNING (driver).  N5 finish: collect/fetch/check matched (main + retry1).
+# NM1. [ADE] QUEUED (driver).  N6 mosaic, N7 ATL14 (+ATL15) netCDF, as written above.
 # NM2. [ADE] TODO (QM-A).  Compare ATL14 with rel005 over the north; Ben's
 #      bar.  GATE: Ben passes it.
 # NM3. [ADE] TODO (QM-A).  Copy the ATL14 to the reference key; compose the
