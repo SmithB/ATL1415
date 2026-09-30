@@ -179,6 +179,14 @@
 #       meta_only pass.  Each is a pointCollection/make_mosaic_jobs change.
 #     GATE (yours): are these times acceptable for DPS jobs, or do speedups
 #       go into D1?
+#     GATE ANSWER (Ben 2026-09-30): "Add the functionality to pointCollection
+#       and I'll merge.  For Greenland, add the 200-km tile step that is
+#       currently in effect for Antarctica to the workflow so that the
+#       tiles -> mosaic jobs can be run in parallel as small tasks."  DECIDED.
+#     CONCURRENCY MEASURED (40 GL tiles, z0/z0, 256 KiB blocks, ADE): serial
+#       32.3 s; 8 THREADS 32.6 s (no gain -- h5py holds its global lock
+#       through the file-object reads); 8 processes spawn 14.3 s, FORK 6.6 s.
+#       So D1 uses a process pool, not threads.
 #     A short script in the scratchpad: pc.grid.mosaic().from_list() over
 #     the 557 s3:// matched URIs for (a) a cheap group, avg_dz_40000m, and
 #     (b) the heaviest field, z0/z0 with -p 5000 -f 10000; output to /tmp,
@@ -187,11 +195,22 @@
 #     ~/my-private-bucket (local-path glob) as a second data point.
 #     GATE for QD1 A: (b) finishes in a time you accept for a DPS job.
 #
-# D1. [code, pointCollection] TODO.  make_mosaic.py: when --directory is
-#     s3://, list <directory>/<glob> with s3fs (fnmatch on the key) instead
-#     of glob.glob; everything after the listing is unchanged.  Outputs
-#     stay local paths (-O).  Test with a moto/local fake, as pC's other
-#     remote tests.  PR to pointCollection -- you merge it.
+# D1. [code, pointCollection] IN PROGRESS.  One PR, you merge it:
+#     a. io_utils.glob_remote(pattern): the remote glob.glob (sorted URIs).
+#     b. make_mosaic.py: --directory may be a URI (listed with a.); -O must
+#        then be a LOCAL absolute path (error otherwise -- a relative -O would
+#        be joined onto the URI); new --block_size (default for remote:
+#        io_utils.DEFAULT_REMOTE_BLOCK_SIZE) and --workers.
+#     c. grid.mosaic.from_list(block_size=None, workers=1): block_size is
+#        passed to from_file for remote h5/nc items (FINDING 1); workers > 1
+#        reads the tiles in a process pool (fork where available; the pool
+#        clears io_utils' s3fs session cache in each child), in list order,
+#        at most 2 x workers ahead, so the summation order -- and the output
+#        -- is the same as the serial read.  Covers the meta pass, the
+#        weighted, by_band and replace loops.  workers=1 is today's code path.
+#     NOT DONE: (iii) bounds from tile names -- the E<x>_N<y> convention is
+#       ATL1415's, not pointCollection's; with the 200 km step each task's
+#       meta pass is ~36 tiles and runs in the pool.
 #
 # D2. [code, ATL1415] TODO.  --tiles_dir may be s3://: set_lineage and
 #     make_tile_stats_group list the prefix and open tiles by URI.  The
@@ -223,6 +242,25 @@
 #     default_args, submit/collect/fetch scripts, run.sh comments) and let
 #     the release directory carry extra text (rel006_0332_testing), rel006
 #     staying the default.  List the hits before changing any.
+#
+# D3a. [code, ATL1415] TODO.  THE 200 KM STEP FOR GL (Ben, gate answer),
+#     as AA does it today:
+#       stage 1 -- make_200km_tiles.py: one task per 200 km tile (GL north
+#         ~40), each running make_mosaic.py for every group with -r (tiles by
+#         name within 10 km of the 200 km square) and -c (crop), matched then
+#         prelim sigma, writing <region>/200km_tiles/<group>/<group><bounds>.h5.
+#       stage 2 -- make_200km_to_mosaic_jobs.py: one task per group, joining
+#         the 200 km tiles into <region>/<group>.h5 (make_mosaic_jobs.py
+#         already switches z0 to 200km_tiles/z0 when that directory exists).
+#     On DPS: stage 1 = one job per 200 km tile, stage 2 = one job per
+#     group; the tiles are read in place (-d s3://..., D1) and each job
+#     uploads its outputs.  make_200km_tiles.py finds centers from a local
+#     glob of <region>/prelim -- on DPS from glob_remote or a
+#     200km_tile_list.txt.  ESTIMATE: stage 1 = 41 groups x 2 calls x ~36
+#     tiles per job; stage 2 reads ~40 200 km tiles per field.
+#     OPEN (for Ben, later): make_200km_to_mosaic_jobs.py hard-codes
+#     'source activate IS2' and one make_mosaic call per field; it has had no
+#     tests.  Check it against make_mosaic_jobs.py before relying on it.
 #
 # D3. [code, ATL1415] TODO.  run.sh: step `mosaic` --
 #       make_mosaic_jobs.py -b <local work dir> ... with -d s3://<tile_prefix>
