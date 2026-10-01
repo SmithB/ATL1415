@@ -525,7 +525,7 @@
 #       where to harden is decided once there is more data.  So: no run.sh
 #       change, no rebuild; every failure's cause is recorded here.
 #
-# D6. [DPS] TODO.  IS end to end: 41 mosaic jobs, then ATL14 and ATL15 nc
+# D6. [DPS] DONE 2026-10-01 (result below the step).  IS end to end: 41 mosaic jobs, then ATL14 and ATL15 nc
 #     jobs, to a TEST prefix (never over IS's canonical products) --
 #     RECOMMENDATION: .../ATL14_processing/rel006_0332_testing/north/IS,
 #     for BOTH the mosaics and the netCDFs here, since IS's canonical prefix
@@ -533,6 +533,38 @@
 #     every mosaic identical to the ADE's; netCDFs identical in data and
 #     attributes apart from dates/build fields (list the differences, don't
 #     assume).  Record per-job time and peak memory.
+#     RESULT 2026-10-01, all on build 6663090, queue 16gb (t3a.xlarge),
+#     out_prefix .../ATL14_processing/rel006_0332_testing/north/IS; ledgers
+#     and collect output in ~/ATL14_processing/maap_ledgers/
+#     IS_0332_D6_{mosaic,mosaic_retry1,nc}_{jobs.csv,collect.txt}.
+#       MOSAIC: 41 jobs submitted 16:36Z, all finished by 16:52Z.  40
+#         successful, 1 failed (avg_dzdt_20000m_lag20, job 82cfeb69, 15 s):
+#         botocore NoCredentialsError at run.sh's args-file fetch, the
+#         job's FIRST S3 call, before BUILD_ID.  Resubmitted alone
+#         (submit_MAAP_jobs.py --task, new ledger): successful, 49 s.
+#         Job time 42-150 s, median 46 s (z0 150 s; ~2080 job-seconds in
+#         all, failure and retry included); peak RSS 0.15-0.45 GiB (z0).
+#       NC: ATL14 65 s (step 27 s), peak 0.83 GiB; ATL15 125 s (step 87 s,
+#         steal 11.7 s), peak 0.66 GiB.  Both successful first time.
+#       GATE PASSES, vs the ADE's IS products of 2026-09-25
+#       (~/ATL14_processing/rel006/north/IS):
+#         mosaics, 41 files, 253 datasets: same datasets and shapes, 0 NaN
+#           flips; 225 identical, incl. every averaged mosaic (30 files),
+#           masks and sigmas; 28 datasets in the 11 WEIGHTED files (z0, dz,
+#           dzdt_lagN) differ at rounding only: z0 6.8e-13 m, dz 7.1e-15 m,
+#           dzdt 3.6e-15 m/yr, cell_area 2.3e-10 m^2, count 7.1e-15,
+#           misfit 3.6e-15 -- the D3b-5 figures, accepted by Ben.
+#         netCDFs, 5 files: same byte sizes as the ADE's; every variable
+#           identical (ATL14 28/28, ATL15 1 km 92/92, 10/20/40 km 89/89;
+#           counts include coordinate/metadata datasets); attributes differ
+#           ONLY in date_created, history (a timestamp),
+#           identifier_file_uuid, and METADATA/DatasetIdentification
+#           creationDate and uuid.
+#       FAILURE DATA so far (Ben 2026-10-01: resubmit, harden later):
+#         NoCredentialsError 2 of 44 mosaic-step jobs today (D5 run 1
+#         mid-task; this one at the first call), 0 of 2 nc jobs; earlier 1
+#         of 555 GL north prelim (plan_GL_north.sh N3).  All three passed
+#         on resubmit.
 #
 # D7. [DPS] TODO.  GL north: 41 mosaic jobs, ATL14 + ATL15 nc jobs (to
 #     out_prefix .../ATL14_processing/rel006_0332_testing/north/GL/, AD4).  ADE checks read through the mount (QD6):
