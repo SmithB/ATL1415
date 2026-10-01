@@ -380,7 +380,7 @@ cd $repo
 #       2,105 by more than 5 m, 1,468 by more than 20 m, 646 by more than
 #       100 m, lowest -846 m.  h_sigma at each block's lowest cell: median
 #       15.2 m, <= 5 m in 79 of the 403 blocks.
-# NM3. [ADE] TODO (QM-A).  Copy the ATL14 to the reference key; compose the
+# NM3. [ADE] DONE 2026-10-01 (QM-A; result below NM6).  Copy the ATL14 to the reference key; compose the
 #      monthly args:
 #   ref=<QM-A key>
 #   setup_ATL1415_region.py default_args/MAAP_dps.txt default_args/latest_release.txt \
@@ -389,10 +389,10 @@ cd $repo
 #   (paths _monthly: region_dir/s3_run/s3_out/tag/L carry north_monthly)
 #   aws s3 cp $region_dir/input_args_GL.txt $s3_run/
 #   GATE: the args name the s3:// ref; --hemi_suffix=_monthly; -g 1/12.
-# NM4. [DPS] TODO (QM-B).  Smoke E80_N-920, --step prelim, 32gb queue.
+# NM4. [DPS] DONE 2026-10-01 (QM-B; result below NM6).  Smoke E80_N-920, --step prelim, 32gb queue.
 #   GATE: successful; log names the s3:// reference; N_fit same order as
 #   quarterly E80_N-920; record wall time and peak memory.
-# NM5. [DPS] TODO (QM-C).  Fan-out ALL AT ONCE -- the other 556:
+# NM5. [DPS] DONE 2026-10-01 (QM-C; result below NM6).  Fan-out ALL AT ONCE -- the other 556:
 #   grep -vx E80_N-920.h5 $ledgers/GL_0332_north_tile_list.txt > ${L}_north_NM5_tile_list.txt
 #   nohup scripts/maap/submit_MAAP_jobs.py --tile_list ${L}_north_NM5_tile_list.txt \
 #       --step prelim --args_url $s3_run/input_args_GL.txt \
@@ -404,8 +404,65 @@ cd $repo
 #   running over time, from job metrics -- this answers the open question of
 #   whether the 32gb queue's own cap is above 100; failures by class and
 #   whether they cluster when instances come up.
-# NM6. [ADE] TODO.  Collect/fetch/check as N4; retry failures (Ben's go).
+# NM6. [ADE] DONE 2026-10-01 (result below).  Collect/fetch/check as N4; retry failures (Ben's go).
 #   Monthly matched, mosaic and netCDF are NOT in scope.
+#
+# NM3-NM6 RESULT, 2026-10-01 (Ben: NM2 "passes my bar.  Go ahead with
+#   monthly.  The monthly run should submit all tiles at once with retry
+#   enabled.").  All on build 0b29127, maap-dps-worker-32gb (r5.xlarge).
+#   NM3 DONE.  ref = aws s3 cp (S3 to S3) of the DPS-made north ATL14 to
+#     $s3_root/ATL1415/run_args/rel006/north_monthly/GL/ref/
+#       ATL14_GL_0332_100m_006_02_north_partial.nc  (582,455,883 bytes ==
+#     source); nm_tools.py readback at E80_N-920: h and h_sigma identical
+#     to the source, 410,881 finite.  Monthly args (composed 2026-09-30)
+#     uploaded to $s3_run (north_monthly); bucket copy identical; sorted
+#     diff vs the quarterly args = ref, dzdt_lags, -b, -g only.
+#     NOTE: the gate text above says --hemi_suffix=_monthly; the args carry
+#     none, as IS's did not (plan_monthly_on_maap M4).
+#   NM4 DONE.  Smoke E80_N-920, job cc89aae7: successful, 404 s (fit 319 s,
+#     error 70 s), peak 5.42 GiB; nm_tools.py smoke_gate PASS (log names the
+#     s3:// ref; N_fit 1,199,471 == quarterly).  Quarterly was 889 s,
+#     12.07 GiB.
+#   "RETRY ENABLED".  STATEMENT: the submission API has no retry option --
+#     maap-py 5.1.0a2 submit_job sends inputs/queue/dedup/tag only; the live
+#     https://api.maap-project.org/api/swagger.json names none; maap-api-nasa
+#     main (api/endpoints/ogc.py) reads only those four fields.  DECIDED
+#     (Ben 2026-10-01): client-side resubmit.  DRIVER:
+#     maap_ledgers/GL_0332_monthly_NM5_driver.py (+ .log): round 0 all
+#     tiles, --rate 0, no cap; each later round resubmits the tiles without
+#     a successful job, new ledger, at most 2 rounds; restartable.
+#   NM5 DONE.  556 POSTs in 69 s, none refused (21:53-21:54Z).  555 were
+#     running at once by 22:01Z, so the 32gb queue's cap is above 100.
+#       round 0  556 jobs: 390 successful, 166 failed (30%); all terminal
+#                by 22:33Z
+#       round 1  166 jobs (23:00Z): 157 successful, 9 failed
+#       round 2    9 jobs (23:22Z):   9 successful
+#     ALL_DONE 23:39Z: every tile has a successful job, 1 h 45 min after
+#     the first POST (27 min of that is collect_jobs on 556 jobs).
+#     Successful jobs: 237-1383 s, median 369 s (round 0), peak RSS median
+#     4.8, max 5.74 GiB; 57 job-hours in the 557 successful jobs.  Queue
+#     wait (submitted -> job start, 635 jobs with metrics): median 353 s,
+#     p95 410 s, max 2017 s.  Metrics: ${L}_north_prelim_metrics.json
+#     (L here = maap_ledgers/GL_0332_monthly).
+#     FAILURES BY CLASS (get_job_result + triaged _stderr.txt; file
+#     GL_0332_monthly_north_prelim_failure_classes.txt):
+#       round 0:  95 no logs (empty result record)
+#                 61 NSIDC broker call failed -> earthaccess fallback ->
+#                    AttributeError 'NoneType' ... 'get_s3_filesystem'
+#                    (fit step median 136 s at ~0 CPU before failing)
+#                  9 MAAP runner ConnectTimeout to api.maap-project.org
+#                    /api/environment/config, before our container
+#                  1 result record unreadable (HTTP 500 from the API)
+#       round 1:   6 NSIDC broker call failed; 3 runner ConnectTimeout
+#       NoCredentialsError (workspace bucket): 0 in 731 jobs.
+#     INFERRED (timing only): the NSIDC failures are connect timeouts to
+#       the MAAP API when hundreds of jobs start together; the reason is
+#       not logged (pointCollection/ps_scale_for_lat.py line 3 silences
+#       the warning that carries it).  Same class as N3's 10.
+#   NM6 DONE.  557 tiles and 557 field-size reports at
+#     $s3_root/ATL14_processing/rel006/north_monthly/GL/prelim (87.1 GB);
+#     check_field_sizes.py through the mount: expected dz [25, 25, 94],
+#     557 of 557 passed, 0 problems.  Nothing fetched to /home.
 
 
 # ===========================================================================
