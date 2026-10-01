@@ -149,15 +149,27 @@
 # ===========================================================================
 # W0. [Ben] DONE 2026-10-01.  QW1-QW4 answered: all as recommended.
 #
-# W1. [code] TODO.  scripts/workspace_credentials.py + tests
+# W1. [code] DONE 2026-10-01.  scripts/workspace_credentials.py + tests
 #     (tests/test_workspace_credentials.py, MAAP mocked): the export lines;
 #     no key on stderr; a missing field -> exit 1 naming it; --check inside
 #     and outside the authorized paths; retry then stop (QW2).
 #
-# W2. [code] TODO.  run.sh wiring (fetch, QW3 lines, exit line, --build-id
-#     field) and check_build_id.py's verdict.  Suite passes.
+#     RESULT: 20 tests.  As built: no --left mode (run.sh works the exit
+#     line out with `date`); the retry is 5 tries, 10 s apart, 30 s each
+#     (SIGALRM, since maap-py's requests.get has no timeout).
 #
-# W3. [ADE] TODO.  Prove the keys alone are enough, off the worker: in a
+# W2. [code] DONE 2026-10-01.  run.sh wiring (fetch, QW3 lines, exit line, --build-id
+#     field) and check_build_id.py's verdict.  Suite passes.
+#     RESULT: suite 251 passed, 2 skipped.  As built: use_workspace_credentials
+#     runs before the args fetch (and before bench); the BUILD_ID line gains
+#     workspace_credentials=ok|FAILED|unchecked; the report gains a
+#     `workspace_credentials=ok lifetime_h=N.N` line; check_build_id.py adds
+#     VERDICT: NO WORKSPACE CREDENTIALS (exit 1) unless the field is ok --
+#     so an image built before this change now fails the check too.  The
+#     AWS_METADATA_SERVICE_* lines are gone (QW3).  NO AWS_DEFAULT_REGION
+#     line: W3 shows s3fs and GDAL work without a region.
+#
+# W3. [ADE] DONE 2026-10-01 (result below).  Prove the keys alone are enough, off the worker: in a
 #     shell with the ADE role variables (AWS_ROLE_ARN,
 #     AWS_WEB_IDENTITY_TOKEN_FILE) UNSET and AWS_EC2_METADATA_DISABLED=true,
 #       a. control, no keys: an s3fs list of the IS prefix FAILS
@@ -168,6 +180,27 @@
 #       c. a put outside ben_smith is refused (AccessDenied)
 #     Then run.sh --step mosaic for one IS group from that shell, to a
 #     scratch out_prefix; compare with the D6 file; delete the scratch.
+#     RESULT (shell with AWS_ROLE_ARN and AWS_WEB_IDENTITY_TOKEN_FILE unset,
+#     AWS_EC2_METADATA_DISABLED=true, no AWS config files):
+#       a. no keys: s3fs list -> NoCredentialsError.  The shell has no other
+#          route.
+#       b. with the exports: list (7 entries), put, get, delete under
+#          .../ben_smith/scratch/; pointCollection glob_remote finds the 28
+#          IS matched tiles; GDAL /vsis3/ opens and reads GL_Ed2z0dx2.tif
+#          (35 x 63).  The same with AWS_REGION and AWS_DEFAULT_REGION unset.
+#       c. put to .../shared/ and .../dataset/ -> PermissionError; --check
+#          on a path outside the workspace -> exit 1, naming the path.
+#       run.sh --build-id: workspace_credentials=ok lifetime_h=12.0.
+#       run.sh --step mosaic, IS avg_dz_40000m, to a scratch out_prefix:
+#          exit 0, 16 s; dz_40km.h5 identical in every dataset to D6's; log
+#          has the summary line and "12.0 h left at exit"; no key in the log
+#          (grep).  Scratch prefix deleted.
+#       broker unreachable (MAAP_API_HOST pointed at a closed port): 5
+#          attempts in 43 s, then exit 1 with
+#          "ERROR: no workspace credentials (above); nothing was read or
+#          written"; nothing uploaded.
+#     NOT TESTED HERE: a worker (W4, W5); a broker call that hangs for the
+#     whole 30 s on a real network (the unit test covers the cut-off).
 #
 # W4. [Ben] TODO.  Push; register when nothing is in flight;
 #     check_build_id.py -> MATCH and workspace_credentials=ok.  RECORD the

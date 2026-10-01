@@ -51,14 +51,51 @@ repo_dir=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 env_name=$(sed -n 's/^name:[[:space:]]*//p' "${repo_dir}/environment.yml" | head -1)
 : "${env_name:?could not read 'name:' from environment.yml}"
 
-# A worker's container is given no AWS credentials: every process that reads
-# the bucket gets them from the instance metadata service, and botocore's
-# default for that lookup is ONE attempt with a 1 s timeout.  About 0.8% of
-# lookups failed on 2026-10-01 (botocore NoCredentialsError), which failed 11
-# of 32 mosaic200 jobs at ~85 processes each (docs/plan_dps_mosaic.sh D7).
-# botocore and aiobotocore (s3fs) both read these; set for every step.
-export AWS_METADATA_SERVICE_NUM_ATTEMPTS="${AWS_METADATA_SERVICE_NUM_ATTEMPTS:-5}"
-export AWS_METADATA_SERVICE_TIMEOUT="${AWS_METADATA_SERVICE_TIMEOUT:-5}"
+# ===========================================================================
+# WORKSPACE-BUCKET CREDENTIALS (docs/plan_workspace_credentials.sh, design A)
+# ===========================================================================
+# Every read and write of s3://maap-ops-workspace/<user>/ in a job used the
+# worker's IAM role, through botocore's default chain.  MAAP is removing that
+# role (admin, 2026-10-01), and the lookup itself failed ~0.8% of the time
+# (botocore NoCredentialsError; docs/plan_dps_mosaic.sh D7).  So run.sh asks
+# MAAP's broker ONCE, before its first bucket read, and exports the keys as the
+# standard AWS variables: botocore, s3fs and GDAL all read those first, so
+# nothing else changes and no process asks the instance for anything.
+#   - A broker call that fails is retried, then the JOB STOPS (exit 1) -- no
+#     fallback to the worker role, which would hide the failure until the day
+#     the role goes.  AWS_EC2_METADATA_DISABLED makes that true of every code
+#     path, not only the ones we know about.
+#   - The keys are assumed to outlive the job (Ben 2026-10-01; 12 h on the
+#     ADE); the exit line says how much time was left, so a run shows it.
+#   - MAAP_PGT unset means this is not MAAP (discover, a laptop): there is no
+#     broker, and the AWS environment is left as it was.
+#   - The keys never reach the log: the script's stdout goes into the eval,
+#     and this file has no `set -x`.
+workspace_credentials_state=unchecked
+workspace_credentials_left () {
+    local exp=${ATL1415_WORKSPACE_CREDENTIALS_EXPIRE:-} end
+    [ -n "$exp" ] || return 0
+    end=$(date -d "$exp" +%s 2>/dev/null) || return 0
+    awk -v s=$(( end - $(date +%s) )) \
+        'BEGIN { printf "workspace credentials: %.1f h left at exit\n", s / 3600 }'
+}
+use_workspace_credentials () {   # [<s3 uri the step writes under>]
+    if [ -z "${MAAP_PGT:-}" ]; then
+        echo "run.sh: MAAP_PGT is not set (not on MAAP): no workspace credentials brokered; AWS environment unchanged"
+        return 0
+    fi
+    local exports check=()
+    case "${1:-}" in s3://*) check=(--check "$1") ;; esac
+    exports=$(conda run --no-capture-output -n "$env_name" \
+        python "${repo_dir}/scripts/workspace_credentials.py" ${check[@]+"${check[@]}"}) || {
+        echo "ERROR: no workspace credentials (above); nothing was read or written" >&2
+        exit 1
+    }
+    eval "$exports"
+    export AWS_EC2_METADATA_DISABLED=true
+    workspace_credentials_state=ok
+    trap workspace_credentials_left EXIT
+}
 
 # ===========================================================================
 # BUILD ID -- answer "what is actually in this image?" in one job.
@@ -129,7 +166,7 @@ build_id_summary () {
     built=$(stamp_field build_completed)
     version=$(stamp_field algorithm_version)
     if [ -n "${MAAP_PGT:-}" ]; then pgt=set; else pgt=unset; fi
-    echo "BUILD_ID: commit=${commit:-unknown} built=${built:-INCOMPLETE_OR_ABSENT} algorithm_version=${version:-$(config_version)} maap_py=${1:-unknown} maap_pgt=${pgt}"
+    echo "BUILD_ID: commit=${commit:-unknown} built=${built:-INCOMPLETE_OR_ABSENT} algorithm_version=${version:-$(config_version)} maap_py=${1:-unknown} maap_pgt=${pgt} workspace_credentials=${workspace_credentials_state}"
 }
 
 print_build_id () {
@@ -200,6 +237,22 @@ print_build_id () {
         echo "  WARNING: MAAP_PGT IS NOT SET -- NSIDC credentials will not be brokered"
         echo "           here, and every ATL11 read from NSIDC will fail."
     fi
+    # The workspace bucket: the same call a job makes, reported not obeyed --
+    # this job must print its report whatever the broker says.
+    local ws
+    if [ "$maap_pgt" = set ]; then
+        ws=$(conda run --no-capture-output -n "$env_name" \
+            python "${repo_dir}/scripts/workspace_credentials.py" --report 2>/dev/null | tail -1) || ws=
+    else
+        ws="workspace_credentials=FAILED (MAAP_PGT unset: no broker)"
+    fi
+    ws=${ws:-workspace_credentials=FAILED (workspace_credentials.py did not run)}
+    echo "  ${ws}"
+    case "$ws" in
+        "workspace_credentials=ok"*) workspace_credentials_state=ok ;;
+        *) workspace_credentials_state=FAILED
+           echo "  WARNING: NO WORKSPACE CREDENTIALS -- no step could read or write the bucket." ;;
+    esac
 
     echo "--- this worker ---"
     worker_facts
@@ -344,7 +397,7 @@ case "$step" in
     # the 200 km mosaic path and the netCDFs: dispatched below, once the args
     # file is here (MOSAIC STEPS)
     mosaic200|mosaic|nc) ;;
-    bench) bench_and_exit ;;
+    bench) use_workspace_credentials; bench_and_exit ;;
     # The pre-scan above catches build_id as a bare token; this catches every
     # other spelling that parses to it, e.g. --step=build_id, which the first
     # version rejected with "must be ... 'build_id', got 'build_id'".
@@ -353,6 +406,13 @@ case "$step" in
 esac
 
 mkdir -p output
+
+# Before the first bucket read.  The check is on the prefix this step WRITES
+# under: the tile prefix for a solve, the out prefix for the mosaic steps.
+case "$step" in
+    prelim|matched) use_workspace_credentials "$tile_prefix" ;;
+    *) use_workspace_credentials "${out_prefix:-$tile_prefix}" ;;
+esac
 
 # ---------------------------------------------------------------------------
 # THE ARGS FILE.  The ~90 argparse options never become DPS parameters: the
@@ -366,8 +426,8 @@ if [ -n "$args_src" ]; then
             # stages -- whether the runner can stage an s3:// File is untested
             # (howto_MAAP_ogc QA).  s3fs rather than the aws CLI: build-env.sh
             # proves s3fs importable, and nothing guarantees an aws binary on
-            # maap_base.  It uses the worker's own credential chain, as every
-            # other bucket read in the solve does.
+            # maap_base.  It uses the brokered workspace keys exported above,
+            # as every other bucket read in the job does.
             mkdir -p input
             args_file="${PWD}/input/$(basename "$args_src")"
             echo "run.sh: fetching ${args_src} -> ${args_file}"

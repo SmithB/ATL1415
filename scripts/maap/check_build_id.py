@@ -31,13 +31,17 @@ MAAP_PGT is set, and otherwise falls back silently to earthaccess, which has
 no credentials on a worker -- so unset means no tile here can read ATL11.
 
 VERDICTS (exit status):
-  0  MATCH     image == cwl, and maap_pgt=set.  Proceed.
+  0  MATCH     image == cwl, maap_pgt=set and workspace_credentials=ok.
+               Proceed.
   1  MISMATCH  image != cwl: the image is not what the service built (the
                2026-09-09 failure).  Re-register; if it recurs, take it to
                MAAP support (howto_MAAP_ogc O11).
   1  NO STAMP  the image predates the build stamp, so it is stale by
                definition: every build since 2026-09-10 writes one.
   1  NO NSIDC  maap_pgt=unset, whatever the commits say.
+  1  NO WORKSPACE CREDENTIALS  the worker could not get workspace-bucket
+               keys from MAAP's broker (docs/plan_workspace_credentials.sh),
+               whatever the commits say.
   1  the report was printed but the JOB then failed: the image verdict is
      shown, and the runner's errors after it -- not green, because every
      tile would fail the same way.
@@ -144,6 +148,16 @@ def verdict(fields, want, origin, image_label='image'):
         lines.append('VERDICT: NO NSIDC -- MAAP_PGT is not set on this worker, so'
                      ' pointCollection cannot get NSIDC credentials and no tile'
                      ' here can read ATL11.  Raise it with MAAP support.')
+        status = 1
+    # the workspace bucket (docs/plan_workspace_credentials.sh): the job made
+    # the broker call every step makes before its first bucket read
+    workspace = fields.get('workspace_credentials', 'not reported')
+    lines.append(f'  workspace_credentials={workspace}')
+    if workspace != 'ok':
+        lines.append('VERDICT: NO WORKSPACE CREDENTIALS -- this worker could not get'
+                     ' keys from maap.aws.workspace_bucket_credentials() (or the image'
+                     ' predates the check), so no step could read or write the bucket.'
+                     '  The reason is on the workspace_credentials= line of the report.')
         status = 1
     return status, lines
 
