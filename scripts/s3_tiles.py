@@ -20,11 +20,18 @@ hemisphere-with-period suffix and the region, e.g.
 So this file never builds that path itself -- it appends one directory to what
 it is given.  Nothing here knows what a region or a release is.
 
-TWO SUBCOMMANDS:
+FOUR SUBCOMMANDS:
   put    <src> <tile_prefix> <step>      one solved tile (and its field-size
                                          report, if it is there) up
   get    <tile_prefix> <step> <x0> <y0> <spacing> <dest>
                                          the 3x3 neighbourhood down
+  put_tree <src_dir> <prefix>            every file under a local directory up,
+                                         keeping relative paths (a mosaic
+                                         step's products: 200 km tiles,
+                                         mosaics, netCDFs)
+  get_glob <prefix> <pattern> <dest>     the files matching <prefix>/<pattern>
+                                         down (the mosaics an nc job reads);
+                                         --require fails if there are none
 
 A MISSING NEIGHBOUR IS NOT AN ERROR (QI5b).  On a small coastal region most
 tiles have fewer than 8 neighbours, and a tile with too little data writes
@@ -101,6 +108,34 @@ def get(fs, tile_prefix, step, x0, y0, spacing, dest):
     return 0
 
 
+def put_tree(fs, src_dir, prefix):
+    """upload every file under src_dir to prefix, keeping relative paths"""
+    files = sorted(os.path.join(root, name) for root, _, names in os.walk(src_dir) for name in names)
+    if not files:
+        print(f's3_tiles: nothing to upload under {src_dir}', file=sys.stderr)
+        return 1
+    for src in files:
+        dest = f'{prefix.rstrip("/")}/{os.path.relpath(src, src_dir)}'
+        print(f's3_tiles: {src} -> {dest}')
+        fs.put(src, dest)
+    return 0
+
+
+def get_glob(fs, prefix, pattern, dest, require=False):
+    """download the files matching prefix/pattern into dest"""
+    os.makedirs(dest, exist_ok=True)
+    found = sorted(fs.glob(f'{prefix.rstrip("/")}/{pattern}'))
+    for src in found:
+        target = os.path.join(dest, os.path.basename(src))
+        print(f's3_tiles: {src} -> {target}')
+        fs.get(src, target)
+    if not found:
+        print(f's3_tiles: no {prefix.rstrip("/")}/{pattern}',
+              file=sys.stderr if require else sys.stdout)
+        return 1 if require else 0
+    return 0
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[1])
     sub = parser.add_subparsers(dest='cmd', required=True)
@@ -118,10 +153,24 @@ def main():
     p_get.add_argument('spacing', type=float)
     p_get.add_argument('dest')
 
+    p_put_tree = sub.add_parser('put_tree')
+    p_put_tree.add_argument('src_dir')
+    p_put_tree.add_argument('prefix')
+
+    p_get_glob = sub.add_parser('get_glob')
+    p_get_glob.add_argument('prefix')
+    p_get_glob.add_argument('pattern')
+    p_get_glob.add_argument('dest')
+    p_get_glob.add_argument('--require', action='store_true')
+
     args = parser.parse_args()
     fs = s3fs.S3FileSystem()
     if args.cmd == 'put':
         return put(fs, args.src, args.tile_prefix, args.step)
+    if args.cmd == 'put_tree':
+        return put_tree(fs, args.src_dir, args.prefix)
+    if args.cmd == 'get_glob':
+        return get_glob(fs, args.prefix, args.pattern, args.dest, require=args.require)
     return get(fs, args.tile_prefix, args.step, args.x0, args.y0,
                args.spacing, args.dest)
 
