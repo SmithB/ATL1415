@@ -209,7 +209,18 @@ def test_nc_tasks():
     assert sub.mosaic_tasks('nc', GL_ARGS, 's3://b/GL', 's3://b/test/GL') == ['ATL14', 'ATL15']
 
 
+def test_select_tasks_keeps_the_named_ones_in_step_order():
+    tasks = ['z0', 'dz', 'dzdt_lag1', 'avg_dz_40000m']
+    assert sub.select_tasks(tasks, ['avg_dz_40000m', 'z0']) == ['z0', 'avg_dz_40000m']
+
+
+def test_select_tasks_refuses_a_name_the_step_does_not_have():
+    with pytest.raises(ValueError, match='--task dz_lag1: not a task of this step'):
+        sub.select_tasks(['z0', 'dz'], ['z0', 'dz_lag1'])
+
+
 @pytest.mark.parametrize('argv, message', [
+    (['--step', 'prelim', '--tile_list', 'x.txt', '--task', 'z0'], '--task is for the mosaic steps'),
     (['--step', 'mosaic', '--tile_list', 'x.txt', '--tile_prefix', 's3://b/GL'], 'lists its own jobs'),
     (['--step', 'nc'], 'needs --tile_prefix'),
     (['--step', 'prelim'], 'needs --tile_list or --xy_file'),

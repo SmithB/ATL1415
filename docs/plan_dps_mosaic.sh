@@ -518,6 +518,12 @@
 #       mosaic command before it runs -- needs a rebuild + register.
 #       RECOMMENDATION: (a) now; (b) before D6/D7 whatever (a) shows, since
 #       41 mosaic jobs x several processes each multiplies the exposure.
+#       QD9 (b) answer (Ben 2026-10-01): NOT NOW.  MAAP admin expects 1-2%
+#       of jobs to fail for assorted reasons; the submission API has an
+#       auto-resubmit option, for when the on-MAAP algorithms are more
+#       mature.  For the time being failed jobs are simply resubmitted;
+#       where to harden is decided once there is more data.  So: no run.sh
+#       change, no rebuild; every failure's cause is recorded here.
 #
 # D6. [DPS] TODO.  IS end to end: 41 mosaic jobs, then ATL14 and ATL15 nc
 #     jobs, to a TEST prefix (never over IS's canonical products) --

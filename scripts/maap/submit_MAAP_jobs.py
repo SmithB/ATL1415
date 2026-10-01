@@ -78,6 +78,8 @@ mosaic | nc submit the 200 km mosaic path and the netCDFs, one job per
 read the tiles at --tile_prefix (required) and put every derived product at
 --out_prefix (default: the tile prefix).  Run them in that order, each after
 the last has finished.  The ledger gains `task` and `out_prefix` columns.
+--task <name> (repeatable) submits only the tasks named -- to resubmit the
+ones that failed, with a NEW --ledger.
 Only Greenland and Antarctica take the 200 km step (Ben 2026-10-01, plan
 AD8): for any other region --step mosaic200 is refused, and --step mosaic
 makes each mosaic directly from the solve tiles.
@@ -264,6 +266,19 @@ def mosaic_tasks(step, args_text, tile_prefix, out_prefix, lister=s3_names, exis
     return ['ATL14', 'ATL15']
 
 
+def select_tasks(tasks, wanted):
+    """
+    The tasks named by --task, in the step's own order: for resubmitting the
+    jobs that failed (Ben 2026-10-01, plan_dps_mosaic.sh QD9).  A name the
+    step does not have is an error, not a job that is quietly not submitted.
+    """
+    unknown = [task for task in wanted if task not in tasks]
+    if unknown:
+        raise ValueError(f'--task {", ".join(unknown)}: not a task of this step.'
+                         f'  Its tasks: {", ".join(tasks)}')
+    return [task for task in tasks if task in wanted]
+
+
 def config_declares(config, name):
     """Does algorithm_config.yml declare an input called `name`?
 
@@ -322,6 +337,8 @@ def main():
     parser.add_argument('--step', required=True, choices=TILE_STEPS + MOSAIC_STEPS)
     parser.add_argument('--out_prefix',
                         help='mosaic steps: where the derived products go (default: --tile_prefix)')
+    parser.add_argument('--task', action='append',
+                        help='mosaic steps: submit only this task (repeatable), e.g. the ones that failed')
     parser.add_argument('--args_url', required=True)
     parser.add_argument('--ledger')
     parser.add_argument('--queue', default=DEFAULT_QUEUE)
@@ -350,6 +367,8 @@ def main():
         parser.error(f'--step {args.step} needs --tile_prefix: where the region\'s tiles are')
     if args.out_prefix and not mosaic:
         parser.error('--out_prefix is for the mosaic steps')
+    if args.task and not mosaic:
+        parser.error('--task is for the mosaic steps')
 
     region = region_of(args.args_url)
     tag = args.tag or (f'{region}_{args.step}' if region else None)
@@ -379,6 +398,8 @@ def main():
         source = f'{args.step} tasks for {out_prefix}'
         try:
             tasks = mosaic_tasks(args.step, read_args_text(args.args_url), args.tile_prefix, out_prefix)
+            if args.task:
+                tasks = select_tasks(tasks, args.task)
         except ValueError as e:
             print(f'{e}\nNothing submitted.', file=sys.stderr)
             sys.exit(2)
