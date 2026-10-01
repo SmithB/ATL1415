@@ -71,6 +71,14 @@ the cleanup after the run -- or a failed prelim, which collect_jobs.py and
 fetch_tiles.py already report.  If NO center has a tile, nothing is submitted
 and the exit is 2.
 
+MOSAIC STEPS (2026-10-01, docs/plan_dps_mosaic.sh D3): --step mosaic200 |
+mosaic | nc submit the 200 km mosaic path and the netCDFs, one job per
+`task`, which this works out itself (no --tile_list): every 200 km tile over
+<tile_prefix>/prelim/, then every mosaic group, then ATL14 and ATL15.  They
+read the tiles at --tile_prefix (required) and put every derived product at
+--out_prefix (default: the tile prefix).  Run them in that order, each after
+the last has finished.  The ledger gains `task` and `out_prefix` columns.
+
 Written for the IS run (docs/plan_IS_run.sh I2) and intended for GL next.
 """
 import argparse
@@ -89,8 +97,17 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ogc_jobs import (DEFAULT_QUEUE, DONE, POLL_S, find_process,  # noqa: E402
                       job_id_from, load_config)
 
+# The repo root, for ATL1415.mosaic_groups and ATL1415.lags: numpy-only, so
+# this runs in an interpreter without pointCollection (the ADE notebook env).
+sys.path.insert(1, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
+
+# task and out_prefix appended last (2026-10-01), as tile_prefix was: readers
+# go by column name, and older ledgers simply lack them.
 LEDGER_COLUMNS = ['identifier', 'x0', 'y0', 'step', 'queue', 'args_file',
-                  'job_id', 'submitted_utc', 'tile_prefix']
+                  'job_id', 'submitted_utc', 'tile_prefix', 'task', 'out_prefix']
+
+TILE_STEPS = ('prelim', 'matched')
+MOSAIC_STEPS = ('mosaic200', 'mosaic', 'nc')
 
 
 def region_of(args_url):
@@ -181,6 +198,57 @@ def split_by_prelim(centers, tile_prefix, lister=s3_names):
     return have, missing
 
 
+def read_args_text(args_url):
+    """the composed args file's text, from s3:// or a local path"""
+    if args_url.startswith('s3://'):
+        import s3fs
+        return s3fs.S3FileSystem().cat(args_url).decode()
+    with open(args_url) as fh:
+        return fh.read()
+
+
+def arg_value(text, key):
+    """the value of <key>=... in an args file's text, or None"""
+    for line in text.splitlines():
+        if line.strip().startswith(key + '='):
+            return line.strip()[len(key) + 1:]
+    return None
+
+
+def s3_exists(uri):
+    import s3fs
+    return s3fs.S3FileSystem().exists(uri)
+
+
+def mosaic_tasks(step, args_text, tile_prefix, out_prefix, lister=s3_names, exists=s3_exists):
+    """
+    The `task` of every job a mosaic step needs (docs/plan_dps_mosaic.sh D3-2):
+      mosaic200  '<x>_<y>' for each 200 km tile over <tile_prefix>/prelim/
+      mosaic     each group of the region's mosaic (z0 only where its 200 km
+                 tiles are at <out_prefix> -- submit after mosaic200)
+      nc         ATL14, ATL15
+    From the definitions the workers use (ATL1415.mosaic_groups).
+    """
+    from ATL1415.mosaic_groups import centers_200km, make_fields
+    from ATL1415.lags import infer_dzdt_lags
+    if step == 'mosaic200':
+        names = lister(f'{tile_prefix.rstrip("/")}/prelim')
+        return [f'{int(x)}_{int(y)}' for x, y in centers_200km(names)]
+    if step == 'mosaic':
+        grid, tspan = arg_value(args_text, '-g'), arg_value(args_text, '-t')
+        if not grid or not tspan:
+            raise ValueError('the args file needs -g= and -t= to list the mosaic groups')
+        dt = grid.split(',')[2]
+        t_res = float(dt.split('/')[0]) / float(dt.split('/')[1]) if '/' in dt else float(dt)
+        lags = infer_dzdt_lags(t_res, [float(t) for t in tspan.split(',')])
+        groups = list(make_fields(lags, t_res=t_res, skip_z0=float(grid.split(',')[0]) > 1000)[0])
+        if 'z0' in groups and not exists(f'{out_prefix.rstrip("/")}/200km_tiles/z0'):
+            print(f'NOTE: no 200 km z0 tiles at {out_prefix}: z0 not submitted')
+            groups.remove('z0')
+        return groups
+    return ['ATL14', 'ATL15']
+
+
 def config_declares(config, name):
     """Does algorithm_config.yml declare an input called `name`?
 
@@ -233,10 +301,12 @@ def wait_for_slot(maap, live, limit):
 def main():
     parser = argparse.ArgumentParser(
         description='Submit one DPS job per tile center for one region.')
-    source = parser.add_mutually_exclusive_group(required=True)
+    source = parser.add_mutually_exclusive_group()
     source.add_argument('--tile_list')
     source.add_argument('--xy_file')
-    parser.add_argument('--step', required=True, choices=['prelim', 'matched'])
+    parser.add_argument('--step', required=True, choices=TILE_STEPS + MOSAIC_STEPS)
+    parser.add_argument('--out_prefix',
+                        help='mosaic steps: where the derived products go (default: --tile_prefix)')
     parser.add_argument('--args_url', required=True)
     parser.add_argument('--ledger')
     parser.add_argument('--queue', default=DEFAULT_QUEUE)
@@ -252,6 +322,19 @@ def main():
     # run.sh -- so `--tile_prefix -` cannot slip past the matched check below.
     if args.tile_prefix in ('', '-'):
         args.tile_prefix = None
+    if args.out_prefix in ('', '-'):
+        args.out_prefix = None
+    mosaic = args.step in MOSAIC_STEPS
+    # the tile steps take their centers from a list; the mosaic steps work
+    # theirs out (mosaic_tasks), and a list given to one would be ignored
+    if mosaic and (args.tile_list or args.xy_file):
+        parser.error(f'--step {args.step} lists its own jobs: no --tile_list / --xy_file')
+    if not mosaic and not (args.tile_list or args.xy_file):
+        parser.error(f'--step {args.step} needs --tile_list or --xy_file')
+    if mosaic and not args.tile_prefix:
+        parser.error(f'--step {args.step} needs --tile_prefix: where the region\'s tiles are')
+    if args.out_prefix and not mosaic:
+        parser.error('--out_prefix is for the mosaic steps')
 
     region = region_of(args.args_url)
     tag = args.tag or (f'{region}_{args.step}' if region else None)
@@ -276,11 +359,22 @@ def main():
               file=sys.stderr)
         sys.exit(2)
 
-    source = args.tile_list or args.xy_file
-    centers = read_tile_list(args.tile_list) if args.tile_list \
-        else read_centers(args.xy_file)
+    if mosaic:
+        out_prefix = args.out_prefix or args.tile_prefix
+        source = f'{args.step} tasks for {out_prefix}'
+        tasks = mosaic_tasks(args.step, read_args_text(args.args_url), args.tile_prefix, out_prefix)
+        if not tasks:
+            print(f'no {args.step} tasks -- nothing to submit.', file=sys.stderr)
+            sys.exit(2)
+        # x0/y0 are required CWL inputs that the mosaic steps ignore
+        centers = [(0, 0)] * len(tasks)
+    else:
+        source = args.tile_list or args.xy_file
+        centers = read_tile_list(args.tile_list) if args.tile_list \
+            else read_centers(args.xy_file)
+        tasks = ['-'] * len(centers)
     if args.limit:
-        centers = centers[:args.limit]
+        centers, tasks = centers[:args.limit], tasks[:args.limit]
 
     maap = MAAP(maap_host=os.environ.get('MAAP_API_HOST', 'api.maap-project.org'))
     config = load_config()
@@ -307,6 +401,21 @@ def main():
                   ' scripts/maap/check_build_id.py.', file=sys.stderr)
             sys.exit(2)
         inputs_common['tile_prefix'] = args.tile_prefix
+    if mosaic:
+        # the mosaic steps' inputs: refuse before submitting what the deployed
+        # process would not accept, as for tile_prefix above
+        for input_name in ('task', 'out_prefix'):
+            if not config_declares(config, input_name):
+                print(f'--step {args.step} needs the input {input_name}, which'
+                      ' algorithm_config.yml does not declare.', file=sys.stderr)
+                sys.exit(2)
+            if deployed_declares(process, input_name) is False:
+                print(f'{input_name} is in algorithm_config.yml but {name}:{version} as'
+                      ' DEPLOYED does not have it: the registration has not built and'
+                      ' deployed yet.\n  Check with scripts/maap/check_build_id.py.',
+                      file=sys.stderr)
+                sys.exit(2)
+        inputs_common['out_prefix'] = args.out_prefix or '-'
     if args.step == 'matched' and not args.tile_prefix:
         print('--step matched needs --tile_prefix: a matched job reads its 8'
               ' neighbours\'\n  prelim tiles and has no other way to find'
@@ -333,10 +442,13 @@ def main():
     print(f'args  {args.args_url}')
     print(f'ledger {ledger}\n')
 
+    def identifier(x0, y0, task):
+        return f'{tag}_{task}' if mosaic else f'{tag}_E{int(x0 / 1000)}_N{int(y0 / 1000)}'
+
     if args.dry_run:
-        for x0, y0 in centers:
-            print(f'would submit {tag}_E{int(x0/1000)}_N{int(y0/1000)}'
-                  f'  x0={x0} y0={y0}')
+        for (x0, y0), task in zip(centers, tasks):
+            print(f'would submit {identifier(x0, y0, task)}'
+                  + (f'  task={task}' if mosaic else f'  x0={x0} y0={y0}'))
         print(f'\n--dry-run: nothing submitted ({len(centers)} jobs).')
         return
 
@@ -344,11 +456,13 @@ def main():
     with open(ledger, 'w', newline='') as fh:
         writer = csv.writer(fh)
         writer.writerow(LEDGER_COLUMNS)
-        for n, (x0, y0) in enumerate(centers, 1):
+        for n, ((x0, y0), task) in enumerate(zip(centers, tasks), 1):
             if args.max_in_flight:
                 wait_for_slot(maap, live, args.max_in_flight)
-            ident = f'{tag}_E{int(x0 / 1000)}_N{int(y0 / 1000)}'
+            ident = identifier(x0, y0, task)
             inputs = dict(inputs_common, x0=str(x0), y0=str(y0))
+            if mosaic:
+                inputs['task'] = task
             try:
                 r = maap.submit_job(pid, inputs, args.queue,
                                     dedup=False, tag=ident)
@@ -365,7 +479,8 @@ def main():
                              args.args_url, job_id,
                              datetime.datetime.now(datetime.timezone.utc)
                              .isoformat(timespec='seconds'),
-                             args.tile_prefix or '-'])
+                             args.tile_prefix or '-', task,
+                             (args.out_prefix or '-') if mosaic else '-'])
             fh.flush()
             print(f'  {n:4}/{len(centers)}  {ident:34} {job_id}')
             if n < len(centers):

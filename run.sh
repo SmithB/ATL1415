@@ -9,10 +9,10 @@
 # both conventions are accepted (see ARGUMENTS below).
 #
 # Usage: run.sh --x0 <m> --y0 <m> --step <step> --args_file <uri|path>
-#               [--tile_prefix <s3://...>]                              (OGC)
+#               [--tile_prefix <s3://...>] [--task <t>] [--out_prefix <s3://...>]  (OGC)
 #        run.sh <x0> <y0> <step>        (legacy DPS, local runs; args file in input/)
 #   x0, y0       tile center, in meters (polar stereographic; may be negative)
-#   step         prelim | matched | build_id
+#   step         prelim | matched | mosaic200 | mosaic | nc | build_id | bench
 #   args_file    s3:// URI or local path of the composed input_args_<REGION>.txt
 #   tile_prefix  s3:// root of the canonical tile tree for THIS run, e.g.
 #                s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/north/IS
@@ -26,6 +26,10 @@
 #                neighbours.  See docs/plan_IS_run.sh I7, QI4 and QI5.
 #                "-" means the same as empty: it is the registered default,
 #                because the build form drops an empty one (2026-09-14).
+#   task         mosaic steps only: mosaic200 '<x>_<y>' (200 km center, m),
+#                mosaic '<group>', nc 'ATL14'|'ATL15'.  "-" = none.
+#   out_prefix   mosaic steps only: s3:// root for the derived products (200 km
+#                tiles, mosaics, netCDFs).  "-" = tile_prefix.  See MOSAIC STEPS.
 #
 # step=build_id prints the build stamp and exits 0 without solving anything, so
 # ONE cheap job says which commit the image was built from.  --build-id does the
@@ -37,9 +41,9 @@
 #
 # There is ONE registered algorithm rather than one per stage (see
 # docs/Transition_to_maap.md): a MAAP algorithm has a single run_command, and
-# the conda+SuiteSparse build is the expensive part.  Only the per-tile solve
-# belongs in DPS; setup, queue-build, mosaic, to-netcdf and browse stay in the
-# ADE, where the my-private-bucket mount exists.
+# the conda+SuiteSparse build is the expensive part.  The per-tile solve and,
+# since 2026-10-01, the 200 km mosaic path and the netCDFs run in DPS
+# (docs/plan_dps_mosaic.sh); setup and browse stay in the ADE.
 set -euo pipefail
 
 repo_dir=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
@@ -225,25 +229,25 @@ done
 # LEGACY, and every local run: positionals, with the args file found in input/
 #     run.sh 220000 20000 prelim
 # Any --x0/--y0/--step/--args_file anywhere in argv selects the first.
-x0= ; y0= ; step= ; args_src= ; tile_prefix=
+x0= ; y0= ; step= ; args_src= ; tile_prefix= ; task= ; out_prefix=
 prefixed=false
 for arg in "$@"; do
     case "$arg" in
-        --x0|--x0=*|--y0|--y0=*|--step|--step=*|--args_file|--args_file=*|--tile_prefix|--tile_prefix=*) prefixed=true ;;
+        --x0|--x0=*|--y0|--y0=*|--step|--step=*|--args_file|--args_file=*|--tile_prefix|--tile_prefix=*|--task|--task=*|--out_prefix|--out_prefix=*) prefixed=true ;;
     esac
 done
 
 if $prefixed; then
     while [ "$#" -gt 0 ]; do
         case "$1" in
-            --x0|--y0|--step|--args_file|--tile_prefix)
+            --x0|--y0|--step|--args_file|--tile_prefix|--task|--out_prefix)
                 if [ "$#" -lt 2 ]; then
                     echo "ERROR: $1 needs a value" >&2; exit 2
                 fi
                 # $2 is taken verbatim, so a negative coordinate is a value,
                 # not mistaken for another option.
                 name=${1#--}; value=$2; shift 2 ;;
-            --x0=*|--y0=*|--step=*|--args_file=*|--tile_prefix=*)
+            --x0=*|--y0=*|--step=*|--args_file=*|--tile_prefix=*|--task=*|--out_prefix=*)
                 name=${1%%=*}; name=${name#--}; value=${1#*=}; shift ;;
             *)
                 echo "run.sh: ignoring unexpected argument '$1'"; shift; continue ;;
@@ -254,6 +258,8 @@ if $prefixed; then
             step) step=$value ;;
             args_file) args_src=$value ;;
             tile_prefix) tile_prefix=$value ;;
+            task) task=$value ;;
+            out_prefix) out_prefix=$value ;;
         esac
     done
 else
@@ -274,6 +280,13 @@ fi
 # mistake the sentinel for a bucket prefix.
 if [ "$tile_prefix" = "-" ]; then
     tile_prefix=
+fi
+# The same for the mosaic steps' inputs (docs/plan_dps_mosaic.sh D3).
+if [ "$task" = "-" ]; then
+    task=
+fi
+if [ "$out_prefix" = "-" ]; then
+    out_prefix=
 fi
 
 if [ -z "$x0" ] || [ -z "$y0" ] || [ -z "$step" ]; then
@@ -318,12 +331,15 @@ bench_and_exit () {
 
 case "$step" in
     prelim|matched) ;;
+    # the 200 km mosaic path and the netCDFs: dispatched below, once the args
+    # file is here (MOSAIC STEPS)
+    mosaic200|mosaic|nc) ;;
     bench) bench_and_exit ;;
     # The pre-scan above catches build_id as a bare token; this catches every
     # other spelling that parses to it, e.g. --step=build_id, which the first
     # version rejected with "must be ... 'build_id', got 'build_id'".
     build_id|build-id) build_id_and_exit ;;
-    *) echo "ERROR: step must be 'prelim', 'matched', 'build_id' or 'bench', got '${step}'" >&2; exit 2 ;;
+    *) echo "ERROR: step must be 'prelim', 'matched', 'mosaic200', 'mosaic', 'nc', 'build_id' or 'bench', got '${step}'" >&2; exit 2 ;;
 esac
 
 mkdir -p output
@@ -408,6 +424,11 @@ echo "  step        : ${step}"
 echo "  xy0         : ${x0} ${y0}"
 echo "  args file   : ${args_file}"
 echo "  tile prefix : ${tile_prefix:-<none: tile stays in dps_output>}"
+case "$step" in
+    mosaic200|mosaic|nc)
+        echo "  task        : ${task:-<none>}"
+        echo "  out prefix  : ${out_prefix:-<tile prefix>}" ;;
+esac
 echo "  threads     : ${threads}"
 echo "  conda env   : ${env_name}"
 echo "  working dir : ${PWD}"
@@ -427,6 +448,139 @@ export ATL1415_BUILD_VERSION="$(stamp_field algorithm_version)"
 export ATL1415_BUILD_COMPLETED="$(stamp_field build_completed)"
 grep -v '^[[:space:]]*$' "$args_file" | sed 's/^/  arg: /'
 echo "=========================================================="
+
+# ===========================================================================
+# MOSAIC STEPS -- the 200 km path and the netCDFs on DPS
+# (docs/plan_dps_mosaic.sh D3).  Ben 2026-10-01: every step reads the solve
+# TILES from <tile_prefix>, in place, and reads and writes every DERIVED
+# product -- 200 km tiles, region mosaics, netCDFs -- at <out_prefix> ("-":
+# the tile prefix).  Nothing is fetched that can be read in place, except the
+# mosaics an nc job writes from (the writers open them by local path).
+#   mosaic200  task <x>_<y>: one 200 km tile, all groups (stage 1)
+#   mosaic     task <group>: one region mosaic from the 200 km tiles (stage 2)
+#   nc         task ATL14|ATL15: the netCDFs from the mosaics + prelim tiles
+# ===========================================================================
+in_env () {
+    conda run --no-capture-output -n "$env_name" "$@"
+}
+# the value of <key>=... in the args file ('' if absent)
+arg_value () {
+    sed -n "s/^$1=//p" "$args_file" | head -1 | tr -d '[:space:]'
+}
+mosaic_step_and_exit () {
+    if [ -z "$tile_prefix" ]; then
+        echo "ERROR: step ${step} needs --tile_prefix: where the region's tiles are." >&2
+        exit 2
+    fi
+    local out=${out_prefix:-$tile_prefix}
+    local region grid tspan W spacing
+    region=$(arg_value --region); grid=$(arg_value -g); tspan=$(arg_value -t)
+    W=$(arg_value -W); spacing=$(arg_value --tile_spacing); spacing=${spacing:-$W}
+    local key
+    for key in --region -g -t -W; do
+        if [ -z "$(arg_value "$key")" ]; then
+            echo "ERROR: step ${step} needs ${key}=... in ${args_file}" >&2; exit 2
+        fi
+    done
+    # the region directory the scripts write into: local, under the job's
+    # working directory; what is kept is uploaded from here
+    local work="${PWD}/work/${region}"
+    local products="${PWD}/products"
+    mkdir -p "$work" "$products"
+    # a region crop, if the region has one (most do not)
+    in_env python "${repo_dir}/scripts/s3_tiles.py" get_glob "$tile_prefix" bounds.txt "$work"
+    # make_mosaic's read workers (stage 2 only): ~0.35 GiB each on top of the
+    # mosaic (pointCollection from_list docstring); at most 4 on a 16 GB worker
+    local workers=${ATL1415_MOSAIC_WORKERS:-$(( threads < 4 ? threads : 4 ))}
+    local status=0
+    case "$step" in
+        mosaic200)
+            if ! [[ $task =~ ^(-?[0-9]+(\.[0-9]+)?)_(-?[0-9]+(\.[0-9]+)?)$ ]]; then
+                echo "ERROR: step mosaic200 needs --task <x>_<y>, a 200 km tile center in m; got '${task}'" >&2
+                exit 2
+            fi
+            local cx=${BASH_REMATCH[1]} cy=${BASH_REMATCH[3]}
+            in_env make_200km_tiles.py "$work" "$region" -t "$tspan" -g "$grid" \
+                --W "$W" --spacing "$spacing" --tiles_base "$tile_prefix" \
+                --center "$cx" "$cy" --name job
+            # The task holds one block per group, separated by '#' lines: the
+            # matched line, then the prelim sigma line into the same file.
+            # Groups are independent, so they run in parallel; each group's
+            # lines run in order, and the first that fails ends its group
+            # (bash -e).  Parallel groups rather than make_mosaic -j: each line
+            # is its own process, and -j would start a pool in every one of
+            # them to read ~36 tiles.
+            mkdir -p groups
+            awk '/^#$/ {n++; next} /^make_mosaic/ {print > sprintf("groups/g%03d.sh", n)}' \
+                tile_run_job/queue/task_1
+            echo "mosaic200: $(ls groups/g*.sh | wc -l) groups, ${threads} at a time"
+            "${repo_dir}/scripts/run_with_rusage.py" mosaic200 \
+                conda run --no-capture-output -n "$env_name" bash -c \
+                'ls groups/g*.sh | xargs -P "$1" -I{} sh -c "bash -e {} > {}.log 2>&1 || { echo FAILED: {}; exit 1; }"' \
+                _ "$threads" || status=$?
+            local log
+            for log in groups/g*.log; do
+                if [ -s "$log" ]; then echo "--- ${log}"; cat "$log"; fi
+            done
+            if [ "$status" -ne 0 ]; then
+                echo "ERROR: mosaic200: a group failed (above); nothing uploaded" >&2; exit 1
+            fi
+            in_env python "${repo_dir}/scripts/s3_tiles.py" put_tree "${work}/200km_tiles" "${out%/}/200km_tiles" || exit 1
+            ;;
+        mosaic)
+            if [ -z "$task" ]; then
+                echo "ERROR: step mosaic needs --task <group> (z0, dz, dzdt_lag4, avg_dz_40000m, ...)" >&2
+                exit 2
+            fi
+            in_env make_200km_to_mosaic_jobs.py -b "$work" -rr "$region" -t "$tspan" -g "$grid" \
+                --in_base "$out" --group "$task" -e '' -j "$workers"
+            "${repo_dir}/scripts/run_with_rusage.py" mosaic \
+                conda run --no-capture-output -n "$env_name" bash -e "mosaic_run_${region}/queue/task_1" \
+                || { echo "ERROR: mosaic ${task} failed; nothing uploaded" >&2; exit 1; }
+            # make_mosaic.py exits 0 having written nothing when its inputs
+            # lack the group, so say so rather than upload nothing
+            if ! compgen -G "${work}/*.h5" > /dev/null; then
+                echo "ERROR: mosaic ${task} wrote no file: are there 200 km tiles at ${out%/}/200km_tiles/${task}/?" >&2
+                exit 1
+            fi
+            mv "$work"/*.h5 "$products"/
+            in_env python "${repo_dir}/scripts/s3_tiles.py" put_tree "$products" "$out" || exit 1
+            ;;
+        nc)
+            case "$task" in
+                ATL14|ATL15) ;;
+                *) echo "ERROR: step nc needs --task ATL14 or ATL15; got '${task}'" >&2; exit 2 ;;
+            esac
+            # the writers open the mosaics by local path under -b
+            in_env python "${repo_dir}/scripts/s3_tiles.py" get_glob "$out" '*.h5' "$work" --require \
+                || { echo "ERROR: no mosaics at ${out}" >&2; exit 1; }
+            # -b AFTER the args file, whose last line is the ADE's -b
+            "${repo_dir}/scripts/run_with_rusage.py" "$task" \
+                conda run --no-capture-output -n "$env_name" "${task}_write2nc.py" "@${args_file}" \
+                -b "$work" --tiles_dir "${tile_prefix%/}/prelim" \
+                || { echo "ERROR: ${task}_write2nc.py failed; nothing uploaded" >&2; exit 1; }
+            if ! compgen -G "${work}/*.nc" > /dev/null; then
+                echo "ERROR: ${task}_write2nc.py wrote no .nc in ${work}" >&2; exit 1
+            fi
+            mv "$work"/*.nc "$products"/
+            in_env python "${repo_dir}/scripts/s3_tiles.py" put_tree "$products" "$out" || exit 1
+            ;;
+    esac
+    # the CWL collects ./output*, and a job with nothing there is failed
+    mkdir -p output
+    # (only the directories this step wrote: a find on a missing one fails,
+    # and under pipefail that would fail a job that had already uploaded)
+    local listed=()
+    [ -d "${work}/200km_tiles" ] && listed+=("${work}/200km_tiles")
+    [ -n "$(ls -A "$products")" ] && listed+=("$products")
+    { echo "step ${step} task ${task} -> ${out}"; find "${listed[@]}" -type f | sed 's/^/  /'; } \
+        > output/mosaic_step.txt
+    echo "=== ${step} ${task} complete ==="
+    exit 0
+}
+case "$step" in
+    mosaic200|mosaic|nc) mosaic_step_and_exit ;;
+esac
 
 # Every solve is wrapped so the job reports its own peak memory.  DPS will not
 # tell us: get_job_metrics() returns null memory fields, and on the legacy path it came back

@@ -20,18 +20,21 @@
 # ONE algorithm, not one per stage: an algorithm has exactly one run_command,
 # and the conda+SuiteSparse build is the expensive part, so six registrations
 # would mean six builds of an identical environment.  run.sh dispatches on the
-# `step` input instead.  Only the per-tile solve runs in DPS -- setup,
-# queue-build, mosaic, to-netcdf and browse stay in the ADE.
-# See docs/Transition_to_maap.md.
+# `step` input instead: the per-tile solve (prelim, matched) and, since
+# 2026-10-01, the 200 km mosaic path and the netCDFs (mosaic200, mosaic, nc --
+# docs/plan_dps_mosaic.sh: the ADE's 150 GB home cannot hold a region's tiles,
+# and "instances are too unpredictable").  Setup and browse stay in the ADE.
 
 # LOWERCASE, and it has to be: the build service rejects any name that does
 # not match ^[a-z0-9_-]+$, so the legacy ATL1415_tile_solve is invalid here.
 # Kept as the old name lowercased, so logs and ledgers stay greppable for it.
 algorithm_name: atl1415_tile_solve
 algorithm_description: >
-  Per-tile ATL14/15 surface-height fit (ATL11_to_ATL15).  Takes a tile center
-  and a processing step (prelim or matched) plus a composed argsfile, and
-  writes the fitted tile to output/.
+  ATL14/15 processing.  Per-tile surface-height fit (ATL11_to_ATL15; step
+  prelim or matched, at a tile center), and the products from the tiles: one
+  200 km mosaic tile (mosaic200), one region mosaic (mosaic), or the ATL14 or
+  ATL15 netCDFs (nc).  Takes a composed argsfile; tiles are read and written
+  under tile_prefix, derived products under out_prefix.
 
 # THE BRANCH OR TAG THE BUILD CLONES -- change it to main once the cloud-read
 # work is merged.  Must match ^[a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}$.
@@ -89,7 +92,7 @@ inputs:
     type: string
   - name: step
     label: step
-    doc: processing step -- prelim, matched, build_id (print the build stamp and exit), or bench (time a saved solve; args_file is then its directory)
+    doc: processing step -- prelim, matched, mosaic200, mosaic, nc, build_id (print the build stamp and exit), or bench (time a saved solve; args_file is then its directory)
     type: string
     default: prelim
   # A STRING, not a File (howto_MAAP_ogc QA): whether the runner can stage an
@@ -131,6 +134,24 @@ inputs:
   - name: tile_prefix
     label: tile_prefix
     doc: s3:// root of the canonical tile tree, e.g. s3://maap-ops-workspace/ben_smith/ATL14_processing/rel006/north/IS -- prelim writes there, matched reads its neighbours there.  "-" (the default) skips the canonical write.
+    type: string
+    default: "-"
+
+  # THE MOSAIC STEPS' TWO INPUTS (docs/plan_dps_mosaic.sh D3).  Defaults "-",
+  # never "": the build form drops an empty default and the CWL then REQUIRES
+  # the input (howto_MAAP_ogc F6, as tile_prefix).  The tile steps ignore both.
+  - name: task
+    label: task
+    doc: what a mosaic step does -- mosaic200 "<x>_<y>" (a 200 km tile center, m), mosaic "<group>" (z0, dz, dzdt_lag4, avg_dz_40000m, ...), nc "ATL14" or "ATL15".  "-" (the default) for the tile steps.
+    type: string
+    default: "-"
+  # Ben 2026-10-01: a run's derived products -- 200 km tiles, region mosaics,
+  # netCDFs -- are read and written here, the solve tiles at tile_prefix.  So a
+  # test run (e.g. .../ATL14_processing/rel006_0332_testing/north/GL) leaves
+  # nothing partial at the canonical region prefix.
+  - name: out_prefix
+    label: out_prefix
+    doc: s3:// root for a mosaic step's derived products (200 km tiles, mosaics, netCDFs); "-" (the default) means tile_prefix.
     type: string
     default: "-"
 

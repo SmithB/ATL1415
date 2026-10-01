@@ -9,56 +9,9 @@ import os
 import stat
 import ATL1415
 from ATL1415.scripts.setup_slurm_run import setup_directories
+# the groups, shared with the DPS submitter (which has no pointCollection)
+from ATL1415.mosaic_groups import make_fields
 
-
-def make_fields(dzdt_lags, t_res=0.25, skip_z0=False ):
-    """
-    Build the field lists and time ranges to mosaic for each output group.
-
-    Parameters
-    ----------
-    dzdt_lags : iterable
-        dzdt lags (in grid-spacing units) to generate dzdt/avg_dzdt groups for.
-    t_res : float, optional
-        dz/dt grid time resolution, used to convert lags to years. The default is 0.25.
-    skip_z0 : bool, optional
-        if true, omit the z0 group. The default is False.
-
-    Returns
-    -------
-    fields : dict
-        mapping of group name to list of fields to mosaic.
-    time_ranges : dict
-        mapping of group name to [start, end] year range for the mosaic.
-
-    """
-
-    fields={}
-    if not skip_z0:
-        fields['z0']="z0 sigma_z0 misfit_rms misfit_scaled_rms mask cell_area count".split(' ')
-
-    fields['dz']="dz sigma_dz count misfit_rms misfit_scaled_rms mask cell_area".split(' ')
-
-    time_ranges={}
-    time_ranges['dz']=[2019, 2050]
-
-    lags = [ f'_lag{lag}' for lag in dzdt_lags ]
-
-    for lag in lags:
-        field_str='dzdt'+lag
-        fields[field_str] = ["dzdt"+lag, "sigma_dzdt"+lag, "cell_area"]
-        time_ranges[field_str] = [2019 + t_res * int(lag.replace('_lag',''))/2, 2050]
-    for res in ["_40000m", "_20000m", "_10000m"]:
-        fields['avg_dz'+res] = ["avg_dz"+res, "sigma_avg_dz"+res,'cell_area']
-        time_ranges['avg_dz'+res] = [2019, 2050]
-        for lag in lags:
-            field_str='avg_dzdt'+res+lag
-            fields[field_str]=[field_str, 'sigma_'+field_str, 'cell_area']
-            time_ranges[field_str] = [2019 + t_res * int(lag.replace('_lag',''))/2, 2050]
-    #for key, item in fields.items():
-    #print(key+" : "+str(item))
-    #print(fields)
-    return fields, time_ranges
 
 def read_200km_tile_list(filename):
     """

@@ -354,6 +354,30 @@
 #     from W=60 km, spacing 40 km = 5000/10000, 0/0 for the 40 and 20 km
 #     averages -- as the direct path.
 #
+# D3-1/D3-2 CODED 2026-10-01 (run.sh steps, algorithm_config inputs task +
+#   out_prefix, ATL1415/mosaic_groups.py, submit_MAAP_jobs.py --step
+#   mosaic200|mosaic|nc).  LOCAL END-TO-END TEST ON IS (run.sh as DPS would
+#   call it, tiles read from S3, products to a scratch prefix): all 4 stage-1,
+#   41 stage-2 and 2 nc jobs run (after a manifest fix).  COMPARED WITH THE
+#   ADE'S IS PRODUCTS (direct path, 2026-09-25):
+#     identical: every averaged mosaic (dz_10/20/40km, dzdt_*km_lag*) on the
+#       shared bands; ATL15 20 km and 40 km netCDFs (88/88 variables, and
+#       attributes but uuid/date -- so lineage + tile stats read from S3 agree);
+#     DIFFERENT: z0, dz, dzdt_lagN (up to 3.5 km in z0, 14 m in dz), ATL14,
+#       ATL15 1 km and 10 km.  CAUSE (measured): IS tile centers sit at 20 km
+#       offsets from the 200 km grid (all centers mod 40 km = 20).  Stage 1
+#       selects tiles by center within 10 km of the 200 km square (-r), but a
+#       60 km tile centered 20 km outside still reaches ~5 km inside; 90% of
+#       differing cells are within 4.5 km of a 200 km edge, all NaN in the
+#       200 km path where the direct path has data.  Also: squares derived from
+#       tile CENTERS miss region-edge strips (IS x 990-1000, 1400-1410 km).
+#     GL is not affected: GL centers are multiples of 40 km, aligned with the
+#       200 km grid (the GL z0 200 km tile was bit-identical).  AA: to check.
+#   QUESTION FOR BEN (QD8): fix in make_200km_tiles.py -- search window W/2
+#     (every tile that overlaps the square, as the direct path includes) and
+#     squares from tile extents?  Changes AA's 200 km path only where it is
+#     misaligned.  NOT PUSHED; registration waits.
+#
 # D3. [code, ATL1415] TODO.  run.sh: step `mosaic` --
 #       make_mosaic_jobs.py -b <local work dir> ... with -d s3://<tile_prefix>
 #       for the tile reads, run task $task, upload its one .h5 to
