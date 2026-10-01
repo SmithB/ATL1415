@@ -463,7 +463,7 @@
 #     VERDICT MATCH (image, live git and CWL all 6663090; built 15:49:40Z;
 #     maap_pgt=set).
 #
-# D5. [DPS] FAILED ONCE 2026-10-01, open.  Smoke: ONE mosaic task for
+# D5. [DPS] DONE 2026-10-01 (run 1 failed on credentials, run 2 passed).  Smoke: ONE mosaic task for
 #     IS (direct path, D3b: no mosaic200 jobs for IS).  GATE: successful; the
 #     .h5 is at the out_prefix; identical to the ADE file in
 #     ~/ATL14_processing/rel006/north/IS apart from rounding in the weighted
@@ -498,7 +498,20 @@
 #       known: the task prints nothing per call.
 #     PRECEDENT: plan_GL_north.sh N3, E-40_N-760, NoCredentialsError at
 #       8.6 s, 1 job of 555, undiagnosed; its retry succeeded.
-#     QUESTION QD9 (Ben): (a) resubmit the same job unchanged -- 1 job, no
+#     RUN 2 (Ben: QD9 a), the same job unchanged: a2d48bdb
+#       (IS_mosaic_smoke_retry1_z0, 16gb, t3.xlarge i-04444e41015eda95c,
+#       build 6663090), ledger IS_0332_mosaic_smoke_retry1_jobs.csv.
+#       SUCCESSFUL, 138 s (step mosaic 104 s, steal 17.4 s), peak 0.47 GiB.
+#       z0.h5 (91340373 bytes) at the test out_prefix.  GATE PASSES: vs the
+#       ADE z0.h5, same datasets and shapes, 0 NaN flips in every field;
+#       mask, sigma_z0, x, y identical; the weighted fields differ at
+#       rounding only (z0 6.8e-13 m in 6643 cells, cell_area 5.5e-12 m^2,
+#       count 7.1e-15, misfit_rms 2.2e-16, misfit_scaled_rms 3.6e-15) --
+#       the same z0 figure as the local test (D3b-5).
+#     STATEMENT: run 1's failure did not repeat on an unchanged job, so it
+#       is intermittent.  1 failure in 2 mosaic jobs says nothing about
+#       the rate.
+#     QUESTION QD9 (Ben; (a) ANSWERED and done, (b) open): (a) resubmit the same job unchanged -- 1 job, no
 #       rebuild; tells intermittent from systematic.  (b) in run.sh export
 #       AWS_METADATA_SERVICE_NUM_ATTEMPTS=5 and
 #       AWS_METADATA_SERVICE_TIMEOUT=5 for every step, and echo each
