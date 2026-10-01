@@ -51,6 +51,15 @@ repo_dir=$(cd "$(dirname "$(readlink -f "$0")")" && pwd)
 env_name=$(sed -n 's/^name:[[:space:]]*//p' "${repo_dir}/environment.yml" | head -1)
 : "${env_name:?could not read 'name:' from environment.yml}"
 
+# A worker's container is given no AWS credentials: every process that reads
+# the bucket gets them from the instance metadata service, and botocore's
+# default for that lookup is ONE attempt with a 1 s timeout.  About 0.8% of
+# lookups failed on 2026-10-01 (botocore NoCredentialsError), which failed 11
+# of 32 mosaic200 jobs at ~85 processes each (docs/plan_dps_mosaic.sh D7).
+# botocore and aiobotocore (s3fs) both read these; set for every step.
+export AWS_METADATA_SERVICE_NUM_ATTEMPTS="${AWS_METADATA_SERVICE_NUM_ATTEMPTS:-5}"
+export AWS_METADATA_SERVICE_TIMEOUT="${AWS_METADATA_SERVICE_TIMEOUT:-5}"
+
 # ===========================================================================
 # BUILD ID -- answer "what is actually in this image?" in one job.
 # ===========================================================================

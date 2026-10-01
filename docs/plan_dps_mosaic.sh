@@ -566,10 +566,36 @@
 #         of 555 GL north prelim (plan_GL_north.sh N3).  All three passed
 #         on resubmit.
 #
-# D7. [DPS] TODO.  GL north: 41 mosaic jobs, ATL14 + ATL15 nc jobs (to
+# D7. [DPS] IN PROGRESS 2026-10-01 (Ben: go).  GL north: 32 mosaic200 jobs,
+#     41 mosaic jobs, ATL14 + ATL15 nc jobs (to
 #     out_prefix .../ATL14_processing/rel006_0332_testing/north/GL/, AD4).  ADE checks read through the mount (QD6):
 #     check_mosaic_outputs.py --values; quick plot of h and delta_h (N7).
 #     Times and memory go to plan_GL_north.sh N8 for MAAP.
+#     STAGE 1 (mosaic200), 32 jobs submitted 17:18Z, build 6663090, 16gb,
+#     ledger maap_ledgers/GL_0332_north_D7_mosaic200_jobs.csv: 21
+#     successful (186-818 s, median 588 s, peak RSS 0.80 GiB), 11 FAILED.
+#       STATEMENT (the 11 triaged _stderr.txt): every one is botocore
+#         NoCredentialsError in pointCollection glob_remote, at the start
+#         of a make_mosaic.py call; 22 such errors in the 11 logs (1-4 per
+#         job).  A group that fails ends the job with nothing uploaded.
+#       STATEMENT: a mosaic200 job runs 41 groups of ~2 make_mosaic.py
+#         calls, 2 groups at a time: ~85 processes, each looking the
+#         worker's credentials up afresh.
+#       ESTIMATE: >= 22 failed lookups in ~2700 process starts = ~0.8% per
+#         lookup; 1 - 0.992^85 = ~50% per job expected, 34% seen.  The
+#         same rate fits 1 failure in 41 single-group IS mosaic jobs.
+#       RETRY 1: the 11, submitted 17:42Z on 6663090 (--task, ledger
+#         ..._mosaic200_retry1_jobs.csv).
+#     DECIDED (Ben 2026-10-01, on this data): add the retry settings.
+#       run.sh now exports AWS_METADATA_SERVICE_NUM_ATTEMPTS=5 and
+#       AWS_METADATA_SERVICE_TIMEOUT=5 (each kept if already set) before
+#       any step.  CHECKED on the ADE: botocore and aiobotocore sessions
+#       both read 5/5 from the environment, 1/1 without.  INFERRED, not yet
+#       measured: that the failed lookups are the metadata service's
+#       (the container has no other credential source).  The measurement
+#       is the failure count of the remaining D7 jobs on the new build.
+#       NEEDS: push, Ben registers when nothing is in flight,
+#       check_build_id MATCH.
 #
 # D8. [ADE] TODO.  Resume plan_GL_north.sh at NM2 (compare, report only),
 #     NM3 (copy the nc S3 -> the QM-A side key; aws s3 cp, S3 to S3), then
