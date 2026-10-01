@@ -329,7 +329,14 @@
 #     D3a-1 as planned: make_200km_tiles.py: --tiles_base (where the tiles are read, -d,
 #           and where the centers are listed from; may be s3://; default
 #           region_dir) and --center X Y (write only that tile's task).
-#     D3a-2 make_200km_to_mosaic_jobs.py: callable per group (--group), reads
+#     D3a-2 DONE 2026-10-01.  Restructured around mosaic_commands(); writes
+#           the same 41 GL tasks as before (diffed) except z0 now activates the
+#           env like the rest.  REAL DATA, stages 1+2 for avg_dz_40000m over
+#           all 32 GL-north 200 km tiles from S3: stage 1 129 s (-P 4), stage
+#           2 2 s; the region mosaic is BIT-IDENTICAL to D0's direct-path one
+#           on the 31 shared bands; the 200 km path drops 2018.75 (31 vs 32
+#           bands) -- the t_range STATEMENT above, now measured.
+#     D3a-2 as planned: make_200km_to_mosaic_jobs.py: callable per group (--group), reads
 #           from --in_base (may be s3://), writes into -b; z0 included by an
 #           explicit flag rather than a local isdir() check; the hard-coded
 #           'source activate IS2' becomes -e/--environment (as
