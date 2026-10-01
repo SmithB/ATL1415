@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """
 What a region's mosaic is made of, without pointCollection: the mosaic groups
-(make_fields) and the 200 km tile centers (centers_200km).
+(make_fields), the 200 km tile centers (centers_200km), and which regions take
+the 200 km step at all (uses_200km_tiles).
 
 Light on purpose -- numpy only -- so the ADE-side DPS submitter, which runs in
 an interpreter without pointCollection, lists a mosaic run's jobs from the
@@ -12,6 +13,21 @@ import os
 import re
 
 import numpy as np
+
+
+# Ben 2026-10-01 (docs/plan_dps_mosaic.sh AD8): "Just use the 200-km step for
+# Antarctica and Greenland."  Every other region mosaics directly from its
+# solve tiles (make_mosaic_jobs.py).
+REGIONS_200KM = ('GL', 'AA', 'A1', 'A2', 'A3', 'A4')
+
+
+def uses_200km_tiles(region):
+    """
+    True if the region's mosaics are made by way of 200 km tiles
+    (make_200km_tiles.py, then make_200km_to_mosaic_jobs.py); False if they
+    are made directly from the solve tiles (make_mosaic_jobs.py).
+    """
+    return region in REGIONS_200KM
 
 
 def make_fields(dzdt_lags, t_res=0.25, skip_z0=False ):

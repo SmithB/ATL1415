@@ -78,6 +78,9 @@ mosaic | nc submit the 200 km mosaic path and the netCDFs, one job per
 read the tiles at --tile_prefix (required) and put every derived product at
 --out_prefix (default: the tile prefix).  Run them in that order, each after
 the last has finished.  The ledger gains `task` and `out_prefix` columns.
+Only Greenland and Antarctica take the 200 km step (Ben 2026-10-01, plan
+AD8): for any other region --step mosaic200 is refused, and --step mosaic
+makes each mosaic directly from the solve tiles.
 
 Written for the IS run (docs/plan_IS_run.sh I2) and intended for GL next.
 """
@@ -224,14 +227,25 @@ def mosaic_tasks(step, args_text, tile_prefix, out_prefix, lister=s3_names, exis
     """
     The `task` of every job a mosaic step needs (docs/plan_dps_mosaic.sh D3-2):
       mosaic200  '<x>_<y>' for each 200 km tile over <tile_prefix>/prelim/
-      mosaic     each group of the region's mosaic (z0 only where its 200 km
-                 tiles are at <out_prefix> -- submit after mosaic200)
+      mosaic     each group of the region's mosaic (for a 200 km region, z0
+                 only where its 200 km tiles are at <out_prefix> -- submit
+                 after mosaic200)
       nc         ATL14, ATL15
-    From the definitions the workers use (ATL1415.mosaic_groups).
+    From the definitions the workers use (ATL1415.mosaic_groups), including
+    which regions take the 200 km step at all (Greenland and Antarctica; the
+    rest mosaic directly from the solve tiles, plan AD8).
     """
-    from ATL1415.mosaic_groups import centers_200km, make_fields
+    from ATL1415.mosaic_groups import centers_200km, make_fields, uses_200km_tiles
     from ATL1415.lags import infer_dzdt_lags
+    region = arg_value(args_text, '--region')
+    if step in ('mosaic200', 'mosaic') and not region:
+        raise ValueError('the args file needs --region= to tell whether the region'
+                         ' takes the 200 km step')
     if step == 'mosaic200':
+        if not uses_200km_tiles(region):
+            raise ValueError(f'--step mosaic200 is for Greenland and Antarctica only: region'
+                             f' {region} has no 200 km step.  Its mosaics are made directly'
+                             ' from the solve tiles: --step mosaic.')
         names = lister(f'{tile_prefix.rstrip("/")}/prelim')
         return [f'{int(x)}_{int(y)}' for x, y in centers_200km(names)]
     if step == 'mosaic':
@@ -242,7 +256,8 @@ def mosaic_tasks(step, args_text, tile_prefix, out_prefix, lister=s3_names, exis
         t_res = float(dt.split('/')[0]) / float(dt.split('/')[1]) if '/' in dt else float(dt)
         lags = infer_dzdt_lags(t_res, [float(t) for t in tspan.split(',')])
         groups = list(make_fields(lags, t_res=t_res, skip_z0=float(grid.split(',')[0]) > 1000)[0])
-        if 'z0' in groups and not exists(f'{out_prefix.rstrip("/")}/200km_tiles/z0'):
+        if uses_200km_tiles(region) and 'z0' in groups \
+                and not exists(f'{out_prefix.rstrip("/")}/200km_tiles/z0'):
             print(f'NOTE: no 200 km z0 tiles at {out_prefix}: z0 not submitted')
             groups.remove('z0')
         return groups
@@ -362,7 +377,11 @@ def main():
     if mosaic:
         out_prefix = args.out_prefix or args.tile_prefix
         source = f'{args.step} tasks for {out_prefix}'
-        tasks = mosaic_tasks(args.step, read_args_text(args.args_url), args.tile_prefix, out_prefix)
+        try:
+            tasks = mosaic_tasks(args.step, read_args_text(args.args_url), args.tile_prefix, out_prefix)
+        except ValueError as e:
+            print(f'{e}\nNothing submitted.', file=sys.stderr)
+            sys.exit(2)
         if not tasks:
             print(f'no {args.step} tasks -- nothing to submit.', file=sys.stderr)
             sys.exit(2)

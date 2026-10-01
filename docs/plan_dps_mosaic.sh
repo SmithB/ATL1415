@@ -373,10 +373,66 @@
 #       tile CENTERS miss region-edge strips (IS x 990-1000, 1400-1410 km).
 #     GL is not affected: GL centers are multiples of 40 km, aligned with the
 #       200 km grid (the GL z0 200 km tile was bit-identical).  AA: to check.
-#   QUESTION FOR BEN (QD8): fix in make_200km_tiles.py -- search window W/2
-#     (every tile that overlaps the square, as the direct path includes) and
-#     squares from tile extents?  Changes AA's 200 km path only where it is
-#     misaligned.  NOT PUSHED; registration waits.
+#   QD8 (asked 2026-10-01): fix make_200km_tiles.py -- search window W/2 and
+#     squares from tile extents?
+#   AD8 (Ben 2026-10-01): NO FIX.  "The arctic regions that are not Greenland
+#     do not need the 200-km step.  Just use the 200-km step for Antarctica
+#     and Greenland."  So make_200km_tiles.py stays as it is, and IS, SV, CN,
+#     CS, RA, AK mosaic DIRECTLY from the solve tiles (make_mosaic_jobs.py, as
+#     the ADE and discover do).
+#
+# D3b. [code, ATL1415] THE DIRECT MOSAIC PATH ON DPS, for every region but
+#     GL and Antarctica (AD8).  Written 2026-10-01; CODED AND TESTED
+#     2026-10-01 (D3b-5).  The step names and inputs do not change: `mosaic` task=<group>
+#     is one region mosaic either way; only where it reads from differs.
+#     D3b-1 DONE 2026-10-01.  ATL1415/mosaic_groups.py: uses_200km_tiles(region) -- True
+#       for GL, AA, A1..A4, False otherwise.  THE ONE PLACE the rule lives;
+#       run.sh and the submitter both ask it.
+#     D3b-2 DONE 2026-10-01.  make_mosaic_jobs.py: --tiles_base (where the solve tiles
+#       are read, default --base_dir; s3:// on DPS -- D3's OPEN DETAIL,
+#       RECOMMENDATION taken), --group (that one group's task only, as
+#       task_1; names as make_fields: z0, dz, dzdt_lag4, avg_dz_40000m,
+#       avg_dzdt_40000m_lag4), -j (make_mosaic.py -j), -e '' (no activate
+#       line).  Defaults leave the ADE/discover task files unchanged.
+#     D3b-3 DONE 2026-10-01.  run.sh: step mosaic -- uses_200km_tiles(region) ? the
+#       200 km stage 2 (as now) : make_mosaic_jobs.py --tiles_base
+#       <tile_prefix> --group <task>.  step mosaic200 for any other region:
+#       ERROR naming the region and the rule, exit 2, nothing run.
+#     D3b-4 DONE 2026-10-01.  submit_MAAP_jobs.py: --step mosaic200 refuses a region
+#       without the 200 km step; --step mosaic for such a region lists every
+#       group (z0 included: no 200 km z0 tiles to wait for).
+#     D3b-5 DONE 2026-10-01.  LOCAL IS END-TO-END run.sh test: 41 mosaic
+#       jobs + 2 nc, all exit 0 (943 s in all, longest job 95 s, peak RSS
+#       0.82 GiB); scratch prefix deleted.  mosaic200 for IS refused, exit 2.
+#       vs the ADE's IS products of 2026-09-25, all bands, all 46 files:
+#         netCDFs: every variable of all five identical (ATL14 27/27, ATL15
+#           1 km 91/91, 10/20/40 km 88/88); attributes differ only in
+#           identifier_file_uuid and creationDate.
+#         mosaics: same NaN pattern everywhere; the averaged mosaics, masks
+#           and sigmas identical; the WEIGHTED fields of z0, dz, dzdt_lagN
+#           differ at rounding level (z0 6.8e-13 m, dz 7.1e-15 m, cell_area
+#           2.3e-10 m^2) -- not bit-identical.  CAUSE: not measured; the
+#           order tiles enter the weighted sum is the candidate (S3 listing
+#           sorted vs local glob).
+#       as planned: GATE every mosaic and every netCDF identical to the
+#       ADE's (netCDFs apart from uuid/creationDate).
+#     AA AND GL AGAINST THE TWO IS FAULTS (measured 2026-10-01, from
+#       ATL1415/resources/{AA,GL}/40km_tile_list.txt; Ben pointed at AA's):
+#       (1) tiles dropped by the center search: NONE.  All 8944 AA and 1483
+#         GL centers are multiples of 40 km, so a tile either has its center
+#         within the 200 km square (+10 km) or does not reach into it.
+#         (IS, centers at 20 km offsets: 14 tile/square overlaps dropped.)
+#       (2) squares never made: a tile centered ON a 200 km line reaches
+#         25 km (W/2 - pad) into the next square, which exists only if some
+#         tile center lies in it.  AA: 9 such squares, reached by 19 tiles
+#         (e.g. square (-2100,-300) km by E-2000_N-200..-320).  GL: 5, by 13
+#         tiles; GL north as run: 2, by 4 tiles.
+#         MEASURED for GL north (the 4 matched tiles on S3): 0 cells with
+#         cell_area > 0 strictly inside the unmade squares, z0 and dz -- no
+#         data lost.  AA: STATEMENT, not measurable yet (no AA tiles on S3);
+#         to repeat on the 19 tiles once AA prelim exists.
+#       Also: resources/AA/200km_tile_list.txt has 413 squares, the rule
+#         gives 411 from the 40 km list (2 in the file only).
 #
 # D3. [code, ATL1415] TODO.  run.sh: step `mosaic` --
 #       make_mosaic_jobs.py -b <local work dir> ... with -d s3://<tile_prefix>
@@ -401,8 +457,8 @@
 #     scripts/maap/check_build_id.py -> MATCH (memory: only MATCH proves the
 #     deploy).
 #
-# D5. [DPS] TODO.  Smoke: ONE mosaic task (avg_dz_40000m, task 2 or so) for
-#     IS.  GATE: successful; the .h5 is at the IS prefix; identical to the
+# D5. [DPS] TODO.  Smoke: ONE mosaic task (avg_dz_40000m) for
+#     IS (direct path, D3b: no mosaic200 jobs for IS).  GATE: successful; the .h5 is at the IS prefix; identical to the
 #     ADE file in ~/ATL14_processing/rel006/north/IS (same tiles, same code
 #     path apart from the listing).
 #

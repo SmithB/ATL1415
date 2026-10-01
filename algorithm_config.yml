@@ -142,7 +142,7 @@ inputs:
   # the input (howto_MAAP_ogc F6, as tile_prefix).  The tile steps ignore both.
   - name: task
     label: task
-    doc: what a mosaic step does -- mosaic200 "<x>_<y>" (a 200 km tile center, m), mosaic "<group>" (z0, dz, dzdt_lag4, avg_dz_40000m, ...), nc "ATL14" or "ATL15".  "-" (the default) for the tile steps.
+    doc: what a mosaic step does -- mosaic200 "<x>_<y>" (a 200 km tile center, m; Greenland and Antarctica only), mosaic "<group>" (z0, dz, dzdt_lag4, avg_dz_40000m, ...), nc "ATL14" or "ATL15".  "-" (the default) for the tile steps.
     type: string
     default: "-"
   # Ben 2026-10-01: a run's derived products -- 200 km tiles, region mosaics,

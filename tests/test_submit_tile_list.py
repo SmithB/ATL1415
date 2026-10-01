@@ -176,6 +176,35 @@ def test_mosaic_tasks_are_the_groups(z0_tiles):
     assert {'dz', 'dzdt_lag28', 'avg_dz_40000m', 'avg_dzdt_10000m_lag1'} <= set(tasks)
 
 
+IS_ARGS = GL_ARGS.replace('--region=GL', '--region=IS')
+
+
+def test_only_greenland_and_antarctica_take_the_200km_step():
+    # Ben 2026-10-01 (plan AD8)
+    from ATL1415.mosaic_groups import uses_200km_tiles
+    assert [r for r in ('GL', 'AA', 'A1', 'A4', 'IS', 'SV', 'CN', 'CS', 'RA', 'AK')
+            if uses_200km_tiles(r)] == ['GL', 'AA', 'A1', 'A4']
+
+
+def test_mosaic200_is_refused_for_a_region_without_the_step():
+    with pytest.raises(ValueError, match='region IS has no 200 km step'):
+        sub.mosaic_tasks('mosaic200', IS_ARGS, 's3://b/IS', 's3://b/test/IS',
+                         lister=lambda prefix: set(PRELIM))
+
+
+def test_direct_mosaic_tasks_do_not_wait_for_200km_z0():
+    # no 200 km tiles to look for: z0 is mosaicked from the solve tiles
+    def no_lookup(uri):
+        raise AssertionError('looked for 200 km tiles in a region without them')
+    tasks = sub.mosaic_tasks('mosaic', IS_ARGS, 's3://b/IS', 's3://b/test/IS', exists=no_lookup)
+    assert len(tasks) == 41 and 'z0' in tasks
+
+
+def test_mosaic_tasks_need_the_region():
+    with pytest.raises(ValueError, match='--region='):
+        sub.mosaic_tasks('mosaic', GL_ARGS.replace('--region=GL\n', ''), 's3://b/GL', 's3://b/t')
+
+
 def test_nc_tasks():
     assert sub.mosaic_tasks('nc', GL_ARGS, 's3://b/GL', 's3://b/test/GL') == ['ATL14', 'ATL15']
 

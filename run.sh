@@ -26,8 +26,9 @@
 #                neighbours.  See docs/plan_IS_run.sh I7, QI4 and QI5.
 #                "-" means the same as empty: it is the registered default,
 #                because the build form drops an empty one (2026-09-14).
-#   task         mosaic steps only: mosaic200 '<x>_<y>' (200 km center, m),
-#                mosaic '<group>', nc 'ATL14'|'ATL15'.  "-" = none.
+#   task         mosaic steps only: mosaic200 '<x>_<y>' (200 km center, m;
+#                Greenland and Antarctica only), mosaic '<group>',
+#                nc 'ATL14'|'ATL15'.  "-" = none.
 #   out_prefix   mosaic steps only: s3:// root for the derived products (200 km
 #                tiles, mosaics, netCDFs).  "-" = tile_prefix.  See MOSAIC STEPS.
 #
@@ -457,7 +458,10 @@ echo "=========================================================="
 # the tile prefix).  Nothing is fetched that can be read in place, except the
 # mosaics an nc job writes from (the writers open them by local path).
 #   mosaic200  task <x>_<y>: one 200 km tile, all groups (stage 1)
-#   mosaic     task <group>: one region mosaic from the 200 km tiles (stage 2)
+#   mosaic     task <group>: one region mosaic -- from the 200 km tiles (stage
+#              2) for Greenland and Antarctica, directly from the solve tiles
+#              for every other region, which has no 200 km step (Ben
+#              2026-10-01, plan AD8; the rule is ATL1415.mosaic_groups)
 #   nc         task ATL14|ATL15: the netCDFs from the mosaics + prelim tiles
 # ===========================================================================
 in_env () {
@@ -493,6 +497,14 @@ mosaic_step_and_exit () {
     # mosaic (pointCollection from_list docstring); at most 4 on a 16 GB worker
     local workers=${ATL1415_MOSAIC_WORKERS:-$(( threads < 4 ? threads : 4 ))}
     local status=0
+    # does this region take the 200 km step?  Asked of the one place the rule
+    # lives; anything but a plain yes or no is an error, not a default
+    local via_200km
+    via_200km=$(in_env python -c 'import sys; from ATL1415.mosaic_groups import uses_200km_tiles; print("yes" if uses_200km_tiles(sys.argv[1]) else "no")' "$region" | tail -1)
+    case "$via_200km" in
+        yes|no) ;;
+        *) echo "ERROR: could not tell whether region ${region} uses the 200 km step (ATL1415.mosaic_groups.uses_200km_tiles said '${via_200km}')" >&2; exit 1 ;;
+    esac
     case "$step" in
         mosaic200)
             if ! [[ $task =~ ^(-?[0-9]+(\.[0-9]+)?)_(-?[0-9]+(\.[0-9]+)?)$ ]]; then
@@ -500,6 +512,11 @@ mosaic_step_and_exit () {
                 exit 2
             fi
             local cx=${BASH_REMATCH[1]} cy=${BASH_REMATCH[3]}
+            if [ "$via_200km" = no ]; then
+                echo "ERROR: step mosaic200 is for Greenland and Antarctica only; region ${region} has no 200 km step." >&2
+                echo "  Its mosaics are made directly from the solve tiles: --step mosaic." >&2
+                exit 2
+            fi
             in_env make_200km_tiles.py "$work" "$region" -t "$tspan" -g "$grid" \
                 --W "$W" --spacing "$spacing" --tiles_base "$tile_prefix" \
                 --center "$cx" "$cy" --name job
@@ -532,15 +549,24 @@ mosaic_step_and_exit () {
                 echo "ERROR: step mosaic needs --task <group> (z0, dz, dzdt_lag4, avg_dz_40000m, ...)" >&2
                 exit 2
             fi
-            in_env make_200km_to_mosaic_jobs.py -b "$work" -rr "$region" -t "$tspan" -g "$grid" \
-                --in_base "$out" --group "$task" -e '' -j "$workers"
+            local source_desc
+            if [ "$via_200km" = yes ]; then
+                source_desc="200 km tiles at ${out%/}/200km_tiles/${task}/"
+                in_env make_200km_to_mosaic_jobs.py -b "$work" -rr "$region" -t "$tspan" -g "$grid" \
+                    --in_base "$out" --group "$task" -e '' -j "$workers"
+            else
+                source_desc="matched and prelim tiles at ${tile_prefix}"
+                in_env make_mosaic_jobs.py -b "$work" -rr "$region" -t "$tspan" -g "$grid" \
+                    --tiles_base "$tile_prefix" --group "$task" -e '' -j "$workers"
+            fi
+            echo "mosaic ${task}: region ${region}, from ${source_desc}"
             "${repo_dir}/scripts/run_with_rusage.py" mosaic \
                 conda run --no-capture-output -n "$env_name" bash -e "mosaic_run_${region}/queue/task_1" \
                 || { echo "ERROR: mosaic ${task} failed; nothing uploaded" >&2; exit 1; }
             # make_mosaic.py exits 0 having written nothing when its inputs
             # lack the group, so say so rather than upload nothing
             if ! compgen -G "${work}/*.h5" > /dev/null; then
-                echo "ERROR: mosaic ${task} wrote no file: are there 200 km tiles at ${out%/}/200km_tiles/${task}/?" >&2
+                echo "ERROR: mosaic ${task} wrote no file: are there ${source_desc}?" >&2
                 exit 1
             fi
             mv "$work"/*.h5 "$products"/

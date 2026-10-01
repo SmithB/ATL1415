@@ -4,7 +4,7 @@ import argparse
 import subprocess
 import ATL1415
 
-def write_task(task_id, content, mosaic_run, environment, append=False):
+def _write_task(task_id, content, mosaic_run, environment, append=False):
     """
     Write a task to a script that can be run in parallel
 
@@ -30,7 +30,7 @@ def write_task(task_id, content, mosaic_run, environment, append=False):
     mode = "a" if append else "w"
     task_file = os.path.join(mosaic_run, "queue" , f"task_{task_id}")
     with open(task_file, mode) as f:
-        if mode == 'w':
+        if mode == 'w' and environment:
             f.write(f"source activate {environment};\n")
         f.write(content + "\n")
 
@@ -39,7 +39,10 @@ def make_mosaic_jobs(base, region, lags,
                      skip_z0=False,
                      tasks=4,
                      environment='IS2',
-                     run_name=None):
+                     run_name=None,
+                     tiles_base=None,
+                     group=None,
+                     workers=1):
     """
     make a set of jobs for mosaicking a region
 
@@ -61,7 +64,18 @@ def make_mosaic_jobs(base, region, lags,
     tasks : int, optional
         tasks per slurm job. The default is 4.
     environment : str, optional
-        environment to be activated. The default is 'IS2'.
+        environment to be activated. The default is 'IS2'; '' for none.
+    tiles_base : str, optional
+        where the solve tiles are read from, <tiles_base>/<step>/ and
+        <tiles_base>/prelim/, if not base -- an s3:// prefix on DPS, where
+        the tiles are read in place and the mosaics written locally
+        (docs/plan_dps_mosaic.sh D3b-2).
+    group : str, optional
+        write the task for this one group only, as task_1 (z0, dz, dzdt_lag4,
+        avg_dz_40000m, avg_dzdt_40000m_lag4, ...: the names of
+        ATL1415.mosaic_groups.make_fields).  One DPS job's worth.
+    workers : int, optional
+        make_mosaic.py -j: read each command's tiles in this many processes.
 
     Returns
     -------
@@ -88,15 +102,27 @@ def make_mosaic_jobs(base, region, lags,
     compute_SMB = False
 
     glob_str = f"'{step}/*.h5'"
+    tiles = base if tiles_base is None else tiles_base
+    j = f" -j {workers}" if workers and workers > 1 else ""
 
     # make directories
     os.makedirs(mosaic_run, exist_ok=True)
     for sub in ["queue", "running", "done", "logs", "active_logs", "error_logs"]:
         os.makedirs(os.path.join(mosaic_run, sub), exist_ok=True)
 
+    # with group=, only that group's task is written, as task_1
+    only = group
+    names = {}
+    def write_task(task_id, content, mosaic_run, environment, append=False):
+        if only is None:
+            _write_task(task_id, content + j, mosaic_run, environment, append=append)
+        elif names[task_id] == only:
+            _write_task(1, content + j, mosaic_run, environment, append=append)
+
     task = 0
     if not skip_z0:
         group='z0'
+        names[task + 1] = 'z0'
         field_list = ["z0", "misfit_rms", "misfit_scaled_rms", "mask",
                       "cell_area", "count"]
         task += 1
@@ -124,7 +150,7 @@ def make_mosaic_jobs(base, region, lags,
             for field in field_list:
                 cmd = (
                     f"make_mosaic.py {crop} {this_replace} -w "
-                    f"-d {base} -g {glob_str} -p {pad} -f {feather} "
+                    f"-d {tiles} -g {glob_str} -p {pad} -f {feather} "
                     f"-O {base}/z0.h5 --in_group {group}/ -F {field}"
                 )
                 this_replace=""
@@ -133,7 +159,7 @@ def make_mosaic_jobs(base, region, lags,
             if compute_sigma:
                 cmd = (
                     f"make_mosaic.py {crop} {this_replace} -w "
-                    f"-d {base} -g 'prelim/*.h5' -p {pad} -f {feather} "
+                    f"-d {tiles} -g 'prelim/*.h5' -p {pad} -f {feather} "
                     f"-O {base}/z0.h5 --in_group {group}/ -F sigma_z0"
                 )
                 write_task(task, cmd, mosaic_run, environment, append=append)
@@ -162,16 +188,17 @@ def make_mosaic_jobs(base, region, lags,
         out = group.replace("000m", "km").replace("avg_", "")
 
         task += 1
+        names[task] = group
         cmd = (
             f"make_mosaic.py {crop} {this_w} -R "
-            f"-d {base} -g {glob_str} -p {this_pad} -f {this_feather} {this_S} "
+            f"-d {tiles} -g {glob_str} -p {this_pad} -f {this_feather} {this_S} "
             f"-O {base}/{out}.h5 --in_group {group}/ -F {field} cell_area"
         )
         write_task(task, cmd, mosaic_run, environment)
 
         if compute_sigma:
             cmd2 = (
-                f"make_mosaic.py {crop} {this_w} -d {base} "
+                f"make_mosaic.py {crop} {this_w} -d {tiles} "
                 f"-g 'prelim/*.h5' -p {this_pad} -f {this_feather} {this_S} "
                 f"-O {base}/{out}.h5 --in_group {group}/ -F sigma_{group}"
             )
@@ -186,10 +213,11 @@ def make_mosaic_jobs(base, region, lags,
             field_list = f"{field} cell_area"
 
             task += 1
+            names[task] = field
 
             cmd = (
                 f"make_mosaic.py {crop} -R {this_w} "
-                f"-d {base} -g {glob_str} -p {this_pad} -f {this_feather} {this_S} "
+                f"-d {tiles} -g {glob_str} -p {this_pad} -f {this_feather} {this_S} "
                 f"-O {base}/{out_dt}{lag}.h5 --in_group {field}/ -F {field_list}"
             )
             write_task(task, cmd,  mosaic_run, environment)
@@ -197,7 +225,7 @@ def make_mosaic_jobs(base, region, lags,
             if compute_sigma:
                 sigma_field = f"sigma_{group_dt}{lag}"
                 cmd2 = (
-                    f"make_mosaic.py {crop} {this_w} -d {base} "
+                    f"make_mosaic.py {crop} {this_w} -d {tiles} "
                     f"-g 'prelim/*.h5' -p {this_pad} -f {this_feather} {this_S} "
                     f"-O {base}/{out_dt}{lag}.h5 --in_group {field}/ -F {sigma_field}"
                 )
@@ -207,9 +235,10 @@ def make_mosaic_jobs(base, region, lags,
     field = "dz"
 
     task += 1
+    names[task] = 'dz'
     cmd = (
         f"make_mosaic.py {crop} -R -w "
-        f"-d {base} -g {glob_str} -p {pad} -f {feather} "
+        f"-d {tiles} -g {glob_str} -p {pad} -f {feather} "
         f"-O {base}/dz.h5 --in_group dz/ "
         f"-F count misfit_rms misfit_scaled_rms mask cell_area {field}"
     )
@@ -217,7 +246,7 @@ def make_mosaic_jobs(base, region, lags,
 
     if compute_sigma:
         cmd2 = (
-            f"make_mosaic.py {crop} -w -d {base} "
+            f"make_mosaic.py {crop} -w -d {tiles} "
             f"-g 'prelim/*.h5' -p {pad} -f {feather} "
             f"-O {base}/dz.h5 --in_group dz/ -F sigma_dz"
         )
@@ -225,7 +254,7 @@ def make_mosaic_jobs(base, region, lags,
 
     if compute_SMB:
         cmd3 = (
-            f"make_mosaic.py {crop} -w -d {base} "
+            f"make_mosaic.py {crop} -w -d {tiles} "
             f"-g 'prelim/*.h5' -p {pad} -f {feather} "
             f"-O {base}/dz.h5 --in_group dz/ -F SMB_a FAC"
         )
@@ -237,10 +266,11 @@ def make_mosaic_jobs(base, region, lags,
 
         task += 1
         field = f"dzdt{lag}"
+        names[task] = field
 
         cmd = (
             f"make_mosaic.py {crop} -R -w "
-            f"-d {base} -g {glob_str} -p {pad} -f {feather} "
+            f"-d {tiles} -g {glob_str} -p {pad} -f {feather} "
             f"-O {base}/dzdt{lag}.h5 --in_group dzdt{lag}/ "
             f"-F {field} cell_area"
         )
@@ -248,12 +278,18 @@ def make_mosaic_jobs(base, region, lags,
 
         if compute_sigma:
             cmd2 = (
-                f"make_mosaic.py {crop} -w -d {base} "
+                f"make_mosaic.py {crop} -w -d {tiles} "
                 f"-g 'prelim/*.h5' -p {pad} -f {feather} "
                 f"-O {base}/dzdt{lag}.h5 --in_group dzdt{lag}/ "
                 f"-F sigma_{field}"
             )
             write_task(task, cmd2, mosaic_run, environment, append=True)
+
+    if only is not None:
+        if only not in names.values():
+            raise SystemExit(f"make_mosaic_jobs.py: no group {only!r}; "
+                             f"the groups are {', '.join(names.values())}")
+        return mosaic_run, 1
 
     return mosaic_run, task
 
@@ -277,7 +313,10 @@ def main():
     parser.add_argument('--run_name', type=str, default=None,
                         help='name of the directory to create for the slurm run; defaults to mosaic_run_<region>')
     parser.add_argument('--num_tasks', type=int, default=4, help='number of slurm tasks to assign')
-    parser.add_argument('--environment','-e', type=str, default='IS2', help='environment to activate for each job')
+    parser.add_argument('--environment','-e', type=str, default='IS2', help="environment to activate for each job; '' for none")
+    parser.add_argument('--tiles_base', type=str, help='where the solve tiles are read from (<tiles_base>/matched/, <tiles_base>/prelim/), if not --base_dir; may be s3://')
+    parser.add_argument('--group', type=str, help='write the task for this one group only, as task_1 (z0, dz, dzdt_lag4, avg_dz_40000m, ...)')
+    parser.add_argument('--workers', '-j', type=int, default=1, help='make_mosaic.py -j: processes reading each command\'s tiles')
     args, unknown = parser.parse_known_args()
 
     # get the time interval:
@@ -307,7 +346,10 @@ def main():
                                          lags,
                                          skip_z0=skip_z0,
                                          environment=args.environment,
-                                         run_name=args.run_name)
+                                         run_name=args.run_name,
+                                         tiles_base=args.tiles_base,
+                                         group=args.group,
+                                         workers=args.workers)
     ATL1415.make_slurm_file(os.path.join(mosaic_run, 'slurm_run.sh'),
                 subs={'JOB_NAME': f'mosaic_{args.region}',
                       'TIME': "04:00:00",
