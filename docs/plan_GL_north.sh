@@ -336,12 +336,50 @@ cd $repo
 #   APPENDED --solver=cholmod by hand, as the quarterly GL args were
 #   (2026-09-25).  CHOICE MINE, flagged to Ben: monthly on cholmod is
 #   untested for accuracy (C4 was quarterly); reversible by re-running on QR.
-# NM2. [ADE] QUEUED (driver 2).  Compare ATL14 with rel005 over the north; REPORT ONLY.
+# NM2. [ADE] DONE 2026-10-01 (result below).  Compare ATL14 with rel005 over the north; REPORT ONLY.
 #   python ~/ATL14_processing/session_tools_2026-09-30/compare_rel005.py \
 #       $region_dir/ATL14_GL_0332_100m_006_02.nc $region_dir/ATL15_GL_0332_3mo_1km_006_02.nc \
 #       --region GL --ymin=-1540000 > ${L}_rel005_compare.txt
 #   (script VALIDATED: reproduces T8 I9g6 for IS exactly; rel005 GL =
 #   ATL14_GL_0329_100m_005_02.nc + ATL15_GL_0329_01km_005_02.nc, CMR.)
+#   DONE 2026-10-01, on the DPS-made products (plan_dps_mosaic.sh D7), read
+#   through the mount at .../rel006_0332_testing/north/GL.  The script above
+#   was OOM-killed at the ADE's 16 GB; run instead with
+#   ~/ATL14_processing/session_tools_2026-10-01/compare_rel005_lowmem.py
+#   (float32 grids, views not copies; its IS output is IDENTICAL to the
+#   original's).  Output: ${L}_rel005_compare.txt.  STATEMENTS:
+#     ATL14, (9301, 14601) common cells, y >= -1540 km:
+#       gaps: 27,586 rel005 cells have no new value (0.04%); 453,916 the
+#         reverse; 529 of 646,573 1 km blocks lose over half their cells.
+#       h new - rel005, N = 62,563,420: median +0.000 m, p5/p95 -0.80/+0.82
+#         m; |d| > 10 m on 615,099 (0.98%), max 1972.6 m.  Of those, 573,547
+#         have data_count 0 (1.17% of the no-data cells); where data_count
+#         > 0, 41,552 of 13,621,763 (0.31%).  Median h_sigma (new) on the
+#         > 10 m cells 5.9 m, elsewhere 0.1 m; 264,404 exceed 3x the
+#         combined sigma.
+#     ATL15 1 km, 29 common epochs, (931, 1461) common cells:
+#       gaps: 312 cells with a rel005 value and no new one at some common
+#         epoch (0.05%).
+#       delta_h new - rel005, N = 18,082,003 cell-epochs: median +0.000 m,
+#         p5/p95 -0.08/+0.07 m; |d| > 10 m on 824, max 54.0 m.
+#   FOR IS (T8) the same figures were: ATL14 |d| > 10 m on 3.8%, 99% of
+#   them in data_count 0 cells.  BEN'S BAR (no > 10 m errors, no major
+#   gaps) is his to apply: REPORT ONLY.
+#   ALSO 2026-10-01 (Ben asked for two maps; script
+#   session_tools_2026-10-01/gl_north_maps.py, output
+#   ~/ATL14_processing/runs/GL_0332_north_D7_maps/ with counts.txt):
+#     ATL15 delta_h finite -> not finite along time: 1 km, 850 of 632,441
+#       cells (735 not finite at the last epoch, 115 finite again; 482 with
+#       more than one such step); 10 km, 17 of 7,304.  All at the margins.
+#       The finite pattern of delta_h equals that of ice_area in every
+#       cell-epoch.  Largest steps (1 km): 385 cells lost at 2021.25 and
+#       296 regained at 2021.50; 288 lost at 2022.00; 174 at 2020.25.
+#       Median ice_area in the epoch before a loss: 0.66 of a cell.
+#     ATL14 h below the EGM2008 geoid (geoid_h, bilinear): 3,247 of
+#       63,510,449 cells (0.005%), in 403 1 km blocks, all at the margins;
+#       2,105 by more than 5 m, 1,468 by more than 20 m, 646 by more than
+#       100 m, lowest -846 m.  h_sigma at each block's lowest cell: median
+#       15.2 m, <= 5 m in 79 of the 403 blocks.
 # NM3. [ADE] TODO (QM-A).  Copy the ATL14 to the reference key; compose the
 #      monthly args:
 #   ref=<QM-A key>
