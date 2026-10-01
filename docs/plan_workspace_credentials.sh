@@ -3,8 +3,8 @@
 #
 # ############################################################################
 # ##  WRITTEN 2026-10-01.  TENTATIVE: nothing below has been coded or run. ##
-# ##  Open questions for Ben: QW1-QW4, in the next section of THIS file    ##
-# ##  (docs/plan_workspace_credentials.sh).                                ##
+# ##  QW1-QW4 ANSWERED by Ben 2026-10-01 (all as recommended): design A.  ##
+# ##  Coding (W1) waits for the GL north monthly run to finish.            ##
 # ############################################################################
 #
 # Status tags per step: TODO / DONE / BLOCKED.  DECIDED = Ben said so;
@@ -74,7 +74,7 @@
 #        get_s3fs(daac=None), as it does for NSIDC) needs changes in pC,
 #        run.sh and s3_tiles.py, does not cover GDAL, and only pays off if
 #        keys must be refreshed mid-job, which the ASSUMPTION rules out.
-#        QW1 answer:
+#        QW1 answer (Ben 2026-10-01): as recommended.  DECIDED.
 #
 #   QW2  What if the broker call fails on a worker?
 #        STATEMENT (triaged logs, 2026-10-01, GL north monthly, 556 jobs
@@ -89,7 +89,7 @@
 #        no fallback to the worker role, which would hide the failure until
 #        the role is removed (memory: fail loudly).  The job is then
 #        resubmitted like any other failure.
-#        QW2 answer:
+#        QW2 answer (Ben 2026-10-01): as recommended.  DECIDED.
 #
 #   QW3  Turn the worker role OFF inside our jobs now?
 #        RECOMMENDATION: yes -- export AWS_EC2_METADATA_DISABLED=true in
@@ -98,7 +98,7 @@
 #        on the day MAAP removes the role; and W6 really tests the new
 #        route.  The AWS_METADATA_SERVICE_* lines of 0b29127 then do nothing
 #        and are removed.
-#        QW3 answer:
+#        QW3 answer (Ben 2026-10-01): as recommended.  DECIDED.
 #
 #   QW4  The ADE side (not jobs): scripts/maap/*.py, the howtos' `aws s3`
 #        lines and the ~/my-private-bucket mount use the ADE's own role
@@ -106,10 +106,10 @@
 #        about the WORKER role.  RECOMMENDATION: leave the ADE side alone;
 #        ask the admin whether the ADE role is also going away.  (For you
 #        to ask, if you want it settled.)
-#        QW4 answer:
+#        QW4 answer (Ben 2026-10-01): as recommended.  DECIDED.
 #
 # ===========================================================================
-# DESIGN A (RECOMMENDATION; depends on QW1-QW3)
+# DESIGN A (DECIDED, Ben 2026-10-01, QW1-QW3)
 # ===========================================================================
 #   scripts/workspace_credentials.py   NEW.  Calls
 #     MAAP().aws.workspace_bucket_credentials() (retry per QW2), checks the
@@ -147,7 +147,7 @@
 # ===========================================================================
 # STEPS
 # ===========================================================================
-# W0. [Ben] TODO.  Answer QW1-QW4.
+# W0. [Ben] DONE 2026-10-01.  QW1-QW4 answered: all as recommended.
 #
 # W1. [code] TODO.  scripts/workspace_credentials.py + tests
 #     (tests/test_workspace_credentials.py, MAAP mocked): the export lines;
