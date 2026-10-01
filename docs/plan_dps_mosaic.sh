@@ -414,6 +414,9 @@
 #           2.3e-10 m^2) -- not bit-identical.  CAUSE: not measured; the
 #           order tiles enter the weighted sum is the candidate (S3 listing
 #           sorted vs local glob).
+#           DECIDED (Ben 2026-10-01): these differences are not important;
+#           the cause is not pursued.  Gates below read "identical apart
+#           from rounding in the weighted fields".
 #       as planned: GATE every mosaic and every netCDF identical to the
 #       ADE's (netCDFs apart from uuid/creationDate).
 #     AA AND GL AGAINST THE TWO IS FAULTS (measured 2026-10-01, from
@@ -453,14 +456,55 @@
 #     a --tiles_base option on make_mosaic_jobs.py (default: base), so the
 #     ADE/discover behaviour is unchanged.
 #
-# D4. [Ben] TODO.  Register from my checkout (clean, pushed); then
+# D4. [Ben] DONE 2026-10-01.  Register from my checkout (clean, pushed); then
 #     scripts/maap/check_build_id.py -> MATCH (memory: only MATCH proves the
 #     deploy).
+#     RESULT: 6663090 pushed and registered; check_build_id job a4476420
+#     VERDICT MATCH (image, live git and CWL all 6663090; built 15:49:40Z;
+#     maap_pgt=set).
 #
-# D5. [DPS] TODO.  Smoke: ONE mosaic task (avg_dz_40000m) for
-#     IS (direct path, D3b: no mosaic200 jobs for IS).  GATE: successful; the .h5 is at the IS prefix; identical to the
-#     ADE file in ~/ATL14_processing/rel006/north/IS (same tiles, same code
-#     path apart from the listing).
+# D5. [DPS] FAILED ONCE 2026-10-01, open.  Smoke: ONE mosaic task for
+#     IS (direct path, D3b: no mosaic200 jobs for IS).  GATE: successful; the
+#     .h5 is at the out_prefix; identical to the ADE file in
+#     ~/ATL14_processing/rel006/north/IS apart from rounding in the weighted
+#     fields (same tiles, same code path apart from the listing).
+#     CHANGED from the plan (Ben 2026-10-01: z0 is fine as the smoke): task
+#     z0, not avg_dz_40000m -- the submitter can only cut its list with
+#     --limit, and z0 is first; out_prefix
+#     .../ATL14_processing/rel006_0332_testing/north/IS (D6's test prefix),
+#     not IS's canonical prefix.  The ADE reference z0.h5 was made WITH -w
+#     (runs/IS_0332_cholmod_w_mosaic, 2026-09-25), so no seam differences
+#     are expected.
+#     RUN 1: job 3acdb8cc (IS_mosaic_smoke_z0, 16gb, t3a.xlarge
+#     i-06407490ca8fee8a7, build 6663090), ledger
+#     maap_ledgers/IS_0332_mosaic_smoke_jobs.csv.  FAILED at 97 s; nothing
+#     uploaded (test prefix still empty).
+#     STATEMENT (triaged_job _stderr.txt): botocore NoCredentialsError,
+#       "Unable to locate credentials", raised in pointCollection
+#       glob_remote at the start of ONE make_mosaic.py call, 74 s into the
+#       task (26 s CPU).  Earlier in the SAME job the same default
+#       credential chain worked twice (args file fetch; s3_tiles get_glob
+#       for bounds.txt).
+#     STATEMENT: the container gets no AWS variables or credential files
+#       (_docker_params.json), so the chain ends at the instance metadata
+#       service; botocore's default for it is 1 attempt, 1 s timeout
+#       (botocore/utils.py), and aiobotocore reads
+#       metadata_service_num_attempts / _timeout from the environment.
+#     INFERRED (not measured): one metadata lookup timed out or was
+#       refused.  The z0 task starts 7 make_mosaic.py processes one after
+#       another, each with read workers, and each process looks its
+#       credentials up afresh; 74 s is most of the ~95 s the task took
+#       locally, so a LATER call failed, not the first.  Which one is not
+#       known: the task prints nothing per call.
+#     PRECEDENT: plan_GL_north.sh N3, E-40_N-760, NoCredentialsError at
+#       8.6 s, 1 job of 555, undiagnosed; its retry succeeded.
+#     QUESTION QD9 (Ben): (a) resubmit the same job unchanged -- 1 job, no
+#       rebuild; tells intermittent from systematic.  (b) in run.sh export
+#       AWS_METADATA_SERVICE_NUM_ATTEMPTS=5 and
+#       AWS_METADATA_SERVICE_TIMEOUT=5 for every step, and echo each
+#       mosaic command before it runs -- needs a rebuild + register.
+#       RECOMMENDATION: (a) now; (b) before D6/D7 whatever (a) shows, since
+#       41 mosaic jobs x several processes each multiplies the exposure.
 #
 # D6. [DPS] TODO.  IS end to end: 41 mosaic jobs, then ATL14 and ATL15 nc
 #     jobs, to a TEST prefix (never over IS's canonical products) --
