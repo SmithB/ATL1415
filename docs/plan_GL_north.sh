@@ -378,3 +378,17 @@ cd $repo
 # the GL rows of ~/ATL14_processing/maap_resource_estimate.txt (prelim
 # measured at 557, matched measured instead of scaled from IS) -- Ben
 # reviews before anything is sent.
+# MOSAIC AND NETCDF, MEASURED 2026-10-01 on DPS (plan_dps_mosaic.sh D7; all
+# on maap-dps-worker-16gb, t3/t3a.xlarge; collect files
+# maap_ledgers/GL_0332_north_D7_*_collect.txt).  GL north = 557 tiles:
+#   200 km tiles  32 jobs, 186-818 s each (median ~590 s), peak 0.80 GiB;
+#                 4.9 job-hours for the 32 that succeeded, plus 1.9
+#                 job-hours lost in 14 jobs that failed on credentials
+#                 (before the run.sh retry settings)
+#   mosaics       41 jobs, 33-504 s (median 60 s; z0 504 s), peak 1.65 GiB
+#                 (z0); 0.87 job-hours
+#   netCDF        ATL14 1155 s, peak 4.37 GiB; ATL15 3752 s, peak 2.48 GiB;
+#                 1.36 job-hours
+#   output        11.2 GB at the out_prefix (1358 objects), of which the
+#                 five netCDFs are 1.28 GB
+# The estimate file is NOT yet updated with these.

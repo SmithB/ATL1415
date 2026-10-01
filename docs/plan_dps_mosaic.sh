@@ -566,7 +566,7 @@
 #         of 555 GL north prelim (plan_GL_north.sh N3).  All three passed
 #         on resubmit.
 #
-# D7. [DPS] IN PROGRESS 2026-10-01 (Ben: go).  GL north: 32 mosaic200 jobs,
+# D7. [DPS] DONE 2026-10-01 (Ben: go; results below).  GL north: 32 mosaic200 jobs,
 #     41 mosaic jobs, ATL14 + ATL15 nc jobs (to
 #     out_prefix .../ATL14_processing/rel006_0332_testing/north/GL/, AD4).  ADE checks read through the mount (QD6):
 #     check_mosaic_outputs.py --values; quick plot of h and delta_h (N7).
@@ -596,6 +596,48 @@
 #       is the failure count of the remaining D7 jobs on the new build.
 #       NEEDS: push, Ben registers when nothing is in flight,
 #       check_build_id MATCH.
+#     RETRY 1 RESULT (old build 6663090): 8 of 11 successful (356-804 s);
+#       3 failed AGAIN, NoCredentialsError, 2 errors in each log
+#       (-300000_-900000, 500000_-700000, 700000_-1300000).  Not resubmitted
+#       on the old build.  OLD-BUILD TALLY: 14 of 43 mosaic200 jobs failed,
+#       28 failed lookups, 1.9 job-hours lost.
+#     NEW BUILD: 0b29127 pushed, Ben registered, check_build_id job
+#       8815b276 VERDICT MATCH (built 19:17:55Z, maap_pgt=set).
+#     RETRY 2 (new build), the 3 tasks, 19:31Z: 3/3 successful (220-448 s,
+#       peak 0.63 GiB).  32 of 32 200 km z0 tiles at the out_prefix.
+#     STAGE 2 (mosaic), 41 jobs 19:46Z, done by 20:01Z: 41/41 successful
+#       first time; 33-504 s, median 60 s (z0 504 s, dz 255 s); peak RSS
+#       1.65 GiB (z0; the D0 figure for full-tile z0 was 4.5 GiB).
+#     NC, 2 jobs 20:01Z: both successful first time.  ATL14 1155 s (step
+#       1051 s), peak 4.37 GiB; ATL15 3752 s (step 3593 s, steal 221 s),
+#       peak 2.48 GiB.  Five netCDFs at the out_prefix (ATL14 582 MB,
+#       ATL15 1 km 687 MB, 10/20/40 km 7.2/2.9/1.8 MB).  Out_prefix in all:
+#       1358 objects, 11.2 GB.
+#     THE RETRY SETTINGS, MEASURED: 46 jobs on 0b29127 (3 mosaic200, 41
+#       mosaic, 2 nc), 0 NoCredentialsError.  ESTIMATE: ~400 process starts
+#       (3 x ~85, plus the 43 others at a few each); at the old 0.8% that
+#       is ~3 failures expected, and 0 has a few-percent chance.  Consistent
+#       with the settings working; one run, not proof.  Keep counting.
+#     ADE CHECKS (QD6, through the mount ~/my-private-bucket/...):
+#       check_mosaic_outputs.py --values on a run dir rebuilt on the ADE
+#         with -b <mount out_prefix>: 41 output files, 131 fields,
+#         PROBLEMS: 0 (8 min 17 s; output saved as
+#         maap_ledgers/GL_0332_north_D7_check_mosaic.txt).  z0 is
+#         (9401, 14601), 66.6% finite.
+#       quick plot ~/ATL14_processing/runs/GL_0332_north_D7_quicklook.png:
+#         ATL14 h and ATL15 10 km delta_h (last minus first epoch) are
+#         continuous over the north, no seams or blocks at 200 km or 40 km
+#         spacing visible at this scale; thinning at the margins.
+#       STATEMENTS from the same read, about the products, not the DPS
+#         path: ATL14 h on a 1 km sample is finite in 634,724 cells, 9 of
+#         them below 0 m (lowest -272.9 m), each with h_sigma 27-1353 m,
+#         all at the margins; ATL15 10 km delta_h has 31 epochs, 7287-7304
+#         finite cells per epoch (7304 in the first five, 7287-7291 from
+#         the 14th on; which cells, not looked at);
+#         max |delta_h| 37.8 m.  NOT compared against an ADE-made GL north
+#         product: none exists (the ADE run was dropped for the home
+#         quota).  The rel005 comparison is D8 / plan_GL_north NM2.
+#     Times and memory copied to plan_GL_north.sh N8.
 #
 # D8. [ADE] TODO.  Resume plan_GL_north.sh at NM2 (compare, report only),
 #     NM3 (copy the nc S3 -> the QM-A side key; aws s3 cp, S3 to S3), then
