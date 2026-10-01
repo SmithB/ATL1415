@@ -321,7 +321,12 @@
 #       <tile_prefix>/prelim (D2, read in place), writes the .nc files,
 #       uploads them to <out_prefix>.
 #   Script changes (each with tests):
-#     D3a-1 make_200km_tiles.py: --tiles_base (where the tiles are read, -d,
+#     D3a-1 DONE 2026-10-01.  Real data: GL north = 32 200 km tiles (from the
+#           S3 listing); task for (100000, -900000) = 82 make_mosaic lines;
+#           its z0 line (6 fields, ~36 tiles read in place) 63 s, 0.77 GiB;
+#           the 200 km z0 tile is BIT-IDENTICAL to the same 2001 x 2001 square
+#           of D0's full-region z0 mosaic.
+#     D3a-1 as planned: make_200km_tiles.py: --tiles_base (where the tiles are read, -d,
 #           and where the centers are listed from; may be s3://; default
 #           region_dir) and --center X Y (write only that tile's task).
 #     D3a-2 make_200km_to_mosaic_jobs.py: callable per group (--group), reads

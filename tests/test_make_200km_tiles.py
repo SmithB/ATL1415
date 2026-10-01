@@ -111,3 +111,68 @@ def test_without_a_list_the_centers_are_still_derived_from_prelim(tmp_path):
     xyc = key(m2.make_200km_tiles(str(region)))
     assert xyc == {(500000., 100000.), (-700000., -1300000.)}
     assert (region / '200km_tile_list.txt').exists()
+
+
+# --- DPS: tiles read in place, one 200 km tile per job (plan_dps_mosaic D3a-1) --
+
+import sys
+
+import fsspec
+import pointCollection as pc
+
+PRELIM = ['E420_N20.h5', 'E460_N20.h5', 'E-620_N-1340.h5']
+
+
+@pytest.fixture
+def remote_region(monkeypatch):
+    """the prelim tile NAMES under a memory:// region prefix (listing only)"""
+    fs = fsspec.filesystem('memory')
+    monkeypatch.setattr(pc.io_utils, 'get_s3fs', lambda daac=None, **kw: fs)
+    prefix = 'memory://bucket/rel006/south/AA'
+    for name in PRELIM:
+        fs.pipe(f'{prefix}/prelim/{name}', b'')
+    yield prefix
+    fs.rm('memory://bucket', recursive=True)
+
+
+def test_centers_from_a_remote_tiles_base(tmp_path, remote_region):
+    region = tmp_path / 'AA'
+    region.mkdir()
+    xyc = key(m2.make_200km_tiles(str(region), tiles_base=remote_region))
+    assert xyc == {(500000., 100000.), (-700000., -1300000.)}
+    # the cache is written locally, beside the outputs
+    assert (region / '200km_tile_list.txt').exists()
+
+
+def run_main(monkeypatch, tmp_path, argv):
+    # the slurm file is not what these test, and its template lookup
+    # (importlib.resources on the ATL1415 package) fails once
+    # test_setup_region.py has put a stub ATL1415 in sys.modules
+    monkeypatch.setattr(m2.ATL1415, 'make_slurm_file', lambda *args, **kwargs: None)
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(sys, 'argv', ['make_200km_tiles.py'] + argv)
+    m2.main()
+    return sorted((tmp_path / 'tile_run_AA' / 'queue').iterdir())
+
+
+def test_one_center_one_task_reading_from_tiles_base(tmp_path, monkeypatch, remote_region):
+    region = tmp_path / 'AA'
+    region.mkdir()
+    tasks = run_main(monkeypatch, tmp_path, [str(region), 'AA', '--dzdt_lags', '1,4',
+                                             '--tiles_base', remote_region, '--center', '500000', '100000'])
+    assert [t.name for t in tasks] == ['task_1']
+    lines = [ln for ln in tasks[0].read_text().splitlines() if ln.startswith('make_mosaic.py')]
+    assert lines and all(f'-d {remote_region} ' in ln for ln in lines)
+    # outputs stay local, under region_dir/200km_tiles, named by the tile's bounds
+    assert all(f'-O {region}/200km_tiles/' in ln for ln in lines)
+    assert all(ln.split(' -O ')[1].split()[0].endswith('400_600_0_200.h5') for ln in lines)
+    # the search window is the 200 km square plus 10 km
+    assert all('-r 390000.0 610000.0 -10000.0 210000.0' in ln for ln in lines)
+
+
+def test_a_center_not_in_the_region_is_refused(tmp_path, monkeypatch, remote_region):
+    region = tmp_path / 'AA'
+    region.mkdir()
+    with pytest.raises(SystemExit, match='not one of this region'):
+        run_main(monkeypatch, tmp_path, [str(region), 'AA', '--dzdt_lags', '1',
+                                         '--tiles_base', remote_region, '--center', '300000', '100000'])

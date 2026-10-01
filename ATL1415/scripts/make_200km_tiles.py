@@ -104,14 +104,20 @@ def select_200km_tiles(xyc, min_xy=None, max_xy=None):
     return keep
 
 
-def make_200km_tiles(region_dir, tile_W=200e3, tile_list_file=None):
+def make_200km_tiles(region_dir, tile_W=200e3, tile_list_file=None, tiles_base=None):
     """
     Find or build the list of 200km-tile centers for a region.
 
     Parameters
     ----------
     region_dir : str
-        directory containing the region's prelim tile output.
+        the region's (local) directory: the centers are cached here as
+        200km_tile_list.txt.
+    tiles_base : str, optional
+        where the region's prelim tiles are, if not region_dir -- e.g. the
+        s3:// region prefix a DPS job reads in place (docs/plan_dps_mosaic.sh
+        D3a).  The centers are derived from the tile names under
+        <tiles_base>/prelim/.
     tile_W : float, optional
         width of the tiles into which the small tiles are grouped, in meters.
         The default is 200e3.
@@ -140,9 +146,8 @@ def make_200km_tiles(region_dir, tile_W=200e3, tile_list_file=None):
             xyc=[ [*map(float, line.rstrip().split(' '))] for line in fh]
         return xyc
 
-    tile_files=[]
-    for sub in ['prelim']:
-        tile_files += glob.glob(os.path.join(region_dir, sub, 'E*N*.h5'))
+    from ATL1415.paths import list_tiles, join_path_or_uri
+    tile_files = list_tiles(join_path_or_uri(tiles_base or region_dir, 'prelim'), 'E*N*.h5')
 
     tile_list=[]
     for tile_name in tile_files:
@@ -182,6 +187,11 @@ def main():
     parser.add_argument('--tile_list_file', type=str, help="canonical list of 200km-tile centers, \"<x> <y>\" per line; overrides <region_dir>/200km_tile_list.txt")
     parser.add_argument('--min_xy', type=float, help="keep 200km tiles whose max(|x|,|y|) >= min_xy (the partition's own limit)")
     parser.add_argument('--max_xy', type=float, help="keep 200km tiles whose |x| and |y| are both <= max_xy (the partition's own limit)")
+    parser.add_argument('--tiles_base', type=str,
+                        help="where the region's tiles are read from, if not region_dir (may be s3://); "
+                        "region_dir then holds only the outputs")
+    parser.add_argument('--center', type=float, nargs=2, metavar=('X', 'Y'),
+                        help="write the task for this one 200 km tile (center, m) only -- one DPS job's worth")
     args, _ =parser.parse_known_args()
 
     region_dir=args.region_dir
@@ -224,12 +234,20 @@ def main():
                                     t_res = args.grid_spacing[2],
                                     skip_z0 = args.skip_z0)
 
-    xyc=make_200km_tiles(region_dir, tile_list_file=args.tile_list_file)
+    tiles_base = args.tiles_base or region_dir
+    xyc=make_200km_tiles(region_dir, tile_list_file=args.tile_list_file, tiles_base=args.tiles_base)
     n_all=len(xyc)
     xyc=select_200km_tiles(xyc, min_xy=args.min_xy, max_xy=args.max_xy)
     print(f"{len(xyc)} of {n_all} 200km tiles are inside min_xy={args.min_xy}, max_xy={args.max_xy}")
     if len(xyc) == 0:
         raise SystemExit("make_200km_tiles.py: no 200km tile is inside this partition's xy limits")
+    if args.center is not None:
+        # a center that is not one of the region's would mosaic an empty or
+        # misaligned square without complaint: refuse it
+        if list(args.center) not in [list(xy) for xy in xyc]:
+            raise SystemExit(f"make_200km_tiles.py: --center {args.center[0]:.0f} {args.center[1]:.0f} "
+                             f"is not one of this region's {len(xyc)} 200 km tile centers")
+        xyc = [list(args.center)]
 
     tile_dir_200km=os.path.join(region_dir,'200km_tiles')
     if not os.path.isdir(tile_dir_200km):
@@ -293,9 +311,9 @@ def main():
                 # marker so an early line's crash isn't masked by a later
                 # line's clean exit (see packable_job.txt's error_logs check)
                 rc_suffix = '; rc=$?; [ $rc -ne 0 ] && echo "##TASK_LINE_FAILED## rc=$rc"; (exit $rc)\n'
-                fh.write(f"make_mosaic.py -w -R -d {region_dir} -g '{step}/E*.h5' -r {search_bounds_str} -f {feather} -p {pad} -c {tile_bounds_str} -G {group} -F {non_sigma_fields[group]} -O {out_file} {spacing_str} {time_str}"+rc_suffix)
+                fh.write(f"make_mosaic.py -w -R -d {tiles_base} -g '{step}/E*.h5' -r {search_bounds_str} -f {feather} -p {pad} -c {tile_bounds_str} -G {group} -F {non_sigma_fields[group]} -O {out_file} {spacing_str} {time_str}"+rc_suffix)
                 if not args.skip_sigma:
-                    fh.write(f"make_mosaic.py -w  -d {region_dir} -g 'prelim/E*.h5' -r {search_bounds_str} -f {feather} -p {pad} -c {tile_bounds_str} -G {group} -F {sigma_fields[group]} -O {out_file} {spacing_str} {time_str}"+rc_suffix)
+                    fh.write(f"make_mosaic.py -w  -d {tiles_base} -g 'prelim/E*.h5' -r {search_bounds_str} -f {feather} -p {pad} -c {tile_bounds_str} -G {group} -F {sigma_fields[group]} -O {out_file} {spacing_str} {time_str}"+rc_suffix)
         st=os.stat(task_file)
         os.chmod(task_file, st.st_mode | stat.S_IEXEC)
 
