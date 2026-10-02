@@ -464,7 +464,7 @@ cd $repo
 #     check_field_sizes.py through the mount: expected dz [25, 25, 94],
 #     557 of 557 passed, 0 problems.  Nothing fetched to /home.
 
-# NM7. [DPS] IN PROGRESS 2026-10-02.  MONTHLY MATCHED, GL north, all at once.
+# NM7. [DPS] DONE 2026-10-02 (result below).  MONTHLY MATCHED, GL north, all at once.
 #   DECIDED (Ben 2026-10-02): "Run matched - see if the updates to the
 #   credential passing has reduced the failure rate.  Submit all jobs at
 #   once."  This revises NM6's "monthly matched ... NOT in scope".
@@ -486,6 +486,52 @@ cd $repo
 #      ledgers GL_0332_monthly_north_matched[_retryN]_jobs.csv.
 #   c. RECORD: first-round failures by class vs NM5; "h left at exit";
 #      time and memory; check_field_sizes --step matched through the mount.
+#   RESULT.  a. smoke ec4ee699: successful, 108 s, 4.31 GiB; tile on the
+#     bucket.  b. 556 POSTs in 61 s (03:13-03:14Z), none refused; 549
+#     running at once by 03:21Z; all terminal by 03:26Z.
+#       round 0  556 jobs: 521 successful, 35 failed (6.3%)
+#       round 1   35 jobs:  34 successful,  1 failed
+#       round 2    1 job:    1 successful
+#     ALL_DONE 04:07Z (31 min of the 54 is collect_jobs on 556 jobs).
+#     Successful jobs: 33-255 s, median 84 s; peak RSS median 3.7, max 4.64
+#     GiB; 12.4 job-hours; r5.xlarge and c5.4xlarge.  557 tiles, 2.46 GB;
+#     check_field_sizes --step matched: 557 of 557 passed.
+#   FAILURES BY CLASS (all 36 have triaged logs; file
+#     GL_0332_monthly_north_matched_failure_classes.txt + the _stderr.txt):
+#       round 0: 18 MAAP runner ConnectTimeout to api.maap-project.org
+#                   /api/environment/config, before our container
+#                17 OUR workspace-credentials step, 5 attempts each, then
+#                   exit 1 as designed:
+#                   16 HTTP 401 UNAUTHORIZED on every attempt -- in each of
+#                      these the runner's /app/get_maap_pgt_token.py had
+#                      first timed out on /api/members/ben_smith, and the
+#                      container was started anyway with a MAAP_PGT the
+#                      API does not accept.  A retry cannot fix that.
+#                    1 ConnectTimeout to the API on the last attempt
+#       round 1:  1 MAAP runner ConnectTimeout
+#       no logs: 0 (NM5: 95).  NSIDC broker: 0, and none possible (above).
+#       All 36 started 03:13-03:14Z (round 1's at 03:56Z).
+#   STATEMENT: first-round failures fell from 30% (NM5, 166 of 556) to 6.3%
+#     (35 of 556).
+#   WHAT THAT DOES AND DOES NOT SHOW:
+#     - 61 of NM5's 166 were NSIDC broker failures, which a matched job
+#       cannot have: not evidence about the pointCollection retry.
+#     - 95 of NM5's 166 left no logs, and none did here.  NOT KNOWN why;
+#       nothing we changed touches a job before its container starts.
+#     - Every failure left is a connect timeout to the MAAP API in the
+#       first minute after 556 jobs were submitted, in MAAP's runner or
+#       downstream of it.  Runner timeouts: 9 in NM5, 18 here.
+#     - The workspace-credentials call is a NEW dependence on the API for
+#       a matched job: under the worker role, the 17 jobs whose token was
+#       bad would have run.  That is the cost of the route MAAP asks for.
+#     - "h left at exit" is 12.0 in these 1-2 minute jobs: no information
+#       yet on the lifetime under a long job (plan_workspace_credentials W6).
+#   FOR MAAP (Ben to pass on if he wants): when get_maap_pgt_token.py
+#     fails, the runner should retry or fail the job, not start the
+#     container with a token the API rejects; and the API's connect
+#     timeouts in the first minute of a large submission are the root of
+#     every failure in this run.  Job IDs and triaged prefixes: the
+#     failure_classes file above.
 
 # ===========================================================================
 # N8. [ADE] DRAFT WRITTEN 2026-10-01, AWAITS BEN'S REVIEW.  Numbers for MAAP.

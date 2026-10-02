@@ -240,11 +240,18 @@
 #     the GDAL masks, NSIDC alongside, tile and product get/put, and the
 #     in-place mosaic reads.
 #
-# W6. [DPS] TODO.  The lifetime under a real run: the next fan-out that is
+# W6. [DPS] PARTLY DONE 2026-10-02 (first fan-out; long jobs still to come).  The lifetime under a real run: the next fan-out that is
 #     due anyway (not a run made for this).  RECORD min "h left at exit"
 #     over all jobs, and broker-call failures by cause.  GATE for the
 #     ASSUMPTION: no job ends with less than 1 h left; otherwise reopen
 #     QW1 (refresh, design B).
+#     FIRST FAN-OUT: GL north monthly matched, 557 jobs of 1-4 minutes
+#     (plan_GL_north.sh NM7): 12.0 h left at exit, so nothing learned about
+#     long jobs yet.  Broker-call failures: 17 of 556 in the first round --
+#     16 HTTP 401 after MAAP's runner failed to get the job's token, 1
+#     connect timeout; the 5 attempts did not help the 401s.  The longest
+#     job type so far (GL north ATL15 netCDF, ~1 h) has not run on this
+#     build.
 #
 # W7. [docs] TODO.  howto_MAAP_ogc.sh (credentials section),
 #     Transition_to_maap.md, run.sh header; ask the admin the removal date
