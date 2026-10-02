@@ -644,6 +644,57 @@
 #     NM4-NM6 as written, minus every fetch.  The two NM drivers are
 #     superseded; a new driver, if any, only submits and waits.
 #
+# D6m. [DPS] DONE 2026-10-02, GATE PASSES (result below the step; Ben: "Run
+#     IS monthly mosaic -> nc steps").  D6 again for the IS MONTHLY product: the first monthly
+#     mosaic + netCDF made on DPS.  Deployed build e6d7051, queue 16gb.
+#       tile_prefix .../ATL14_processing/rel006/north_monthly/IS  (28 prelim
+#         + 28 matched tiles and their lists, from 2026-09-25)
+#       args        .../ATL1415/run_args/rel006/north_monthly/IS/input_args_IS.txt
+#         (same as the ADE's copy)
+#       out_prefix  .../ATL14_processing/rel006_0332_testing/north_monthly/IS
+#         (empty before this step).  MY CHOICE, as D6: a test prefix, because
+#         the canonical monthly prefix holds the ADE-made netCDFs.
+#     1. --step mosaic: 44 jobs (dry run 2026-10-02: dz, 10 dzdt lags
+#        1 3 6 12 24 36 48 60 72 84, 3 avg_dz, 30 avg_dzdt; NO z0 -- grid
+#        1250 m > 1000 m), the howto step 16 list.  Ledger
+#        maap_ledgers/IS_0332_monthly_D6m_mosaic_jobs.csv.  Failed tasks
+#        are resubmitted with --task and a new ledger, cause recorded.
+#     2. when 44 .h5 are at out_prefix: --step nc --task ATL15 ONLY (howto
+#        step 17: the monthly product has no ATL14).  Ledger
+#        ..._D6m_nc_jobs.csv.
+#     GATE, as D6, vs the ADE's IS monthly products of 2026-09-25
+#     (~/ATL14_processing/rel006/north_monthly/IS, 44 mosaics + 4 netCDFs
+#     ATL15_IS_0332_1mo_{2.5,10,20,40}km_006_02.nc): every mosaic the same
+#     datasets, shapes and NaN pattern, identical or rounding only in the
+#     weighted files (dz, dzdt_lagN); netCDF variables identical, attributes
+#     differing only in dates and uuids (list them, don't assume).  Read the
+#     DPS products from S3 into the session scratchpad, not /home.  Record
+#     per-job time and peak memory.
+#     RESULT 2026-10-02, all on build e6d7051, queue 16gb (t3/t3a.xlarge);
+#     ledgers and collect output in ~/ATL14_processing/maap_ledgers/
+#     IS_0332_monthly_D6m_{mosaic,nc}_{jobs.csv,collect.txt}; comparison in
+#     IS_0332_monthly_D6m_compare.txt (script
+#     ~/ATL14_processing/session_tools_2026-10-02/compare_products.py).
+#       MOSAIC: 44 jobs submitted 15:58-15:59Z, all finished by 16:07Z, 44
+#         successful first time, no resubmits.  Job time 41-85 s, median
+#         49 s (2265 job-seconds in all); peak RSS 0.15-0.26 GiB (dz).
+#       NC: ATL15 submitted 16:10Z, successful first time: 116 s (step
+#         80 s, steal 2.8 s), peak 0.48 GiB.
+#       GATE PASSES, vs the ADE's IS monthly products of 2026-09-25:
+#         mosaics, 44 files, 268 datasets: same datasets and shapes, ALL
+#           268 identical -- the weighted files (dz, dzdt_lagN) too, where
+#           the quarterly D6 differed at rounding.  Why they agree exactly
+#           here was not looked into.
+#         netCDFs, 4 files: same byte sizes as the ADE's; every dataset
+#           identical (2.5 km 99/99, 10/20/40 km 96/96; counts include
+#           coordinate/metadata datasets); attributes differ ONLY in
+#           date_created, history, identifier_file_uuid, and creationDate
+#           and uuid (HDF5 object-reference attributes DIMENSION_LIST /
+#           REFERENCE_LIST not compared: per-file handles).
+#       FAILURE DATA: 0 of 45 jobs failed.
+#     NOT DONE: the products are at the TEST prefix only; nothing was
+#     published or copied to the canonical monthly prefix.
+#
 # D9. [docs] TODO.  Transition_to_maap.md (Q4/Q18 answered: DPS),
 #     run.sh header, howto_MAAP_*.sh: drop every `aws s3 sync ... prelim/`
 #     into /home and every fetch_tiles.py step; point checks at the mount.
