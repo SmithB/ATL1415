@@ -510,7 +510,13 @@ cd $repo
 #                    1 ConnectTimeout to the API on the last attempt
 #       round 1:  1 MAAP runner ConnectTimeout
 #       no logs: 0 (NM5: 95).  NSIDC broker: 0, and none possible (above).
-#       All 36 started 03:13-03:14Z (round 1's at 03:56Z).
+#       WHEN (corrected 2026-10-02, from each job's _job.json; data in
+#       maap_ledgers/GL_0332_monthly_north_matched_{failed_jobs,start_times}.json):
+#       round 0's 35 were submitted 03:13-03:14Z, but their runner commands
+#       started 03:20:35-03:21:53Z, about 7 minutes later, each on a
+#       different worker instance.  552 of the 556 jobs started their
+#       runner command in the same 96 s (03:20:17-03:21:53Z).  Round 1's
+#       failure: submitted 03:56:55Z, runner command started 04:00:16Z.
 #   STATEMENT: first-round failures fell from 30% (NM5, 166 of 556) to 6.3%
 #     (35 of 556).
 #   WHAT THAT DOES AND DOES NOT SHOW:
@@ -518,8 +524,9 @@ cd $repo
 #       cannot have: not evidence about the pointCollection retry.
 #     - 95 of NM5's 166 left no logs, and none did here.  NOT KNOWN why;
 #       nothing we changed touches a job before its container starts.
-#     - Every failure left is a connect timeout to the MAAP API in the
-#       first minute after 556 jobs were submitted, in MAAP's runner or
+#     - Every failure left is a connect timeout to the MAAP API as the
+#       workers started their jobs together (7 minutes after the 556 were
+#       submitted, not during the submission), in MAAP's runner or
 #       downstream of it.  Runner timeouts: 9 in NM5, 18 here.
 #     - The workspace-credentials call is a NEW dependence on the API for
 #       a matched job: under the worker role, the 17 jobs whose token was
@@ -529,12 +536,12 @@ cd $repo
 #   FOR MAAP (Ben to pass on if he wants): when get_maap_pgt_token.py
 #     fails, the runner should retry or fail the job, not start the
 #     container with a token the API rejects; and the API's connect
-#     timeouts in the first minute of a large submission are the root of
-#     every failure in this run.  Job IDs and triaged prefixes: the
+#     timeouts in the ~96 s when the jobs of a large submission start
+#     together are the root of every failure in this run.  Job IDs and triaged prefixes: the
 #     failure_classes file above.
 
 # ===========================================================================
-# N8. [ADE] DRAFT WRITTEN 2026-10-01, AWAITS BEN'S REVIEW.  Numbers for MAAP.
+# N8. [ADE] DONE 2026-10-02 (record at the end of the step).  Numbers for MAAP.
 # ===========================================================================
 # From the collect files: per-job time, peak memory, instance mix, queue
 # wait, failures; ADE time for N4/N5 passes; mosaic and netCDF time/memory.  Replace
@@ -564,3 +571,11 @@ cd $repo
 # x 1,483/557 -- an ASSUMPTION that the north is representative.
 # NOT DONE: monthly matched for GL has never been run (out of scope, NM6);
 # its row stays an estimate.  Ben reviews before anything is sent.
+# DONE 2026-10-02.  Ben: "Update to the new numbers (the old numbers and
+# the circumstances for the change are not relevant)."  The estimate is
+# rewritten as a statement of the current numbers only: no [GL north]
+# marks, no "was" figures, no HISTORY section, no account of the code
+# changes.  GL monthly matched is now measured (NM7), and the IS monthly
+# mosaic + netCDF jobs are in (plan_dps_mosaic.sh D6m).  The draft it
+# replaces is kept as maap_resource_estimate_2026-10-01_draft.txt.  Ben is
+# handling the contact with the MAAP admins about the failed jobs himself.
