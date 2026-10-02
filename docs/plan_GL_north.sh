@@ -225,7 +225,7 @@ nohup scripts/maap/submit_MAAP_jobs.py --tile_list ${L}_tile_list.txt \
 
 
 # ===========================================================================
-# N6. [ADE] TODO.  Mosaic, timed.
+# N6. [ADE] SUPERSEDED -> DONE ON DPS 2026-10-01 (plan_dps_mosaic.sh D7).  Mosaic, timed.
 # ===========================================================================
 cd $runs
 make_mosaic_jobs.py -b $region_dir -rr GL -t $tspan -e ATL14 \
@@ -238,7 +238,7 @@ cd $repo
 
 
 # ===========================================================================
-# N7. [ADE] TODO (QN2).  netCDF, timed.  LOCAL ONLY -- do not publish.
+# N7. [ADE] SUPERSEDED -> DONE ON DPS 2026-10-01 (plan_dps_mosaic.sh D7; products at .../rel006_0332_testing/north/GL).  netCDF, timed.  LOCAL ONLY -- do not publish.
 # ===========================================================================
 mkdir -p $runs/GL_${cyc}_north_nc && cd $runs/GL_${cyc}_north_nc
 python $repo/scripts/run_with_rusage.py ATL14 \
@@ -323,7 +323,7 @@ cd $repo
 #   steps are skipped, interrupted mosaic tasks requeued.  It stops at NM2.
 #   Matched failure evidence (N5): maap_ledgers/GL_0332_north_matched_evidence/.
 # NM0. [ADE] SUPERSEDED (no fetch; tiles verified on $s3_out).  N5 finish: collect/fetch/check matched (main + retry1).
-# NM1. BLOCKED (moves to DPS; plan TODO).  N6 mosaic, N7 ATL14 (+ATL15) netCDF, as written above.
+# NM1. DONE ON DPS 2026-10-01 (plan_dps_mosaic.sh D7).  N6 mosaic, N7 ATL14 (+ATL15) netCDF, as written above.
 # NM2-NM6 RUN UNATTENDED by driver 2 (launched 2026-09-30 ~04:00Z; waits for
 #   driver 1's ALL_DONE): ~/ATL14_processing/maap_ledgers/GL_0332_north_NM_driver2.sh,
 #   log _NM_driver2.log, markers GL_0332_monthly_NM_state/.  Helpers (tested
@@ -464,9 +464,31 @@ cd $repo
 #     check_field_sizes.py through the mount: expected dz [25, 25, 94],
 #     557 of 557 passed, 0 problems.  Nothing fetched to /home.
 
+# NM7. [DPS] IN PROGRESS 2026-10-02.  MONTHLY MATCHED, GL north, all at once.
+#   DECIDED (Ben 2026-10-02): "Run matched - see if the updates to the
+#   credential passing has reduced the failure rate.  Submit all jobs at
+#   once."  This revises NM6's "monthly matched ... NOT in scope".
+#   Build e6d7051 (workspace keys from MAAP's broker, worker role off;
+#   pointCollection 2371978: NSIDC broker retry).  32gb queue, as NM5, so
+#   the submission pattern and queue are the same as the round it is
+#   compared with (NM5 round 0: 556 jobs, 166 failed = 30%).
+#   STATEMENT: a matched job reads no ATL11, so it makes NO NSIDC broker
+#     call -- NM5's 61 NSIDC failures cannot recur here whatever the code
+#     does.  What this run tests is the NEW workspace-credentials call
+#     (one per job, the same MAAP API, 5 tries) and the two classes that
+#     are not ours: MAAP runner timeouts (9 in NM5) and jobs with no logs
+#     (95).  The NSIDC retry gets its test at the next prelim fan-out.
+#   a. smoke E80_N-920 (full 3x3 of neighbours), as QM-B: a fault common to
+#      every job would spoil the all-at-once test.  GATE: successful, tile
+#      at <monthly prefix>/matched/, field size [25, 25, 94].
+#   b. the other 556 at once: maap_ledgers/GL_0332_monthly_NM7_driver.py
+#      (the NM5 driver with --step matched; automatic resubmit, 2 rounds),
+#      ledgers GL_0332_monthly_north_matched[_retryN]_jobs.csv.
+#   c. RECORD: first-round failures by class vs NM5; "h left at exit";
+#      time and memory; check_field_sizes --step matched through the mount.
 
 # ===========================================================================
-# N8. [ADE] TODO.  Numbers for MAAP.
+# N8. [ADE] DRAFT WRITTEN 2026-10-01, AWAITS BEN'S REVIEW.  Numbers for MAAP.
 # ===========================================================================
 # From the collect files: per-job time, peak memory, instance mix, queue
 # wait, failures; ADE time for N4/N5 passes; mosaic and netCDF time/memory.  Replace
@@ -486,4 +508,13 @@ cd $repo
 #                 1.36 job-hours
 #   output        11.2 GB at the out_prefix (1358 objects), of which the
 #                 five netCDFs are 1.28 GB
-# The estimate file is NOT yet updated with these.
+# DRAFT 2026-10-01: ~/ATL14_processing/maap_resource_estimate.txt updated
+# (previous text kept as maap_resource_estimate_2026-09-25.txt).  Changed
+# lines carry [GL north]: GL job-hours (quarterly ~320, monthly ~200 with
+# matched still estimated, mosaic + netCDF ~20 per product), GL memory and
+# times measured over 557 tiles, GL tile sizes, products now built on DPS,
+# and a new RELIABILITY section (6% / 14% / 30% first-round failures at
+# ~100 in flight / ~100 in flight / all at once).  Scaling to all of GL is
+# x 1,483/557 -- an ASSUMPTION that the north is representative.
+# NOT DONE: monthly matched for GL has never been run (out of scope, NM6);
+# its row stays an estimate.  Ben reviews before anything is sent.

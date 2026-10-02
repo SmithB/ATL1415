@@ -202,11 +202,17 @@
 #     NOT TESTED HERE: a worker (W4, W5); a broker call that hangs for the
 #     whole 30 s on a real network (the unit test covers the cut-off).
 #
-# W4. [Ben] TODO.  Push; register when nothing is in flight;
+# W4. [Ben] DONE 2026-10-02.  Push; register when nothing is in flight;
 #     check_build_id.py -> MATCH and workspace_credentials=ok.  RECORD the
 #     lifetime a worker is given.
+#     RESULT: e6d7051 pushed and registered (with pointCollection main
+#     2371978, PR #61: broker retry, clear error, no global warnings
+#     filter).  check_build_id job 2ac2a4a9 on a t3.xlarge worker: VERDICT
+#     MATCH, built 2026-10-02T02:53:53Z, maap_pgt=set,
+#     workspace_credentials=ok lifetime_h=12.0 -- a WORKER is given 12 h,
+#     as the ADE is.
 #
-# W5. [DPS] TODO.  Smoke, one job per kind of bucket use, IS (small):
+# W5. [DPS] DONE 2026-10-02 (result below).  Smoke, one job per kind of bucket use, IS (small):
 #       prelim  one tile   (args fetch, ATL11 index, masks via GDAL, NSIDC
 #                           keys alongside, tile put)
 #       matched one tile   (prelim tiles get, tile put)
@@ -216,6 +222,23 @@
 #     successful; outputs identical to the canonical IS tiles and the D6
 #     products (weighted mosaics at rounding); every log has the
 #     "h left at exit" line.
+#     RESULT (Ben: go), build e6d7051, 16gb (t3.xlarge), ledgers
+#     maap_ledgers/IS_creds_W5_{prelim,mosaic,matched,nc}_jobs.csv:
+#       prelim  E1020_N-2420 (no neighbours, so its matched tile compares
+#               with the canonical one)   successful, 462 s, 4.39 GiB
+#       mosaic  z0 (tiles read from the canonical IS prefix)
+#                                         successful, 117 s, 0.45 GiB
+#       matched E1020_N-2420              successful,  82 s, 4.12 GiB
+#       nc      ATL14                     successful,  74 s, 0.83 GiB
+#     GATE PASSES.  prelim and matched tiles vs the canonical IS tiles
+#     (reported cells, compare_reported.py): max |d| 0, sigma identical, same
+#     cells.  z0.h5 vs D6's: every dataset identical.  ATL14 netCDF vs D6's:
+#     28/28 variables identical.  Every log has the broker summary line and
+#     "12.0 h left at exit" (11.9 for the prelim job), no NoCredentialsError,
+#     and no key (pattern search).  So on a worker with the instance role
+#     switched off, the brokered keys serve the args fetch, the ATL11 index,
+#     the GDAL masks, NSIDC alongside, tile and product get/put, and the
+#     in-place mosaic reads.
 #
 # W6. [DPS] TODO.  The lifetime under a real run: the next fan-out that is
 #     due anyway (not a run made for this).  RECORD min "h left at exit"

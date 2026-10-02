@@ -639,7 +639,7 @@
 #         quota).  The rel005 comparison is D8 / plan_GL_north NM2.
 #     Times and memory copied to plan_GL_north.sh N8.
 #
-# D8. [ADE] TODO.  Resume plan_GL_north.sh at NM2 (compare, report only),
+# D8. [ADE] DONE 2026-10-01 (plan_GL_north.sh NM2-NM6 results).  Resume plan_GL_north.sh at NM2 (compare, report only),
 #     NM3 (copy the nc S3 -> the QM-A side key; aws s3 cp, S3 to S3), then
 #     NM4-NM6 as written, minus every fetch.  The two NM drivers are
 #     superseded; a new driver, if any, only submits and waits.
