@@ -244,29 +244,32 @@ ATL15_write2nc.py @<ATL14_root>/rel005/north/GL/input_args_GL.txt
 ## Running on MAAP
 
 The same prelim -> matched -> mosaic -> netCDF pipeline runs on NASA MAAP.
-Iceland has run it end to end, quarterly and monthly (2026-09); the other
-regions have not yet.  The procedures are `docs/howto_MAAP_arctic.sh` (RA IS
-CN CS SV, in `howto_arctic.sh`'s order), `docs/howto_MAAP_GL.sh` and
-`docs/howto_MAAP_AA.sh`.  What changes:
+Iceland (quarterly and monthly) and the northern third of Greenland have run
+it end to end; the other regions have not yet.  The procedures are
+`docs/howto_MAAP_arctic.sh` (IS RA CN CS SV), `docs/howto_MAAP_GL.sh` and
+`docs/howto_MAAP_AA.sh`; one-time setup is `docs/howto_MAAP_staging.sh` and
+registration `docs/howto_MAAP_ogc.sh`.  What changes:
 
 - **Configuration**: the location layer is `default_args/MAAP_dps.txt` in place
   of `discover.txt`.  Masks, geoid and ATL11 index are read from the bucket;
   ATL11 and the previous product come from NASA Earthdata Cloud (CMR).
 - **Tile centers**: `ATL1415/resources/<region>/40km_tile_list.txt`, not
   `make_ATL1415_queue.py`.
-- **Tile solves**: one DPS job per tile, submitted from the ADE by
-  `scripts/maap/submit_MAAP_jobs.py --tile_list ...`, which writes a ledger of
-  job ids.  Each job puts its tile at a fixed bucket prefix (`--tile_prefix`),
-  where matched jobs find their neighbours.  DPS runs the *registered build*,
-  not the working copy: `register_algorithm.py`, then
-  `scripts/maap/check_build_id.py` must say MATCH.
-- **Watching and collecting**: `scripts/maap/collect_jobs.py <ledger>` (status,
+- **Every step is a DPS job**, submitted from the ADE by
+  `scripts/maap/submit_MAAP_jobs.py --step prelim|matched|mosaic200|mosaic|nc`,
+  which writes a ledger of job ids.  Tiles go to a fixed bucket prefix
+  (`--tile_prefix`), where matched jobs find their neighbours; mosaics and
+  netCDFs go to `--out_prefix`.  DPS runs the *registered build*, not the
+  working copy: `register_algorithm.py`, then `scripts/maap/check_build_id.py`
+  must say MATCH.
+- **Watching and checking**: `scripts/maap/collect_jobs.py <ledger>` (status,
   time, peak memory, point counts, the build each tile ran) replaces
-  `slurm_run_status.py`; `scripts/maap/fetch_tiles.py <ledger> <region_dir>`
-  copies the tiles into the ADE and saves any no-data centers to
-  `<region_dir>/prelim/no_data_tiles.txt`, which come out of the tile list
-  after the run.
-- **Mosaic and netCDF** run in the ADE: the `slurm_run.sh` that
-  `make_mosaic_jobs.py` writes is plain bash, so it runs locally with
-  `SLURM_ARRAY_TASK_ID` set; the netCDF writers are called directly.
+  `slurm_run_status.py`.  Jobs that did not succeed are resubmitted under a new
+  ledger.  Checks read the bucket through its mount (`~/my-private-bucket`);
+  nothing is copied into the ADE's home (150 GB quota).
 
+Development notes -- plans, records and the reasoning behind each step -- are
+kept outside the repo, in `~/ATL14_processing/dev/` on the MAAP ADE, so they
+can change without a commit or a re-registration.  Code comments that cite
+`docs/plan_*.sh` or `docs/Transition_to_maap.md` refer to files there (and in
+this repo's history before they moved).
