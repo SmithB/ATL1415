@@ -3,7 +3,7 @@
 # PLAN: a checker for the per-tile field-size reports.
 # Written 2026-09-16 as an ASSIGNMENT BRIEF for an agent.
 # STATUS 2026-09-17: WRITTEN -- scripts/check_field_sizes.py (f4850ed),
-# tests/test_check_field_sizes.py.  C1-C5 DONE; C1's QUESTION stays open.
+# tests/test_check_field_sizes.py.  C1-C5 DONE; C1's question decided 2026-10-07 (derived check only).
 # ===========================================================================
 # THE ASK (Ben, 2026-09-16): "there should be a script that checks the field
 # size reports written by each tile job and makes sure that the outputs are
@@ -75,7 +75,8 @@
 # QUESTION FOR BEN, do not guess: should a tile whose shape merely DISAGREES
 # with its neighbours (but matches no derived expectation, e.g. because no
 # args file was passed) be an error, or is the derived check the only one?
-# STILL OPEN.  AS WRITTEN: -W and -t are REQUIRED, so there is always a
+# DECIDED 2026-10-07 (Ben: recommendation taken): the derived check is the
+# only one; no neighbour comparison.  AS WRITTEN: -W and -t are REQUIRED, so there is always a
 # derived shape and no neighbour comparison exists.  They are given as the
 # solver takes them -- @<input_args file> (Ben 2026-09-17: a python fromfile,
 # not an --args_file option) or directly -- with the solver's names, aliases

@@ -260,6 +260,8 @@ EOF
 # RAM, walltime per tile), but nothing about S7 produces the queue itself.
 #
 # Ask for: cores / RAM / disk / walltime per queue, and any max-in-flight limit.
+# ON HOLD 2026-10-07 (Ben): "we're getting plenty of queue access, don't
+# want to be blocked" -- do not request an organizational queue for now.
 # On the OGC path the queue is chosen per job, as submit_job's queue argument;
 # the scripts default to -32gb, and -32vcpu-64gb may be the better production
 # target.  WHAT TO ASK FOR, from the post-crossover AA transect of

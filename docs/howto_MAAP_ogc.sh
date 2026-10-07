@@ -144,6 +144,7 @@
 #
 # QC. [BEN / MAAP] Is the legacy /api/mas path being retired, and when?  It
 #     decides whether the ATL14 fallback (F2) is safe to keep.
+#     2026-10-07 (Ben): not known.  Stays open; ask MAAP when convenient.
 #
 # QD. [ANSWERED 2026-09-10: failed job by O6 run 1, successful by run 2 --
 #     see O6 for both paths]

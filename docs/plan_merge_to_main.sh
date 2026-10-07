@@ -130,6 +130,8 @@ git push origin on_s3
 #     QUESTION: I have no record of on_s3's code running in discover's local
 #     (SLURM, non-cloud) mode since the cloud-read work.  RECOMMEND one tile
 #     there before production uses main.
+#     ANSWERED 2026-10-07 (Ben): "I've run tiles on Discover using on_s3
+#     with no major problems."  The rest of the merge stays on hold.
 
 # M6. [ADE] [DEFERRED; DECISION: Ben]  After M4: algorithm_config.yml says to
 #     change algorithm_version to main "once the cloud-read work is merged".
