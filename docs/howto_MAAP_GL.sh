@@ -63,6 +63,7 @@ scripts/maap/collect_jobs.py ${L}_smoke_jobs.csv
 nohup $sub --tile_list $tile_list --step prelim --queue maap-dps-worker-32gb \
     --tag ${tag}_prelim --ledger ${L}_prelim_jobs.csv \
     --max_in_flight 100 > ${L}_prelim_submit.log 2>&1 &
+scripts/tile_dash.py --ledger "${L}_prelim*_jobs.csv" --tile_list $tile_list   # live view (Ctrl+C)
 scripts/maap/collect_jobs.py ${L}_prelim_jobs.csv > ${L}_prelim_collect.txt
 failed ${L}_prelim_jobs.csv > ${L}_prelim_retry1_tile_list.txt
 $sub --tile_list ${L}_prelim_retry1_tile_list.txt --step prelim --queue maap-dps-worker-32gb \
