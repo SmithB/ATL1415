@@ -60,14 +60,16 @@ class Job:
 
 
 class MaapSource:
-    """Jobs from submit_MAAP_jobs.py ledgers; states from a few list calls."""
+    """Jobs from submit_MAAP_jobs.py ledgers; states from ogc_jobs.JobStates."""
 
-    def __init__(self, ledger_globs, max_status_calls=50, page_size=500):
+    def __init__(self, ledger_globs, max_status_calls=50):
         from maap.maap import MAAP
-        self.maap = MAAP(maap_host=os.environ.get('MAAP_API_HOST', 'api.maap-project.org'))
-        self.globs, self.max_status_calls, self.page_size = ledger_globs, max_status_calls, page_size
+        sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), 'maap'))
+        from ogc_jobs import JobStates
+        maap = MAAP(maap_host=os.environ.get('MAAP_API_HOST', 'api.maap-project.org'))
+        self.states = JobStates(maap)
+        self.globs, self.max_status_calls = ledger_globs, max_status_calls
         self.jobs = {}          # job_id -> Job
-        self.active_last = set()
         self.calls = 0
         self.note = ''
 
@@ -88,53 +90,18 @@ class MaapSource:
                     self.jobs[jid] = Job(jid, xy, (r.get('submitted_utc', ''), n), name, state)
         return files
 
-    def _list(self, status):
-        ids, offset = set(), 0
-        while True:
-            r = self.maap.list_jobs(status=status, page_size=self.page_size, offset=offset,
-                                    get_job_details=False)
-            self.calls += 1
-            r.raise_for_status()
-            page = r.json().get('jobs', [])
-            new = {j['jobID'] for j in page if 'jobID' in j} - ids
-            # the API caps a page (250 seen 2026-10-07) whatever page_size asks
-            # for: page on until a page brings nothing new
-            if not new:
-                return ids
-            ids |= new
-            offset += len(page)
-
     def refresh(self):
-        self.calls, self.note = 0, ''
         files = self._load_ledgers()
-        try:
-            listed = {s: self._list(s) for s in ('accepted', 'running')}
-        except Exception as e:
-            self.note = f'list_jobs failed ({type(e).__name__}); states as of last refresh'
-            return files
-        active = listed['accepted'] | listed['running']
-        for jid, job in self.jobs.items():
-            if jid in listed['running']:
-                job.state = 'running'
-            elif jid in listed['accepted']:
-                job.state = 'accepted'
-        # jobs that left the active lists, then jobs never seen: ask, within budget
-        left = [j for j in self.active_last - active
-                if j in self.jobs and self.jobs[j].state in ('running', 'accepted')]
-        unknown = [j for j, job in self.jobs.items()
-                   if job.state == 'unknown' and j not in active]
-        budget = max(self.max_status_calls, len(left))
-        for jid in (left + unknown)[:budget]:
-            try:
-                st = self.maap.get_job_status(jid).json().get('status', 'unknown')
-            except Exception:
-                st = 'unknown'
-            self.calls += 1
-            self.jobs[jid].state = st if st in DONE_STATES | FAIL_STATES else 'unknown'
-        self.active_last = active
+        ids = [j for j, job in self.jobs.items() if job.state != 'submit_failed']
+        st = self.states.poll(ids, max_status_calls=self.max_status_calls)
+        for j, s in st.items():
+            self.jobs[j].state = s if s in DONE_STATES | FAIL_STATES | {'running', 'accepted'} else 'unknown'
+        self.calls = self.states.calls
         n_unknown = sum(job.state == 'unknown' for job in self.jobs.values())
-        if n_unknown:
-            self.note = f'{n_unknown} job states not yet known (learning {self.max_status_calls}/refresh)'
+        self.note = (f'listing failed ({self.states.error[:60]}); states as of last refresh'
+                     if self.states.error else
+                     f'{n_unknown} job states not yet known (learning {self.max_status_calls}/refresh)'
+                     if n_unknown else '')
         return files
 
 

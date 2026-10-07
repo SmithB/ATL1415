@@ -299,3 +299,79 @@ def container_of(maap, tag):
         if spec:
             return spec
     return None
+
+
+ACTIVE = ('accepted', 'running')
+
+
+class JobStates:
+    """
+    The status of many jobs without one API call per job per poll.
+
+    Each poll() lists the user's 'accepted' and 'running' jobs (paged: the API
+    caps a page at 250 whatever pageSize asks for, seen 2026-10-07) and calls
+    get_job_status only for the asked-about jobs that are in neither list and
+    not already known to be finished -- the ones that finished since the last
+    poll, and on the first poll every finished job, once.  A job seen finished
+    (DONE) is never asked about again.  A 1482-job round costs ~8 list calls a
+    poll plus one call per job that finished, instead of 1482.
+
+    If listing fails, poll() returns the last known statuses (an active job
+    stays active) and sets .error, so a caller never takes an outage for an
+    ending.
+    """
+
+    def __init__(self, maap, page_size=250):
+        self.maap, self.page_size = maap, page_size
+        self.final, self.last = {}, {}
+        self.calls, self.error = 0, None
+
+    def _list(self, status):
+        ids, offset = set(), 0
+        while True:
+            r = self.maap.list_jobs(status=status, page_size=self.page_size,
+                                    offset=offset, get_job_details=False)
+            self.calls += 1
+            r.raise_for_status()
+            page = r.json().get('jobs', [])
+            new = {j['jobID'] for j in page if 'jobID' in j} - ids
+            if not new:
+                return ids
+            ids |= new
+            offset += len(page)
+
+    def poll(self, ids, max_status_calls=None):
+        """{job_id: status} for ids; 'unknown' where not yet learned."""
+        self.calls, self.error = 0, None
+        try:
+            listed = {s: self._list(s) for s in ACTIVE}
+        except Exception as exc:
+            self.error = f'{type(exc).__name__}: {exc}'
+            return {j: self.final.get(j, self.last.get(j, 'unknown')) for j in ids}
+        out, ask = {}, []
+        for j in ids:
+            if j in self.final:
+                out[j] = self.final[j]
+            elif j in listed['running']:
+                out[j] = 'running'
+            elif j in listed['accepted']:
+                out[j] = 'accepted'
+            else:
+                ask.append(j)
+        # those that just left the active lists first, then the never-seen
+        ask.sort(key=lambda j: self.last.get(j) not in ACTIVE)
+        if max_status_calls is not None:
+            ask, rest = ask[:max_status_calls], ask[max_status_calls:]
+            out.update({j: self.last.get(j, 'unknown') for j in rest})
+        for j in ask:
+            try:
+                body = self.maap.get_job_status(j).json()
+                st = str(body.get('status', 'unknown')) if isinstance(body, dict) else 'unknown'
+            except Exception:
+                st = 'unknown'
+            self.calls += 1
+            out[j] = st
+            if st in DONE:
+                self.final[j] = st
+        self.last.update(out)
+        return out
