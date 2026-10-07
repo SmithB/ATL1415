@@ -157,6 +157,8 @@ def main():
     parser.add_argument('-v','--version', type=str, help="2-digit version number for output filename")
     parser.add_argument('-list11','--ATL11_lineage_dir', type=str, help='directory in which to look for ATL11 .h5 filenames')
     parser.add_argument('--tiles_dir', type=str, help='directory in which to look for tile .h5 files, defaults to [base_dir]/prelim')
+    parser.add_argument('--tile_meta_dir', type=str, default=None,
+                        help='directory of tile-metadata .json files written by the 200 km jobs (ATL1415.tile_meta); if given, tile_stats and lineage come from them instead of from every tile in --tiles_dir')
     parser.add_argument('--ATL11_xover_dir', type=str, help="directory in which to look for ATL11 crossover files")
     parser.add_argument('--ATL11_index', type=str, help='GeoIndex file pointing to ATL11 data')
     parser.add_argument('--verbose', action='store_true')

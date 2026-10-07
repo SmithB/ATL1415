@@ -229,37 +229,33 @@ def set_lineage(dst,root_info,args):
     lineage = []
     ATL11_files={}
     stored_attrs={}
-    # tilepath may be an s3:// prefix: the tiles are read in place on MAAP
-    from ATL1415.paths import list_tiles, open_tile
-    for tile in list_tiles(tilepath):
-        try:
-            with open_tile(tile) as h5f:
-                inputs=str(h5f['/meta/'].attrs['input_files'])
-                if inputs[:1]=='b':
-                    inputs=inputs[1:]
-                inputs=inputs.replace("'",'')
-                # a tile that read no ATL11 (a matched tile) has input_files == ''
-                for file in filter(None, inputs.split(',')):
-                    ATL11_files.setdefault(file, tile)
-                    this_stored = lineage_from_tile(h5f, file)
-                    if not this_stored:
-                        continue
-                    # THE SAME GRANULE MUST LOOK THE SAME IN EVERY TILE.  Two
-                    # values for one name means the tiles were solved against
-                    # different granules of the same name -- mixed generations
-                    # -- and a product must not average over that.
-                    known, known_tile = stored_attrs.setdefault(
-                        file, (this_stored, tile))
-                    for key, value in this_stored.items():
-                        if known.get(key, value) != value:
-                            raise ValueError(
-                                f'set_lineage: {file} has {key}={known[key]!r} in '
-                                f'{known_tile} but {key}={value!r} in {tile}')
-                        known.setdefault(key, value)
-        except (OSError, KeyError):
+    # Each tile's input_files and stored lineage come from ATL1415.tile_meta:
+    # saved by the 200 km jobs (args.tile_meta_dir), or read from the tiles --
+    # which may be an s3:// prefix on MAAP -- once per run.
+    from ATL1415.tile_meta import tile_records
+    for tile, rec in tile_records(args):
+        if rec['lineage'] is None:
             # unreadable, or written before meta/input_files existed
             print("ATL14_attrs_meta.py: failed to open tile file : "+tile)
             continue
+        # a tile that read no ATL11 (a matched tile) has no input_files
+        for file in rec['lineage']['input_files']:
+            ATL11_files.setdefault(file, tile)
+            this_stored = dict(rec['lineage']['stored'].get(file, {}))
+            if not this_stored:
+                continue
+            # THE SAME GRANULE MUST LOOK THE SAME IN EVERY TILE.  Two
+            # values for one name means the tiles were solved against
+            # different granules of the same name -- mixed generations
+            # -- and a product must not average over that.
+            known, known_tile = stored_attrs.setdefault(
+                file, (this_stored, tile))
+            for key, value in this_stored.items():
+                if known.get(key, value) != value:
+                    raise ValueError(
+                        f'set_lineage: {file} has {key}={known[key]!r} in '
+                        f'{known_tile} but {key}={value!r} in {tile}')
+                known.setdefault(key, value)
     invalid={}
     for file, tile in ATL11_files.items():
         stored = stored_attrs.get(file, ({}, None))[0]

@@ -611,6 +611,13 @@ mosaic_step_and_exit () {
             if [ "$status" -ne 0 ]; then
                 echo "ERROR: mosaic200: a group failed (above); nothing uploaded" >&2; exit 1
             fi
+            # the tile_stats and lineage records of the prelim tiles this 200 km
+            # tile owns, for the netCDF writers (--tile_meta_dir)
+            "${repo_dir}/scripts/run_with_rusage.py" tile_meta \
+                conda run --no-capture-output -n "$env_name" python -m ATL1415.tile_meta write \
+                "${tile_prefix%/}/prelim" "${out%/}/tile_meta/${task}.json" \
+                --center "$cx" "$cy" --workers "$threads" \
+                || { echo "ERROR: mosaic200: tile metadata failed; nothing uploaded" >&2; exit 1; }
             in_env python "${repo_dir}/scripts/s3_tiles.py" put_tree "${work}/200km_tiles" "${out%/}/200km_tiles" || exit 1
             ;;
         mosaic)
@@ -649,10 +656,17 @@ mosaic_step_and_exit () {
             # the writers open the mosaics by local path under -b
             in_env python "${repo_dir}/scripts/s3_tiles.py" get_glob "$out" '*.h5' "$work" --require \
                 || { echo "ERROR: no mosaics at ${out}" >&2; exit 1; }
+            # tile_stats and lineage: from the records the 200 km jobs saved
+            # (ATL1415/tile_meta.py), not from every prelim tile on S3 -- which
+            # ATL15 used to read 8 times over (>2 h for GL)
+            local meta_opt=()
+            if [ "$via_200km" = yes ]; then
+                meta_opt=(--tile_meta_dir "${out%/}/tile_meta")
+            fi
             # -b AFTER the args file, whose last line is the ADE's -b
             "${repo_dir}/scripts/run_with_rusage.py" "$task" \
                 conda run --no-capture-output -n "$env_name" "${task}_write2nc.py" "@${args_file}" \
-                -b "$work" --tiles_dir "${tile_prefix%/}/prelim" \
+                -b "$work" --tiles_dir "${tile_prefix%/}/prelim" ${meta_opt[@]+"${meta_opt[@]}"} \
                 || { echo "ERROR: ${task}_write2nc.py failed; nothing uploaded" >&2; exit 1; }
             if ! compgen -G "${work}/*.nc" > /dev/null; then
                 echo "ERROR: ${task}_write2nc.py wrote no .nc in ${work}" >&2; exit 1

@@ -302,6 +302,8 @@ def main():
     parser.add_argument('--ATL11_xover_dir', type=str, help="directory containing ATL11 crossover cycle directories")
     parser.add_argument('-list11','--ATL11_lineage_dir', type=str, help='directory in which to look for ATL11 .h5 filenames')
     parser.add_argument('--tiles_dir', type=str, help='directory in which to look for tile .h5 files')
+    parser.add_argument('--tile_meta_dir', type=str, default=None,
+                        help='directory of tile-metadata .json files written by the 200 km jobs (ATL1415.tile_meta); if given, tile_stats and lineage come from them instead of from every tile in --tiles_dir')
     parser.add_argument('--avg_scale', type=str, default=None, help='average scale')
     parser.add_argument('--avg_scales', type=str, default=None, help='list of average scales, comma separated')
     parser.add_argument('--dzdt_lags', type=str, default='1,4', help='lags for which to calculate dz/dt, comma-separated list, no spaces')

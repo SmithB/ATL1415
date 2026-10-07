@@ -51,29 +51,19 @@ def make_tile_stats_group(nc, args, tile_spacing = 40):
             tile_stats[field] = { 'data': [], 'mapped':np.array(())}
 
 
-    # tiles_dir may be an s3:// prefix: the tiles are read in place on MAAP
-    from ATL1415.paths import list_tiles, open_tile
-    for file_path in list_tiles(args.tiles_dir):
+    # Each tile's values come from ATL1415.tile_meta: saved by the 200 km jobs
+    # (args.tile_meta_dir), or read from the tiles -- which may be an s3://
+    # prefix on MAAP -- once per run (read_tile_stats has the field list).
+    from ATL1415.tile_meta import tile_records
+    for file_path, rec in tile_records(args):
         file = os.path.basename(file_path)
-        try:
-            tile_stats['x']['data'].append(int(re.match(r'^.*E(.*)\_.*$',file).group(1)))
-        except Exception:
+        if rec['stats'] is None:
             print(f"ATL15_write2nc: problem in write_tile_stats with [ {file} ], skipping")
             continue
+        tile_stats['x']['data'].append(int(re.match(r'^.*E(.*)\_.*$',file).group(1)))
         tile_stats['y']['data'].append(int(re.match(r'^.*N(.*)\..*$',file).group(1)))
-
-        # with h5py.File(os.path.join(args.base_dir,sub,file),'r') as h5: #used for sub in ['centers','edges','corners']
-        with open_tile(file_path) as h5:
-            tile_stats['N_data']['data'].append( np.sum(h5['data']['three_sigma_edit'][:]) )
-            tile_stats['RMS_data']['data'].append( h5['RMS']['data'][()] )  # use () for getting a scalar.
-            tile_stats['RMS_bias']['data'].append( np.sqrt(np.mean((h5['bias']['val'][:]/h5['bias']['expected'][:])**2)) )
-            tile_stats['N_bias']['data'].append( len(h5['bias']['val'][:]) )  #### or all BUT the zeros.
-            tile_stats['RMS_d2z0dx2']['data'].append( h5['RMS']['grad2_z0'][()] )
-            tile_stats['RMS_d2zdt2']['data'].append( h5['RMS']['d2z_dt2'][()] )
-            tile_stats['RMS_d2zdx2dt']['data'].append( h5['RMS']['grad2_dzdt'][()] )
-            tile_stats['sigma_xx0']['data'].append( h5['E_RMS']['d2z0_dx2'][()] )
-            tile_stats['sigma_tt']['data'].append( h5['E_RMS']['d2z_dt2'][()] )
-            tile_stats['sigma_xxt']['data'].append( h5['E_RMS']['d3z_dx2dt'][()] )
+        for field, value in rec['stats'].items():
+            tile_stats[field]['data'].append(value)
 
     # establish output grids from min/max of x and y
     for key in tile_stats.keys():
