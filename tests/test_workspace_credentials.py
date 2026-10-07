@@ -85,17 +85,134 @@ def test_a_refused_prefix_stops_the_job_and_exports_nothing(brokered, capsys):
     assert 'ERROR: workspace credentials: s3://maap-ops-workspace/someone_else/out' in err
 
 
-def test_a_failed_call_is_retried(capsys):
-    calls, naps = [], []
+class Clock:
+    """A stand-in for time.monotonic that the stand-in sleep advances."""
+    def __init__(self):
+        self.t, self.naps = 0.0, []
+
+    def __call__(self):
+        return self.t
+
+    def sleep(self, s):
+        self.naps.append(s)
+        self.t += s
+
+
+def no_jitter(lo, hi):
+    return 1.0
+
+
+def test_a_failed_call_is_retried_after_growing_pauses(capsys):
+    calls, clock = [], Clock()
 
     def flaky():
         calls.append(1)
-        if len(calls) < 3:
+        if len(calls) < 4:
             raise ConnectionError('timed out')
         return RESPONSE
-    assert wc.fetch(call=flaky, attempts=5, pause=10, sleep=naps.append) is RESPONSE
-    assert len(calls) == 3 and naps == [10, 10]
+    assert wc.fetch(call=flaky, pauses=(10, 20, 40, 60), budget=1000, sleep=clock.sleep,
+                    clock=clock, rand=no_jitter) is RESPONSE
+    assert len(calls) == 4 and clock.naps == [10, 20, 40]
     assert 'attempt 2 of 5 failed (ConnectionError: timed out)' in capsys.readouterr().err
+
+
+def test_pauses_are_jittered_within_the_bounds():
+    clock, draws = Clock(), []
+
+    def rand(lo, hi):
+        draws.append((lo, hi))
+        return hi
+
+    def dead():
+        raise ConnectionError('refused')
+    with pytest.raises(wc.CredentialError):
+        wc.fetch(call=dead, pauses=(10, 20), jitter=0.5, budget=1000, sleep=clock.sleep,
+                 clock=clock, rand=rand)
+    assert draws == [(0.5, 1.5), (0.5, 1.5)] and clock.naps == [15, 30]
+
+
+def test_no_pause_runs_past_the_budget(capsys):
+    calls, clock = [], Clock()
+
+    def dead():
+        calls.append(1)
+        raise ConnectionError('refused')
+    with pytest.raises(wc.CredentialError, match='failed 3 times'):
+        wc.fetch(call=dead, pauses=(10, 20, 40, 60), budget=50, sleep=clock.sleep,
+                 clock=clock, rand=no_jitter)
+    assert len(calls) == 3 and clock.naps == [10, 20]     # 30 s used; a 40 s pause would end at 70
+    assert 'would pass the 50 s budget' in capsys.readouterr().err
+
+
+def test_the_defaults_wait_at_most_the_budget():
+    clock = Clock()
+
+    def dead():
+        raise ConnectionError('refused')
+    with pytest.raises(wc.CredentialError):
+        wc.fetch(call=dead, sleep=clock.sleep, clock=clock, rand=lambda lo, hi: hi)
+    assert sum(clock.naps) <= wc.BUDGET_S
+
+
+class Unauthorized(Exception):
+    """Carries .response.status_code, as requests.HTTPError does."""
+    def __init__(self):
+        super().__init__('401 Client Error: UNAUTHORIZED')
+        self.response = type('R', (), {'status_code': 401})()
+
+
+def test_a_401_stops_at_once_and_names_the_token(capsys):
+    calls, clock = [], Clock()
+
+    def rejected():
+        calls.append(1)
+        raise Unauthorized()
+    with pytest.raises(wc.CredentialError, match="HTTP 401: MAAP_PGT was rejected.*get_maap_pgt_token"):
+        wc.fetch(call=rejected, sleep=clock.sleep, clock=clock)
+    assert len(calls) == 1 and clock.naps == []
+
+
+def test_another_http_error_is_retried():
+    calls, clock = [], Clock()
+
+    class Unavailable(Exception):
+        response = type('R', (), {'status_code': 503})()
+
+    def flaky():
+        calls.append(1)
+        if len(calls) < 2:
+            raise Unavailable('503')
+        return RESPONSE
+    assert wc.fetch(call=flaky, sleep=clock.sleep, clock=clock, rand=no_jitter) is RESPONSE
+    assert len(calls) == 2
+
+
+def test_one_maap_client_is_kept_across_tries(monkeypatch):
+    # building MAAP() is itself an API call; once one is built, later tries reuse it
+    import sys
+    import types
+    built, asked = [], []
+
+    class FakeMAAP:
+        def __init__(self, maap_host):
+            built.append(maap_host)
+            if len(built) == 1:
+                raise ConnectionError('environment/config refused')
+            self.aws = self
+
+        def workspace_bucket_credentials(self):
+            asked.append(1)
+            if len(asked) < 2:
+                raise ConnectionError('timed out')
+            return RESPONSE
+    fake = types.ModuleType('maap.maap')
+    fake.MAAP = FakeMAAP
+    monkeypatch.setitem(sys.modules, 'maap', types.ModuleType('maap'))
+    monkeypatch.setitem(sys.modules, 'maap.maap', fake)
+    monkeypatch.setattr(wc, '_client', [])
+    clock = Clock()
+    assert wc.fetch(sleep=clock.sleep, clock=clock, rand=no_jitter) is RESPONSE
+    assert len(built) == 2 and len(asked) == 2     # built again only after the failed build
 
 
 def test_after_the_last_attempt_the_error_names_the_call(capsys):
@@ -103,7 +220,7 @@ def test_after_the_last_attempt_the_error_names_the_call(capsys):
         raise ConnectionError('timed out')
     with pytest.raises(wc.CredentialError, match=r'workspace_bucket_credentials\(\) failed 3 times;'
                                                  ' last error: ConnectionError: timed out'):
-        wc.fetch(call=dead, attempts=3, pause=0, sleep=lambda s: None)
+        wc.fetch(call=dead, pauses=(0, 0), sleep=lambda s: None)
 
 
 def test_a_call_that_never_answers_is_cut_off():
@@ -112,7 +229,7 @@ def test_a_call_that_never_answers_is_cut_off():
     def hangs():
         time.sleep(5)
     with pytest.raises(wc.CredentialError, match='TimeoutError: no answer'):
-        wc.fetch(call=hangs, attempts=1, timeout=1)
+        wc.fetch(call=hangs, pauses=(), timeout=1)
 
 
 def test_main_stops_with_exit_1_when_the_broker_is_down(monkeypatch, capsys):

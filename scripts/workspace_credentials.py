@@ -24,20 +24,34 @@ from the instance again.
       `workspace_credentials=FAILED (<why>)`; always exit 0 (run.sh --build-id).
 
 A CALL THAT FAILS IS RETRIED, THEN THE JOB STOPS (Ben, QW2).  The MAAP API
-times out when many jobs start together (plan_GL_north.sh NM5: 9 runner
-timeouts and 61 NSIDC broker failures in 556 jobs), so the call is tried
-ATTEMPTS times, PAUSE_S apart, each given TIMEOUT_S.  After that: exit 1 with
-the call and the last error named.  There is no fallback to the worker role;
-it would hide the failure until the day the role is removed.
+times out or refuses connections when many jobs start together
+(plan_GL_north.sh NM5; plan_GL_maskv5.sh V4b: 157 of 1112 jobs failed here),
+so the call is tried again after pauses that grow (PAUSES_S) and are jittered
+by +-JITTER so that jobs which failed together do not retry together; each
+try is given TIMEOUT_S, and no pause is taken that would run past BUDGET_S in
+all -- a node waiting costs money (Ben, plan_pack_tiles.sh K2).  One MAAP
+client is kept across the tries: building it is itself an API call
+(/api/environment/config).  After that: exit 1 with the call and the last
+error named.  There is no fallback to the worker role; it would hide the
+failure until the day the role is removed.
+
+HTTP 401 STOPS AT ONCE (plan_pack_tiles.sh QK2, K1).  It means MAAP_PGT was
+rejected -- in every such job so far, the runner's get_maap_pgt_token.py had
+timed out at job start -- and a job cannot fetch a new token, so retrying the
+same one only keeps the node waiting.
 """
 import datetime
 import os
+import random
 import shlex
 import signal
 import sys
 import time
 
-ATTEMPTS, PAUSE_S, TIMEOUT_S = 5, 10, 30
+PAUSES_S = (10, 20, 40, 60, 60)    # between tries: up to 6 tries
+JITTER = 0.5                        # each pause times uniform(1 - JITTER, 1 + JITTER)
+TIMEOUT_S = 30                      # per try
+BUDGET_S = 240                      # no pause that would end past this, from the first try
 FIELDS = {'aws_access_key_id': 'AWS_ACCESS_KEY_ID',
           'aws_secret_access_key': 'AWS_SECRET_ACCESS_KEY',
           'aws_session_token': 'AWS_SESSION_TOKEN'}
@@ -48,20 +62,33 @@ class CredentialError(Exception):
     pass
 
 
+_client = []
+
+
 def broker():
-    """One call to MAAP's workspace-credentials endpoint."""
-    from maap.maap import MAAP
-    return MAAP(maap_host=os.environ.get('MAAP_API_HOST', 'api.maap-project.org')
-                ).aws.workspace_bucket_credentials()
+    """One call to MAAP's workspace-credentials endpoint, on one MAAP client
+    built at the first call that gets that far."""
+    if not _client:
+        from maap.maap import MAAP
+        _client.append(MAAP(maap_host=os.environ.get('MAAP_API_HOST', 'api.maap-project.org')))
+    return _client[0].aws.workspace_bucket_credentials()
+
+
+def http_status(exc):
+    """The HTTP status of a requests.HTTPError (or anything carrying .response), else None."""
+    return getattr(getattr(exc, 'response', None), 'status_code', None)
 
 
 def _timeout(signum, frame):
     raise TimeoutError(f'no answer in {TIMEOUT_S} s')
 
 
-def fetch(call=broker, attempts=ATTEMPTS, pause=PAUSE_S, timeout=TIMEOUT_S, sleep=time.sleep):
-    """The broker's response, after up to `attempts` tries; CredentialError if none works."""
+def fetch(call=broker, pauses=PAUSES_S, jitter=JITTER, timeout=TIMEOUT_S, budget=BUDGET_S,
+          sleep=time.sleep, clock=time.monotonic, rand=random.uniform):
+    """The broker's response, after up to len(pauses) + 1 tries; CredentialError if none works."""
     last = None
+    attempts = len(pauses) + 1
+    t0 = clock()
     for attempt in range(1, attempts + 1):
         # maap-py's requests.get has no timeout of its own, and a connect
         # that never answers took ~130 s in the failed jobs' logs
@@ -69,15 +96,26 @@ def fetch(call=broker, attempts=ATTEMPTS, pause=PAUSE_S, timeout=TIMEOUT_S, slee
         signal.alarm(timeout)
         try:
             return validate(call())
-        except Exception as exc:        # any failure of the call is retried the same way
+        except Exception as exc:        # any other failure of the call is retried the same way
             last = f'{type(exc).__name__}: {exc}'
             print(f'workspace credentials: attempt {attempt} of {attempts} failed ({last})',
                   file=sys.stderr)
+            if http_status(exc) == 401:
+                raise CredentialError(
+                    f'maap.aws.workspace_bucket_credentials() got HTTP 401: MAAP_PGT was rejected'
+                    f" (likely the runner's get_maap_pgt_token.py failed at job start);"
+                    f' a retry cannot help; error: {last}')
         finally:
             signal.alarm(0)
-        if attempt < attempts:
-            sleep(pause)
-    raise CredentialError(f'maap.aws.workspace_bucket_credentials() failed {attempts} times;'
+        if attempt == attempts:
+            break
+        nap = pauses[attempt - 1] * rand(1 - jitter, 1 + jitter)
+        if clock() - t0 + nap > budget:
+            print(f'workspace credentials: no further try: a {nap:.0f} s pause would pass the'
+                  f' {budget} s budget', file=sys.stderr)
+            break
+        sleep(nap)
+    raise CredentialError(f'maap.aws.workspace_bucket_credentials() failed {attempt} times;'
                           f' last error: {last}')
 
 
