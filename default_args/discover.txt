@@ -3,4 +3,7 @@
 --ATL14_root=/discover/nobackup/projects/icesat2/ATL14_processing
 --ATL11_root=/discover/nobackup/bjelley/ATL11_processing
 --ATL11xo_top=/discover/nobackup/projects/icesat2/ATL11XO_processing/
-
+# Least-squares solver: CHOLMOD, as on MAAP (MAAP_dps.txt).  Needs scikit-sparse
+# >= 0.5 and LSsurf with ls_solvers in the env; ATL11_to_ATL15 stops before
+# reading data if it cannot honour it.
+--solver=cholmod

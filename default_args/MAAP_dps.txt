@@ -18,8 +18,10 @@
 # --mask_file / --tide_mask_file / --geoid_file / --tide_adjustment_file names
 # that the region args files (AA_0331.txt, GL_0331.txt) give, so those files
 # need no MAAP-specific variant.  GDAL reads the geotiffs through /vsis3/ and
-# h5py/netCDF4 through s3fs; both use the worker's ordinary AWS credentials
-# (~/.aws is bind-mounted into the job), NOT an earthaccess session.
+# h5py/netCDF4 through s3fs; both use the temporary bucket keys that run.sh
+# (use_workspace_credentials) gets from maap.aws.workspace_bucket_credentials()
+# at job start and exports as AWS_* variables, with the worker's instance role
+# switched off (AWS_EC2_METADATA_DISABLED=true) -- NOT an earthaccess session.
 --mask_dir=s3://maap-ops-workspace/ben_smith/ATL1415/masks/
 
 # ATL11 comes from NASA Earthdata Cloud rather than a local archive.  With
@@ -37,7 +39,7 @@
 # tile reads 1.6 MiB (AA) or 6.3 MiB (GL).
 #
 # NOTE this bucket is public but REJECTS SIGNED REQUESTS from other accounts, so
-# it is read anonymously; a worker's own AWS credentials would get AccessDenied.
+# it is read anonymously; the job's bucket keys would get AccessDenied.
 # ATL1415.tides does that by default (override with ATL1415_TIDE_ANON=0).
 --tide_directory=s3://pytmd
 
@@ -50,7 +52,8 @@
 # read_ATL11 builds the 200 km tiling schema in memory and resolves the ATL11XO
 # tiles through CMR, so nothing is staged and no schema file exists.  Omit
 # --ATL11xo_version and a cloud run is along-track only -- which is what every
-# job before e798344 silently was.  See docs/Transition_to_maap.md Q24/Q25.
+# job before e798344 silently was.  See Transition_to_maap.md Q24/Q25
+# (~/ATL14_processing/dev/notes/ on the MAAP ADE).
 
 # --previous_product_earthaccess reinterprets --previous_product as the release
 # and cycle range to search for in NASA Earthdata Cloud ('<release>_<cycles>'),
@@ -61,5 +64,12 @@
 # THE PUBLISHED PRODUCT IS THE PREVIOUS PRODUCT: ATL14/ATL15 v005 on CMR are the
 # same 0329 files rel005_0329/ holds, so nothing is staged, and a bounding-box
 # search returns only the sectors a tile actually touches -- one ATL14 granule
-# for an Iceland or a single-sector Antarctic tile.  See Transition_to_maap.md Q27.
+# for an Iceland or a single-sector Antarctic tile.  See Transition_to_maap.md Q27
+# (~/ATL14_processing/dev/notes/).
 --previous_product_earthaccess
+
+# Least-squares solver for the fit iterations: CHOLMOD (normal equations +
+# refinement), not LSsurf's SPQR default.  ATL11_to_ATL15 stops before any data
+# are read if the env cannot honour it (scikit-sparse >= 0.5, LSsurf with
+# ls_solvers).  Also in discover.txt.
+--solver=cholmod

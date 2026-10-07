@@ -37,7 +37,6 @@ ln -sf rel_006_0332.txt default_args/latest_release.txt
 for reg in $regions; do paths $reg
     setup_ATL1415_region.py default_args/MAAP_dps.txt $rel_file \
         default_args/$reg.txt default_args/quarterly.txt --Hemisphere=1
-    sed -i 's/^-b=/--solver=cholmod\n-b=/' $region_dir/input_args_$reg.txt
     aws s3 cp $region_dir/input_args_$reg.txt $s3_run/
 done
 
@@ -85,7 +84,6 @@ for reg in $regions; do paths $reg
         default_args/$reg.txt default_args/monthly.txt --Hemisphere=1 \
         --ATL14_reference_file=$ref
     paths $reg _monthly
-    sed -i 's/^-b=/--solver=cholmod\n-b=/' $region_dir/input_args_$reg.txt
     aws s3 cp $region_dir/input_args_$reg.txt $s3_run/
 done
 

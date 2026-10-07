@@ -39,7 +39,6 @@ half () {     # half 60km|44km
 #    AA_0331.txt, and 0331 is gone from CMR: update it first.
 setup_ATL1415_region.py default_args/MAAP_dps.txt $rel_file \
     default_args/AA_latest.txt default_args/quarterly.txt --Hemisphere=-1
-sed -i 's/^-b=/--solver=cholmod\n-b=/' $south/AA/input_args_AA.txt
 scripts/maap/make_AA_44km_args.py $south/AA/input_args_AA.txt $south/AA_44km/input_args_AA_44km.txt
 half 60km; aws s3 cp $south/AA/input_args_AA.txt $s3_run/
 aws s3 cp $south/AA_44km/input_args_AA_44km.txt $s3_run/

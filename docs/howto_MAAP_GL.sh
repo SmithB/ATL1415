@@ -51,7 +51,6 @@ ln -sf rel_006_0332.txt default_args/latest_release.txt
 ln -sf GL_0332.txt      default_args/GL_latest.txt
 setup_ATL1415_region.py default_args/MAAP_dps.txt $rel_file \
     default_args/GL_latest.txt default_args/quarterly.txt --Hemisphere=1
-sed -i 's/^-b=/--solver=cholmod\n-b=/' $region_dir/input_args_GL.txt
 aws s3 cp $region_dir/input_args_GL.txt $s3_run/
 
 # 3. [OK] Smoke: two tiles, then check them before fanning out.
@@ -103,7 +102,6 @@ setup_ATL1415_region.py default_args/MAAP_dps.txt $rel_file \
     default_args/GL_latest.txt default_args/monthly.txt --Hemisphere=1 \
     --ATL14_reference_file=$ref
 paths _monthly
-sed -i 's/^-b=/--solver=cholmod\n-b=/' $region_dir/input_args_GL.txt
 aws s3 cp $region_dir/input_args_GL.txt $s3_run/
 
 # 11. [UNTESTED on MAAP] Take no-data centers out of the tile list; commit AND push.
