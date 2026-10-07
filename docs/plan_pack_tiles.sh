@@ -33,8 +33,8 @@
 #   QK4 DECIDED (recommendation taken). Scope: prelim and matched only.  The mosaic steps already batch
 #        (one job per mosaic task).  RECOMMENDATION: leave them alone.
 #
-# QUESTION FOR BEN (added 2026-10-07 with K8):
-#   QK5 QUESTION. The start-up cap in K8: how many jobs may be in their
+# ADDED 2026-10-07 with K8:
+#   QK5 DECIDED 2026-10-07 (Ben: recommendations accepted). The start-up cap in K8: how many jobs may be in their
 #        start-up window at once.  RECOMMENDATION: 40 to start (below the
 #        100 in flight that gave 1.1-1.6%; queue wait alone is ~6 min, so a
 #        much smaller cap would leave the queue idle), then measure in K7
@@ -145,7 +145,7 @@
 #   steps (100 jobs, then 200) with failure rates recorded, to measure
 #   what the API takes instead of guessing.  With K8, the thing to step is
 #   the start-up cap (QK5), not the in-flight cap.
-# K8. [repo] TODO, after K4 (added 2026-10-07; TENTATIVE, QK5 open).  START-UP
+# K8. [repo] TODO, after K4 (added 2026-10-07; TENTATIVE; QK5 decided: N=40).  START-UP
 #   MARKERS: cap the jobs still starting up, not the jobs in flight.
 #   Ben 2026-10-07: "if the failures are on start-up, maybe it will work to
 #   submit additional jobs once the running jobs hit the compute phase.
