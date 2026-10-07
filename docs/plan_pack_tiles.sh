@@ -33,6 +33,15 @@
 #   QK4 DECIDED (recommendation taken). Scope: prelim and matched only.  The mosaic steps already batch
 #        (one job per mosaic task).  RECOMMENDATION: leave them alone.
 #
+# QUESTION FOR BEN (added 2026-10-07 with K8):
+#   QK5 QUESTION. The start-up cap in K8: how many jobs may be in their
+#        start-up window at once.  RECOMMENDATION: 40 to start (below the
+#        100 in flight that gave 1.1-1.6%; queue wait alone is ~6 min, so a
+#        much smaller cap would leave the queue idle), then measure in K7
+#        at 40 and 80.  Also: the marker prefix.  RECOMMENDATION:
+#        $s3_root/ATL14_processing/startup_ok/<tag>/ -- outside every tile
+#        and product prefix, so a stray marker can never be read as a tile.
+#
 # WHAT IS KNOWN (statements, with provenance):
 #   - FAILURES ARE ALL MAAP API CALLS AT JOB START (plan_GL_maskv5.sh V4b,
 #     all 540 failed jobs of rounds 0-1 classified).  Four call sites:
@@ -52,7 +61,10 @@
 #     by N.  Retries (K2-K3) can only cover c and d.
 #   - THE 100-IN-FLIGHT CAP IS MINE, NOT MEASURED.  Round 0 (1112 starting
 #     within minutes) failed 48%; round 1 (100 in flight) failed 1.1%.
-#     Nothing between those has been tried.
+#     Nothing between those has been tried.  ADDED 2026-10-07: V6 matched
+#     (1222 at 100 in flight, ~200 briefly) failed 1.6%: 9 a, 7 b, 3 with
+#     no triaged_job record -- the same call sites, at the same cap.  Filed
+#     with MAAP as MAAP-Project/Community#1334 (Ben).
 #   - GL PRELIM TILE SIZES (578 successful round-0 jobs, collect_jobs,
 #     e6d7051): peak memory p10 4.7, p50 9.1, p90 10.4, max 13.2 GiB --
 #     none above 14 GiB, so any two fit in 32 GiB.  Wall time p10 338, p50
@@ -131,4 +143,43 @@
 #   so tiles may run slower; the gain is fewer job starts).
 # K7. [DPS] TODO.  Scale test on a real step: the in-flight cap raised in
 #   steps (100 jobs, then 200) with failure rates recorded, to measure
-#   what the API takes instead of guessing.
+#   what the API takes instead of guessing.  With K8, the thing to step is
+#   the start-up cap (QK5), not the in-flight cap.
+# K8. [repo] TODO, after K4 (added 2026-10-07; TENTATIVE, QK5 open).  START-UP
+#   MARKERS: cap the jobs still starting up, not the jobs in flight.
+#   Ben 2026-10-07: "if the failures are on start-up, maybe it will work to
+#   submit additional jobs once the running jobs hit the compute phase.
+#   Can the jobs communicate back to the ADE when they get past the stages
+#   where we've had failures?"
+#   WHY THE BUCKET (statements):
+#     - The MAAP job status says only 'running' from start-up through the
+#       compute phase; stdout and metrics are readable only after the job
+#       ends.
+#     - INFERRED, not tested: a DPS worker has no address on the ADE it can
+#       connect to (the ADE sits behind the hub's login proxy).
+#     - Every job already holds workspace keys that can write the bucket
+#       (run.sh:413, use_workspace_credentials, checked on the prefix the
+#       step writes).
+#   DESIGN (RECOMMENDATION):
+#     a. The job writes one empty object, <marker prefix>/<job_id>, once it
+#        is past every call site in WHAT IS KNOWN that applies to its step:
+#        a and b are behind it when run.sh starts; c is right after
+#        use_workspace_credentials (matched, mosaic, nc: write it there);
+#        d is the first NSIDC broker call inside read_ATL11 (prelim: write
+#        it from Python after the first successful get_s3fs -- V4b's 49
+#        failed there, after c had worked).  With K4 packing, once per job,
+#        not per tile, next to the TILE_STATUS lines.  A marker write that
+#        fails is logged and ignored: it must never fail the job.
+#     b. submit_MAAP_jobs.py --max_starting N: before each POST, one LIST of
+#        the marker prefix; starting = submitted - marked - finished; submit
+#        while starting < N.  Status calls only for unmarked jobs (a job
+#        that dies before its marker holds a slot until its status is
+#        final), so far fewer API calls than polling every job.
+#     c. The driver deletes <marker prefix> for its tag when ALL_DONE.
+#   CAVEATS: the start-up window includes MAAP's queue wait (GL median
+#     ~6 min, submit to job start), so N must cover that or the queue idles;
+#     --max_in_flight stays as an outer limit.
+#   GATES (in K6/K7): every job that ends successful has a marker; no
+#     marker for a job that failed before its marker point; failure rate and
+#     wall time of the whole step at N=40 vs 100 in flight.
+#   Needs registration (Ben) for the run.sh / Python side.
