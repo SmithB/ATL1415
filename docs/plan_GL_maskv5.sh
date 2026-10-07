@@ -150,25 +150,75 @@ aws s3 cp $region_dir/input_args_GL.txt $s3_run/
 # GATES: 3 successful; commit e6d7051; log names the v5 mask; E480 vs its
 #   v4.1 tile (copy in $s3_old): reported cells away from changed mask
 #   cells agree to ~1e-7 m; peak memory < ~28 GiB.
-# V4b. [DPS] RUNNING since 2026-10-02 23:44Z.  The other 1112 prelim, ALL AT ONCE with client-side
+# V4b. [DPS] DONE 2026-10-06 23:19Z (started 2026-10-02 23:44Z).  The other 1112 prelim, ALL AT ONCE with client-side
 #   resubmit (Ben 2026-10-01 for monthly; NM5/NM7 driver pattern, 2 rounds):
-#   $ledgers/GL_0332_maskv5_prelim_driver.py (+ .log).
+#   $ledgers/GL_0332_maskv5_driver.py prelim (+ GL_0332_maskv5_prelim_driver.log;
+#   ledgers GL_0332_maskv5_prelim_run[_retryN]_jobs.csv).
+#   ROUND 0: 1112 POSTs in 125 s (23:44:50-23:46:55Z), none refused.  By
+#     23:57Z 531 FAILED, 49 successful, 532 running.  Sampled failures: all at
+#     our first step (workspace credentials, 5 attempts, exit 1 -- nothing
+#     read or written): MAAP API ConnectTimeout, and NEW, "[Errno 111]
+#     Connection refused"; and HTTP 401 on every attempt after the runner's
+#     get_maap_pgt_token.py timed out (NM7's two classes).  STATEMENT: twice
+#     NM7's job count at once overloaded the shared MAAP API.
+#   CHANGED (mine, 23:58Z): retry rounds go out at --max_in_flight 100
+#     (QN3's pattern), not all at once, so the ~500 resubmissions do not
+#     repeat the overload.  Driver restarted (round 0 only waited on).
+#     Ben's "all at once" was for the monthly load test; for this run it was
+#     my choice.
+#   ADE LOST: the driver log stopped at 2026-10-03 00:15Z.  Restarted
+#     2026-10-06 21:30Z with the same command.  Round 0 final: 578
+#     successful, 534 failed.  Round 1 (the 534, at 100 in flight)
+#     submitted 21:31Z.
+#   ROUND 0 FAILURES, ALL 534 classified from the triaged_job stderr
+#     (scratchpad classify_r0.py, 2026-10-06).  Every one was a call to
+#     api.maap-project.org that was refused, timed out, or returned 401:
+#     326 MAAP stage-in (stage_in.py -> /api/environment/config; 261
+#       refused, 65 timeout) -- before our code ran;
+#     157 our workspace-credentials step (5 attempts; 81 with HTTP 401 after
+#       the runner's get_maap_pgt_token.py timed out, 76 refused/timeout);
+#     49 past credentials, in the fit: read_ATL11 -> get_s3fs could not
+#       broker NSIDC credentials through MAAP (39 refused, 10 timeout),
+#       0.7 GiB, ~50 s, no tile written;
+#     2 failed after 453 s with no triaged_job record (cause unknown).
+#     None was a data, memory, or solver failure.
+#   ROUND 1 (534 at 100 in flight, 21:31-22:28Z submit, done 22:46Z): 528
+#     successful, 6 failed (1.1%), again all MAAP API: 4 MAAP stage-in
+#     ConnectTimeout on /api/environment/config, 1 our credentials step
+#     (401 after get_maap_pgt_token timeout), 1 no triaged_job record.
+#     Round 2 (the 6) submitted 22:47Z; all 6 successful 23:19Z.
+#   ALL_DONE: all 1112 (+3 smoke) prelim tiles have a successful job.
 
 
 # ===========================================================================
-# V5. [ADE] TODO.  Check prelim.
+# V5. [ADE] DONE 2026-10-06 23:20Z.  Check prelim.
 # ===========================================================================
 # check_field_sizes through the mount on the 1115; every one of the 189
 # north reruns has LastModified after V4 started (otherwise: a no-data
 # rerun left the v4.1 tile -- remove it and record it); no-data centers
 # listed (fetch_tiles' no_data_tiles.txt equivalent from the job logs).
 
+# RESULT: gl_maskv5_V5_check.py 2026-10-02T23:20:00 -> 1483 prelim tiles on
+#   the prefix; all 1115 V4 centers have a tile (no no-data centers); all
+#   189 north reruns rewritten after 23:20Z (none stale).
+#   check_field_sizes through the mount: expected dz [61, 61, 32], 1483 of
+#   1483 passed, 0 problems (96 s).
+
 
 # ===========================================================================
-# V6. [DPS] TODO.  Matched, the 1222, all at once, same driver (--step
+# V6. [DPS] RUNNING since 2026-10-06 23:21Z.  Matched, the 1222, all at once, same driver (--step
 #   matched).  Only after V5 -- a matched job reads its neighbours' prelim
 #   tiles as they are at that moment.
 # ===========================================================================
+# CHANGED (mine, 2026-10-06): round 0 at --max_in_flight 100 too, not all
+#   at once (V4b: 48% failed all at once, 1.1% at 100 in flight).  Driver
+#   log GL_0332_maskv5_matched_driver.log, ledgers
+#   GL_0332_maskv5_matched_run[_retryN]_jobs.csv.
+# INTERRUPTED 2026-10-07 00:08Z: the ADE restarted during round 0's submit
+#   (987/1222 in the ledger, no POST failures).  Driver patched (mine): a
+#   round whose ledgers miss tiles submits them as _resume<k>_jobs.csv and
+#   waits on all its ledgers.  Restarted 00:09Z; resume1 = the other 235.
+#   The resume's in-flight cap counts only its own jobs (~200 briefly).
 # Then check_field_sizes --step matched; 1483 matched tiles (less no-data
 # centers) at $s3_out/matched.
 
