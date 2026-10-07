@@ -206,7 +206,7 @@ aws s3 cp $region_dir/input_args_GL.txt $s3_run/
 
 
 # ===========================================================================
-# V6. [DPS] RUNNING since 2026-10-06 23:21Z.  Matched, the 1222, all at once, same driver (--step
+# V6. [DPS] DONE 2026-10-07 00:41Z.  Matched, the 1222, all at once, same driver (--step
 #   matched).  Only after V5 -- a matched job reads its neighbours' prelim
 #   tiles as they are at that moment.
 # ===========================================================================
@@ -221,6 +221,13 @@ aws s3 cp $region_dir/input_args_GL.txt $s3_run/
 #   The resume's in-flight cap counts only its own jobs (~200 briefly).
 # Then check_field_sizes --step matched; 1483 matched tiles (less no-data
 # centers) at $s3_out/matched.
+# RESULT: ALL_DONE 00:41Z: round 0 (987 + resume1 235) 1203/1222
+#   successful, retry1 19/19.  session_tools_2026-10-07/gl_maskv5_V6_check.py
+#   2026-10-06T23:21:52 -> 1483 matched tiles on the prefix; all 1222 V6
+#   centers have a tile (no no-data centers), all written after V6 started;
+#   the other 261 are the kept north tiles of 2026-09-30.
+#   check_field_sizes --step matched through the mount: expected dz
+#   [61, 61, 32], 1483 of 1483 passed, 0 problems (97 s).
 
 
 # ===========================================================================
