@@ -15,12 +15,12 @@
 # RECOMMENDATION = mine; QUESTION = open.  Commands are plan_GL_north.sh's.
 #
 # QUESTIONS FOR BEN (answer inline; none blocks V0-V6):
-#   QV1  After matched: full-GL mosaic + ATL14/ATL15 netCDF on DPS
+#   QV1  DECIDED (Ben 2026-10-07: recommendation taken).  After matched: full-GL mosaic + ATL14/ATL15 netCDF on DPS
 #        (plan_dps_mosaic.sh D7 for all of GL)?  RECOMMENDATION: yes, to the
 #        TEST prefix .../rel006_0332_testing/north/GL as D7 did, then the
 #        rel005 comparison.  The north-only products there would be
 #        overwritten.
-#   QV2  GL monthly.  STATEMENT: the north monthly prelim/matched used the
+#   QV2  DECIDED (Ben 2026-10-07: recommendation taken).  GL monthly.  STATEMENT: the north monthly prelim/matched used the
 #        v4.1 mask AND the north-only ATL14 as reference.  A full-GL monthly
 #        run needs the V7 ATL14 as reference and the v5 mask in the monthly
 #        args (.../north_monthly/GL/input_args_GL.txt, NOT changed here).
@@ -231,6 +231,41 @@ aws s3 cp $region_dir/input_args_GL.txt $s3_run/
 
 
 # ===========================================================================
-# V7. [DPS] QUESTION QV1.  Mosaic + ATL14/ATL15 netCDF for all of GL.
-# V8. [DPS] QUESTION QV2.  Monthly.
+# V7. [DPS] TODO (QV1 decided).  Mosaic + ATL14/ATL15 netCDF for all of
+#   GL, D7's three stages, each after the last has finished; failed tasks
+#   resubmitted with --task and a new ledger, cause recorded.  Deployed
+#   build e6d7051 (nothing registered since).  Common:
+#     --args_url $s3_run/input_args_GL.txt  --tile_prefix $s3_out
+#     --out_prefix $R/ATL14_processing/rel006_0332_testing/north/GL
+#     ledgers maap_ledgers/GL_0332_maskv5_V7_<stage>[_retryN]_jobs.csv
+#   V7a mosaic200: 76 tasks (dry run 2026-10-07; D7 north: 32), 16gb,
+#       --max_in_flight 100.
+#   V7b mosaic: every group, 16gb.
+#   V7c nc: ATL14 + ATL15.  MY CHOICE: 32gb, not D7's 16gb -- D7's north
+#       ATL14 peaked at 4.37 GiB, and all of GL is ~2.7x the tiles.
+#   STALE CHECK: D7's north-only products are at the same prefix; after
+#       V7c, every object there must be newer than V7a's start (list the
+#       ones that are not; nothing deleted without Ben).
+#   ADE CHECKS (D7's): check_mosaic_outputs.py --values through the mount;
+#       quick plot of h and delta_h; then the rel005 comparison
+#       (compare_rel005.py, all of GL, no --ymin), REPORT ONLY.
+#   Record times and peak memory for MAAP.
+# V8. [DPS] TODO, after V7 (QV2 decided).  Monthly, all 1483 centers.
+#   V8a REF: aws s3 cp (S3 to S3) the V7 ATL14 to
+#       .../run_args/rel006/north_monthly/GL/ref/ATL14_GL_0332_100m_006_02.nc
+#       (a new key; the north_partial ref stays).  GATE: byte size equal.
+#   V8b ARGS: keep the current monthly args as
+#       .../north_monthly/GL/input_args_GL_v4.1_north_partial.txt (S3 copy),
+#       compose as NM3 (GL_latest now = v5 mask) + --solver=cholmod by
+#       hand, --ATL14_reference_file = V8a's key; upload.  GATE: sorted diff
+#       vs the quarterly args = ref, dzdt_lags, -b, -g only; vs the old
+#       monthly args = mask_file and ref only.
+#   V8c PRELIM: all 1483 centers (the quarterly prelim prefix's tile
+#       names), 32gb, a copy of GL_0332_maskv5_driver.py with the monthly
+#       args/prefix (GL_0332_maskv5_monthly_driver.py), every round at
+#       --max_in_flight 100.  Then V5's checks: every center has a tile
+#       rewritten after V8c started; check_field_sizes --step prelim.
+#   V8d MATCHED: the same 1483, same driver; V6's checks.
+#   NOT IN SCOPE (as NM6): monthly mosaic + ATL15 netCDF.  QUESTION for
+#       Ben when V8d is done.
 # ===========================================================================
