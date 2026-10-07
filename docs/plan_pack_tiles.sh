@@ -113,7 +113,7 @@
 #   test_workspace_credentials.py 26 passed (8 new or rewritten); whole
 #   suite 257 passed, 2 skipped.
 # K3. [pointCollection] DONE 2026-10-07 on branch maap_broker_backoff
-#   (f7c3ca4, PR SmithB/pointCollection#62; Ben merges).  _s3fs_from_maap: K2's pauses,
+#   (f7c3ca4, PR SmithB/pointCollection#62, MERGED 2026-10-07 as 8aad339).  _s3fs_from_maap: K2's pauses,
 #   jitter and 240 s budget; one MAAP() across tries (built again only if
 #   building failed); 401 stops at once.  No per-try timeout (no SIGALRM off
 #   the main thread).  test_maap_broker.py 16 passed (5 new); suite 323
