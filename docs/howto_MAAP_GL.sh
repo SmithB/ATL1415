@@ -82,7 +82,8 @@ scripts/check_field_sizes.py ${s3_out/$s3_root/$mnt}/matched @$region_dir/input_
 # 7. [OK] 200 km tiles (one job per 200 km center), then the mosaics (one job per field group).
 $sub --out_prefix $s3_prod --step mosaic200 --queue maap-dps-worker-16gb \
     --tag ${tag}_mosaic200 --ledger ${L}_mosaic200_jobs.csv --max_in_flight 100
-#    resubmit:  $sub --out_prefix $s3_prod --step mosaic200 --task <x_y> [--task ...] ... (new ledger)
+#    resubmit:  $sub --out_prefix $s3_prod --step mosaic200 --task=<x_y> [--task=...] ... (new ledger;
+#               "--task=", as a negative x reads as an option otherwise)
 $sub --out_prefix $s3_prod --step mosaic --queue maap-dps-worker-16gb \
     --tag ${tag}_mosaic --ledger ${L}_mosaic_jobs.csv --max_in_flight 100
 
