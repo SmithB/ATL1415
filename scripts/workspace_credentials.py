@@ -65,12 +65,33 @@ class CredentialError(Exception):
 _client = []
 
 
+def new_maap_client():
+    """
+    A MAAP client, reading /api/environment/config afresh.
+
+    maap-py (5.1.0) caches that read with functools.cache -- a FAILED read
+    (None, after e.g. a 502) included -- so once it fails, every MAAP() in the
+    process raises AttributeError ('NoneType' object has no attribute 'get')
+    without asking the API again: 8 jobs of 1482 on 2026-10-07 spent all six
+    tries on that.  Clear the cache before each build.
+    """
+    try:
+        from maap import config_reader
+        clear = getattr(getattr(config_reader, '_get_client_config', None), 'cache_clear', None)
+        if clear is not None:
+            clear()
+    except ImportError:
+        pass
+    from maap.maap import MAAP
+    return MAAP(maap_host=os.environ.get('MAAP_API_HOST', 'api.maap-project.org'))
+
+
 def broker():
     """One call to MAAP's workspace-credentials endpoint, on one MAAP client
-    built at the first call that gets that far."""
+    built at the first call that gets that far (built again, config read
+    afresh, after a failed build)."""
     if not _client:
-        from maap.maap import MAAP
-        _client.append(MAAP(maap_host=os.environ.get('MAAP_API_HOST', 'api.maap-project.org')))
+        _client.append(new_maap_client())
     return _client[0].aws.workspace_bucket_credentials()
 
 

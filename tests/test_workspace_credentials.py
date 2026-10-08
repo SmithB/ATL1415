@@ -256,3 +256,40 @@ def test_report_never_fails_the_build_id_job(monkeypatch, capsys):
     monkeypatch.setattr(wc, 'fetch', down)
     assert wc.main(['--report']) == 0
     assert capsys.readouterr().out.strip() == 'workspace_credentials=FAILED (no answer)'
+
+
+def test_a_failed_config_read_is_not_reused(monkeypatch):
+    # maap-py caches /api/environment/config with functools.cache, a failed
+    # read (None) included; a rebuilt client must read it again (2026-10-07: a
+    # 502 there failed all six tries of 8 jobs)
+    import functools
+    import sys
+    import types
+    reads = []
+
+    @functools.cache
+    def _get_client_config(maap_host):
+        reads.append(maap_host)
+        return None if len(reads) == 1 else {'service': {}}
+
+    class FakeMAAP:
+        def __init__(self, maap_host):
+            config = _get_client_config(maap_host)
+            config.get('service')                 # AttributeError on a cached None
+            self.aws = self
+
+        def workspace_bucket_credentials(self):
+            return RESPONSE
+    cfg = types.ModuleType('maap.config_reader')
+    cfg._get_client_config = _get_client_config
+    fake = types.ModuleType('maap.maap')
+    fake.MAAP = FakeMAAP
+    pkg = types.ModuleType('maap')
+    pkg.config_reader = cfg
+    monkeypatch.setitem(sys.modules, 'maap', pkg)
+    monkeypatch.setitem(sys.modules, 'maap.config_reader', cfg)
+    monkeypatch.setitem(sys.modules, 'maap.maap', fake)
+    monkeypatch.setattr(wc, '_client', [])
+    clock = Clock()
+    assert wc.fetch(sleep=clock.sleep, clock=clock, rand=no_jitter) is RESPONSE
+    assert len(reads) == 2                        # read again, not served from the cache
