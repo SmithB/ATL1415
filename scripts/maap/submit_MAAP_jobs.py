@@ -99,7 +99,7 @@ import requests
 from maap.maap import MAAP
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from ogc_jobs import (DEFAULT_QUEUE, DONE, POLL_S, find_process,  # noqa: E402
+from ogc_jobs import (DEFAULT_QUEUE, DONE, POLL_S, JobStates, find_process,  # noqa: E402
                       job_id_from, load_config)
 
 # The repo root, for ATL1415.mosaic_groups and ATL1415.lags: numpy-only, so
@@ -311,18 +311,22 @@ def deployed_declares(process, name):
     return re.search(rf'^\s*{re.escape(name)}:', text, re.M) is not None
 
 
+_job_states = {}
+
+
 def wait_for_slot(maap, live, limit):
-    """Block until fewer than `limit` of the jobs in `live` are unfinished."""
+    """
+    Block until fewer than `limit` of the jobs in `live` are unfinished.
+
+    Statuses come from ogc_jobs.JobStates: a list of the active jobs plus one
+    get_job_status for each job that left it -- not one call per live job
+    per poll (2026-10-07: 100 calls every 15 s during the API stress test).
+    """
+    states = _job_states.setdefault(id(maap), JobStates(maap))
     while len(live) >= limit:
-        still = []
-        for jid in live:
-            try:
-                status = maap.get_job_status(jid).json().get('status', '?')
-            except Exception:
-                status = '?'          # a job not yet visible counts as live
-            if str(status) not in DONE:
-                still.append(jid)
-        live[:] = still
+        by = states.poll(list(live))
+        # a job not yet visible, or not yet known, counts as live
+        live[:] = [jid for jid in live if str(by.get(jid, '?')) not in DONE]
         if len(live) >= limit:
             print(f'    {len(live)} in flight; waiting {POLL_S}s')
             time.sleep(POLL_S)

@@ -83,3 +83,19 @@ def test_listing_outage_keeps_last_states():
     jobs['a'] = 'successful'
     st = js.poll(list(jobs))
     assert st == {'a': 'running', 'b': 'accepted'} and js.error and m.status_calls == 0
+
+
+def test_submitter_waits_for_a_slot_with_list_calls(monkeypatch):
+    import submit_MAAP_jobs as sub
+    jobs = {f'j{i}': 'running' for i in range(4)}
+    m = FakeMaap(jobs)
+    naps = []
+
+    def sleep(s):           # one job finishes while the submitter waits
+        naps.append(s)
+        jobs['j0'] = 'successful'
+    monkeypatch.setattr(sub.time, 'sleep', sleep)
+    live = list(jobs)
+    sub.wait_for_slot(m, live, 4)
+    assert live == ['j1', 'j2', 'j3'] and len(naps) == 1
+    assert m.status_calls == 1          # only the job that left the running list
