@@ -145,10 +145,19 @@ GL_ARGS = '--region=GL\n-g=100,1000,0.25\n-t=2018.75,2026.5\n-W=60000\n--tile_sp
 PRELIM = ['E420_N20.h5', 'E460_N20.h5', 'E-620_N-1340.h5', 'E0_N-920.h5']
 
 
-def test_mosaic200_tasks_are_the_200km_centers():
+def test_mosaic200_tasks_are_the_region_list():
+    # the canonical list, whatever the tile listing says: 81 GL cells, among
+    # them the southern one no tile center is in (plan_200km_footprint.sh)
     tasks = sub.mosaic_tasks('mosaic200', GL_ARGS, 's3://b/GL', 's3://b/test/GL',
                              lister=lambda prefix: set(PRELIM))
-    assert tasks == ['-700000_-1300000', '100000_-900000', '500000_100000']
+    assert len(tasks) == 81 and '-100000_-3300000' in tasks
+
+
+def test_the_gl_list_is_the_footprints_of_the_gl_tiles():
+    from ATL1415.mosaic_groups import footprint_centers_200km, read_200km_centers
+    names = [ln.strip() for ln in open(os.path.join(HERE, '..', 'ATL1415', 'resources', 'GL',
+                                                      '40km_tile_list.txt')) if ln.strip()]
+    assert read_200km_centers('GL') == footprint_centers_200km(names, half_width=30e3)
 
 
 def test_the_centers_are_make_200km_tiles_own(tmp_path):
@@ -158,12 +167,9 @@ def test_the_centers_are_make_200km_tiles_own(tmp_path):
         'make_200km_tiles', os.path.join(HERE, '..', 'ATL1415', 'scripts', 'make_200km_tiles.py'))
     m2 = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m2)
-    (tmp_path / 'prelim').mkdir()
-    for name in PRELIM:
-        (tmp_path / 'prelim' / name).write_bytes(b'')
-    worker = {tuple(xy) for xy in m2.make_200km_tiles(str(tmp_path))}
-    from ATL1415.mosaic_groups import centers_200km
-    assert {tuple(xy) for xy in centers_200km(PRELIM)} == worker
+    worker = m2.make_200km_tiles(str(tmp_path), region='GL')
+    tasks = sub.mosaic_tasks('mosaic200', GL_ARGS, 's3://b/GL', 's3://b/test/GL')
+    assert tasks == [f'{int(x)}_{int(y)}' for x, y in worker]
 
 
 @pytest.mark.parametrize('z0_tiles', [True, False])

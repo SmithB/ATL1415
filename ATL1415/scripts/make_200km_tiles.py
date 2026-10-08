@@ -57,7 +57,8 @@ def select_200km_tiles(xyc, min_xy=None, max_xy=None):
     return keep
 
 
-def make_200km_tiles(region_dir, tile_W=200e3, tile_list_file=None, tiles_base=None):
+def make_200km_tiles(region_dir, tile_W=200e3, tile_list_file=None, tiles_base=None,
+                     region=None, half_width=30e3):
     """
     Find or build the list of 200km-tile centers for a region.
 
@@ -75,10 +76,18 @@ def make_200km_tiles(region_dir, tile_W=200e3, tile_list_file=None, tiles_base=N
         width of the tiles into which the small tiles are grouped, in meters.
         The default is 200e3.
     tile_list_file : str, optional
-        the CANONICAL list of 200km-tile centers (for Antarctica,
-        ATL1415/resources/AA/200km_tile_list.txt).  When given it is used as
+        the CANONICAL list of 200km-tile centers.  When given it is used as
         is, and region_dir's own 200km_tile_list.txt is neither read nor
         written.  Filter it with select_200km_tiles().
+    region : str, optional
+        with no tile_list_file, the region's package resource
+        ATL1415/resources/<region>/200km_tile_list.txt is used if it exists
+        (GL and AA: mosaic_groups.read_200km_centers).
+    half_width : float, optional
+        with neither list, the cells are those the prelim tiles' squares
+        (center +- half_width, m) reach -- not only those holding a tile center,
+        which lost the strips of tiles reaching into a cell with no center
+        (plan_200km_footprint.sh).
 
     Returns
     -------
@@ -86,6 +95,9 @@ def make_200km_tiles(region_dir, tile_W=200e3, tile_list_file=None, tiles_base=N
         list of [x, y] tile-center coordinates.
 
     """
+    if tile_list_file is None and region is not None:
+        from ATL1415.mosaic_groups import region_200km_list
+        tile_list_file = region_200km_list(region)
     if tile_list_file is not None:
         print("reading 200km tile centers from "+tile_list_file)
         return read_200km_tile_list(tile_list_file)
@@ -102,16 +114,11 @@ def make_200km_tiles(region_dir, tile_W=200e3, tile_list_file=None, tiles_base=N
     from ATL1415.paths import list_tiles, join_path_or_uri
     tile_files = list_tiles(join_path_or_uri(tiles_base or region_dir, 'prelim'), 'E*N*.h5')
 
-    tile_list=[]
     for tile_name in tile_files:
-        try:
-            tile_list += [np.array([*map(int, tile_re.search(tile_name).groups())])]
-        except Exception as e:
-            print(tile_name)
-            print(e)
-
-    xy0=np.c_[tile_list]*1000
-    xyc=pc.unique_by_rows(np.floor(xy0/tile_W)*tile_W+tile_W/2)
+        if tile_re.search(tile_name) is None:
+            print(f"make_200km_tiles: not a tile name, skipped: {tile_name}")
+    from ATL1415.mosaic_groups import footprint_centers_200km
+    xyc=footprint_centers_200km(tile_files, half_width=half_width, tile_W=tile_W)
     with open(tile_ctr_file,'w') as fh:
         for line in xyc:
             fh.write(str(line[0])+' '+str(line[1])+'\n')
@@ -188,7 +195,8 @@ def main():
                                     skip_z0 = args.skip_z0)
 
     tiles_base = args.tiles_base or region_dir
-    xyc=make_200km_tiles(region_dir, tile_list_file=args.tile_list_file, tiles_base=args.tiles_base)
+    xyc=make_200km_tiles(region_dir, tile_list_file=args.tile_list_file, tiles_base=args.tiles_base,
+                         region=region, half_width=args.W/2)
     n_all=len(xyc)
     xyc=select_200km_tiles(xyc, min_xy=args.min_xy, max_xy=args.max_xy)
     print(f"{len(xyc)} of {n_all} 200km tiles are inside min_xy={args.min_xy}, max_xy={args.max_xy}")

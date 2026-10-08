@@ -29,15 +29,28 @@ def key(xyc):
 
 # --- the real Antarctic list ---------------------------------------------------
 
-def test_the_real_list_reads_as_413_centers():
-    assert len(m2.read_200km_tile_list(AA_LIST)) == 413
+def test_the_real_list_reads_as_422_centers():
+    # 413, plus the 9 cells its tiles reach into but hold no tile center of
+    # (plan_200km_footprint.sh, 2026-10-08)
+    assert len(m2.read_200km_tile_list(AA_LIST)) == 422
+
+
+def test_the_real_list_covers_every_cell_its_tiles_reach():
+    import re
+    from ATL1415.mosaic_groups import footprint_centers_200km
+    names = [ln.strip() for ln in open(os.path.join(HERE, '..', 'ATL1415', 'resources', 'AA',
+                                                      '40km_tile_list.txt')) if ln.strip()]
+    ext = lambda n: max(abs(int(v)) for v in re.search(r'E(-?\d+)_N(-?\d+)', n).groups()) * 1000
+    need = key(footprint_centers_200km([n for n in names if ext(n) >= 360000], half_width=30e3)) \
+        | key(footprint_centers_200km([n for n in names if ext(n) <= 440000], half_width=22e3))
+    assert need <= key(m2.read_200km_tile_list(AA_LIST))
 
 
 def test_each_half_takes_its_own_tiles_and_together_they_take_all():
     xyc = m2.read_200km_tile_list(AA_LIST)
     north = key(m2.select_200km_tiles(xyc, min_xy=360000))
     south = key(m2.select_200km_tiles(xyc, max_xy=440000))
-    assert (len(north), len(south)) == (397, 16)
+    assert (len(north), len(south)) == (406, 16)
     assert not north & south                      # no tile built twice
     assert north | south == key(xyc)              # no tile missed
 
@@ -102,15 +115,29 @@ def test_a_bad_line_is_an_error_naming_it(tmp_path):
         m2.read_200km_tile_list(str(canon))
 
 
-def test_without_a_list_the_centers_are_still_derived_from_prelim(tmp_path):
-    # discover's behaviour, unchanged: 200 km cells covering the prelim tiles
-    region = tmp_path / 'AA'
+# with no list: every cell the tiles' 60 km squares reach, not only those
+# holding a tile center (E420_N20 spans x 390..450, y -10..50 km: four cells;
+# E-620_N-1340 spans x -650..-590 km: two)
+FOOTPRINT = {(300000., 100000.), (300000., -100000.), (500000., 100000.), (500000., -100000.),
+             (-700000., -1300000.), (-500000., -1300000.)}
+
+
+def test_without_a_list_the_cells_come_from_the_prelim_footprints(tmp_path):
+    region = tmp_path / 'XX'                       # a region with no resource list
     (region / 'prelim').mkdir(parents=True)
     for name in ['E420_N20.h5', 'E460_N20.h5', 'E-620_N-1340.h5']:
         (region / 'prelim' / name).write_bytes(b'')
     xyc = key(m2.make_200km_tiles(str(region)))
-    assert xyc == {(500000., 100000.), (-700000., -1300000.)}
+    assert xyc == FOOTPRINT
     assert (region / '200km_tile_list.txt').exists()
+
+
+@pytest.mark.parametrize('region', ['GL', 'AA'])
+def test_the_region_resource_list_is_used_by_default(tmp_path, region):
+    from ATL1415.mosaic_groups import read_200km_centers
+    xyc = m2.make_200km_tiles(str(tmp_path), region=region)
+    assert xyc == read_200km_centers(region)
+    assert not (tmp_path / '200km_tile_list.txt').exists()
 
 
 # --- DPS: tiles read in place, one 200 km tile per job (plan_dps_mosaic D3a-1) --
@@ -139,7 +166,7 @@ def test_centers_from_a_remote_tiles_base(tmp_path, remote_region):
     region = tmp_path / 'AA'
     region.mkdir()
     xyc = key(m2.make_200km_tiles(str(region), tiles_base=remote_region))
-    assert xyc == {(500000., 100000.), (-700000., -1300000.)}
+    assert xyc == FOOTPRINT
     # the cache is written locally, beside the outputs
     assert (region / '200km_tile_list.txt').exists()
 
@@ -173,6 +200,7 @@ def test_one_center_one_task_reading_from_tiles_base(tmp_path, monkeypatch, remo
 def test_a_center_not_in_the_region_is_refused(tmp_path, monkeypatch, remote_region):
     region = tmp_path / 'AA'
     region.mkdir()
+    # the check is against the region's list (AA: the resource), not the tiles
     with pytest.raises(SystemExit, match='not one of this region'):
         run_main(monkeypatch, tmp_path, [str(region), 'AA', '--dzdt_lags', '1',
-                                         '--tiles_base', remote_region, '--center', '300000', '100000'])
+                                         '--tiles_base', remote_region, '--center', '9100000', '9100000'])

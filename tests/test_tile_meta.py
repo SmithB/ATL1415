@@ -152,10 +152,17 @@ def test_remote_tiles_and_remote_meta(tmp_path, bucket):  # noqa: F811
     assert direct == saved
 
 
-def test_write_with_no_tiles_for_the_center_fails(tmp_path):
+def test_a_cell_with_no_tile_center_writes_an_empty_file(tmp_path):
+    # the footprint rule makes 200 km tiles for cells tiles only reach into
     tiles = make_tiles(tmp_path / 'prelim', np.random.default_rng(8))
     assert tile_meta.main(['write', str(tiles), str(tmp_path / 'x.json'),
-                           '--center', '9100000', '9100000']) == 1
+                           '--center', '-100000', '-900000', '--workers', '1']) == 0
+    assert json.loads((tmp_path / 'x.json').read_text())['tiles'] == []
+
+
+def test_write_with_no_tiles_at_all_fails(tmp_path):
+    (tmp_path / 'prelim').mkdir()
+    assert tile_meta.main(['write', str(tmp_path / 'prelim'), str(tmp_path / 'x.json')]) == 1
 
 
 def test_process_pool_gives_the_same_records(tmp_path):

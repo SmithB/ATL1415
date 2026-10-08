@@ -228,7 +228,8 @@ def s3_exists(uri):
 def mosaic_tasks(step, args_text, tile_prefix, out_prefix, lister=s3_names, exists=s3_exists):
     """
     The `task` of every job a mosaic step needs (docs/plan_dps_mosaic.sh D3-2):
-      mosaic200  '<x>_<y>' for each 200 km tile over <tile_prefix>/prelim/
+      mosaic200  '<x>_<y>' for each 200 km tile in the region's canonical list
+                 (ATL1415/resources/<region>/200km_tile_list.txt)
       mosaic     each group of the region's mosaic (for a 200 km region, z0
                  only where its 200 km tiles are at <out_prefix> -- submit
                  after mosaic200)
@@ -237,7 +238,7 @@ def mosaic_tasks(step, args_text, tile_prefix, out_prefix, lister=s3_names, exis
     which regions take the 200 km step at all (Greenland and Antarctica; the
     rest mosaic directly from the solve tiles, plan AD8).
     """
-    from ATL1415.mosaic_groups import centers_200km, make_fields, uses_200km_tiles
+    from ATL1415.mosaic_groups import make_fields, read_200km_centers, uses_200km_tiles
     from ATL1415.lags import infer_dzdt_lags
     region = arg_value(args_text, '--region')
     if step in ('mosaic200', 'mosaic') and not region:
@@ -248,8 +249,13 @@ def mosaic_tasks(step, args_text, tile_prefix, out_prefix, lister=s3_names, exis
             raise ValueError(f'--step mosaic200 is for Greenland and Antarctica only: region'
                              f' {region} has no 200 km step.  Its mosaics are made directly'
                              ' from the solve tiles: --step mosaic.')
-        names = lister(f'{tile_prefix.rstrip("/")}/prelim')
-        return [f'{int(x)}_{int(y)}' for x, y in centers_200km(names)]
+        # the canonical list, not the tile listing: a list built from tile
+        # CENTERS missed cells tiles reach into (plan_200km_footprint.sh)
+        centers = read_200km_centers(region)
+        if centers is None:
+            raise ValueError(f'region {region} takes the 200 km step but has no'
+                             f' ATL1415/resources/{region}/200km_tile_list.txt')
+        return [f'{int(x)}_{int(y)}' for x, y in centers]
     if step == 'mosaic':
         grid, tspan = arg_value(args_text, '-g'), arg_value(args_text, '-t')
         if not grid or not tspan:

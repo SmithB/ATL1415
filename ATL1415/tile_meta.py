@@ -261,9 +261,12 @@ def main(argv=None):
     args = parser.parse_args(argv)
     n = write_meta(args.tiles_dir, args.out, center=args.center, workers=args.workers)
     print(f'tile_meta: {n} tile records -> {args.out}')
-    if n == 0:
-        print(f'tile_meta: ERROR: no tiles in {args.tiles_dir}'
-              + (f' for center {args.center}' if args.center else ''), file=sys.stderr)
+    if n == 0 and args.center:
+        # a 200 km cell that tiles reach into but no tile center is in (the
+        # footprint rule, plan_200km_footprint.sh): it owns no tile
+        print(f'tile_meta: 200 km tile {args.center} owns no tile center; empty record file')
+    elif n == 0:
+        print(f'tile_meta: ERROR: no tiles in {args.tiles_dir}', file=sys.stderr)
         return 1
     return 0
 
