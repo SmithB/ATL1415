@@ -229,7 +229,7 @@ def test_select_tasks_refuses_a_name_the_step_does_not_have():
     (['--step', 'prelim', '--tile_list', 'x.txt', '--task', 'z0'], '--task is for the mosaic steps'),
     (['--step', 'mosaic', '--tile_list', 'x.txt', '--tile_prefix', 's3://b/GL'], 'lists its own jobs'),
     (['--step', 'nc'], 'needs --tile_prefix'),
-    (['--step', 'prelim'], 'needs --tile_list or --xy_file'),
+    (['--step', 'prelim'], 'needs --tile_list, --xy_file or --pack_file'),
     (['--step', 'prelim', '--tile_list', 'x.txt', '--out_prefix', 's3://b/t'], 'for the mosaic steps'),
 ])
 def test_mosaic_argument_refusals(argv, message, monkeypatch, capsys):
@@ -238,3 +238,43 @@ def test_mosaic_argument_refusals(argv, message, monkeypatch, capsys):
         sub.main()
     assert exit_info.value.code == 2
     assert message in capsys.readouterr().err
+
+
+# --- packed jobs (plan_pack_tiles K4/K5) ---------------------------------------
+
+def test_pack_file_jobs_lanes_and_tiles_input(tmp_path):
+    path = write(tmp_path, 'E160_N-1640.h5 E160_N-1600.h5 | E200_N-1640.h5\n\n'
+                           'E-240_N-960.h5\n')
+    packs = sub.read_pack_file(path)
+    assert packs == [[[(160000, -1640000), (160000, -1600000)], [(200000, -1640000)]],
+                     [[(-240000, -960000)]]]
+    assert sub.tiles_input(packs[0]) == '160000,-1640000;160000,-1600000|200000,-1640000'
+
+
+@pytest.mark.parametrize('text, message', [
+    ('E0_N0.h5 | | E40_N0.h5\n', 'an empty lane'),
+    ('E0_N0.h5 E40_N0\n', 'not a tile name'),
+    ('E0_N0.h5\nE40_N0.h5 | E0_N0.h5\n', 'already in line 1'),
+], ids=['empty_lane', 'bad_name', 'duplicate_across_jobs'])
+def test_a_bad_pack_file_is_refused(tmp_path, capsys, text, message):
+    with pytest.raises(SystemExit) as caught:
+        sub.read_pack_file(write(tmp_path, text))
+    assert caught.value.code == 2 and message in capsys.readouterr().err
+
+
+def test_matched_packs_drop_tiles_lanes_and_jobs_without_prelim():
+    packs = [[[(0, 0), (40000, 0)], [(80000, 0)]], [[(120000, 0)]]]
+    present = {'E0_N0.h5', 'E40_N0.h5'}
+    kept, missing = sub.split_packs_by_prelim(packs, 's3://b/run', lister=lambda p: present)
+    assert kept == [[[(0, 0), (40000, 0)]]]
+    assert missing == ['E80_N0.h5', 'E120_N0.h5']
+
+
+def test_pack_file_excludes_the_other_lists(monkeypatch):
+    monkeypatch.setattr('sys.argv', ['submit_MAAP_jobs.py', '--pack_file', 'a.txt',
+                                     '--tile_list', 'b.txt', '--step', 'prelim',
+                                     '--args_url', 's3://b/a.txt'])
+    monkeypatch.setattr(sub, 'MAAP', lambda *a, **k: pytest.fail('reached MAAP'))
+    with pytest.raises(SystemExit) as caught:
+        sub.main()
+    assert caught.value.code == 2

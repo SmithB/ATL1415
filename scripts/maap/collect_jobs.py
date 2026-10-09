@@ -56,6 +56,7 @@ Usage:
               jobs that inexplicably will not advance.
 """
 import csv
+import datetime
 import os
 import re
 import sys
@@ -76,6 +77,12 @@ RUSAGE = re.compile(r'=== rusage \[(\w+)\]: elapsed ([\d.]+) s, peak RSS ([\d.]+
 FIT_RE = re.compile(r'initial: (\d+):')
 ITER_RE = re.compile(r'starting qr solve for iteration (\d+)')
 BUILD_RE = re.compile(r'^BUILD_ID: (.*)$', re.M)
+# a packed job (run.sh --tiles, plan_pack_tiles K4): each tile's log is printed
+# after its banner, and the summary repeats one TILE_STATUS line per tile
+TILE_LOG_RE = re.compile(r'^=+ TILE (\S+) log =+$', re.M)
+TILE_STATUS_RE = re.compile(r'^TILE_STATUS (\S+) (ok|nodata|failed)$', re.M)
+TILE_TIME_RE = re.compile(r'^TILE_(START|END) (\S+) lane (\d+) .*?(\S+Z)$', re.M)
+PACK_SUMMARY = 'packed job summary'
 
 
 def json_or_empty(response):
@@ -98,17 +105,8 @@ def collect(maap, row):
     out['secs'] = f'{float(secs):.0f}' if secs is not None else '-'
 
     text, _, _ = read_logs(json_or_empty(maap.get_job_result(jid)))
-    n, xo, fit = N_RE.search(text), XO_RE.search(text), FIT_RE.search(text)
-    iters = ITER_RE.findall(text)
-    # Prefer what the job measured about itself over anything DPS reports.
-    steps = {k: (float(t), float(g)) for k, t, g in RUSAGE.findall(text)}
-    out['max_mem_GiB'] = (f'{max(g for _, g in steps.values()):.2f}'
-                          if steps else '-')
-    out['N_ATL11'] = n.group(1) if n else '-'
-    out['N_AT'] = xo.group(1) if xo else '-'
-    out['N_XO'] = xo.group(2) if xo else '-'
-    out['N_fit'] = fit.group(1) if fit else '-'
-    out['iters'] = str(max(map(int, iters)) + 1) if iters else '-'
+    steps = solve_fields(text, out)
+    out['_tiles'] = packed_tiles(text)
     build = BUILD_RE.search(text)
     fields = dict(f.split('=', 1) for f in build.group(1).split() if '=' in f) if build else {}
     out['commit'] = fields.get('commit', '-')[:7]
@@ -120,6 +118,55 @@ def collect(maap, row):
     out['instance'] = worker.get('instance_type', '-')
     out['_worker'], out['_cpu'], out['_bench'] = worker, parse_cpu(text), parse_bench(text)
     return out, steps
+
+
+def solve_fields(text, out):
+    """The solve's own lines in <text> -> fields in <out>; returns the steps
+    {label: (secs, peak GiB)}.  Prefer what the job measured about itself
+    over anything DPS reports."""
+    n, xo, fit = N_RE.search(text), XO_RE.search(text), FIT_RE.search(text)
+    iters = ITER_RE.findall(text)
+    steps = {k: (float(t), float(g)) for k, t, g in RUSAGE.findall(text)}
+    out['max_mem_GiB'] = (f'{max(g for _, g in steps.values()):.2f}'
+                          if steps else '-')
+    out['N_ATL11'] = n.group(1) if n else '-'
+    out['N_AT'] = xo.group(1) if xo else '-'
+    out['N_XO'] = xo.group(2) if xo else '-'
+    out['N_fit'] = fit.group(1) if fit else '-'
+    out['iters'] = str(max(map(int, iters)) + 1) if iters else '-'
+    return steps
+
+
+def packed_tiles(text):
+    """A packed job's tiles, in its order: [(fields, steps)], [] for a
+    one-tile job.  Each tile's fields come from its own log section; its
+    status from the summary (a tile with no status line: 'failed', as run.sh
+    reports it); secs from its TILE_START/TILE_END, i.e. the tile's own wall
+    time, waiting included; lane is the lane it ran in."""
+    if PACK_SUMMARY not in text:
+        return []
+    marks = list(TILE_LOG_RE.finditer(text))
+    end_all = text.find(PACK_SUMMARY)
+    status = dict(TILE_STATUS_RE.findall(text[end_all:]))
+    times = {}
+    for kind, name, lane, stamp in TILE_TIME_RE.findall(text):
+        times.setdefault(name, {})[kind] = stamp
+        times[name]['lane'] = lane
+    tiles = []
+    for i, m in enumerate(marks):
+        name = m.group(1)
+        stop = marks[i + 1].start() if i + 1 < len(marks) else end_all
+        fields = {'tile': '  ' + name, 'status': status.get(name, 'failed')}
+        steps = solve_fields(text[m.end():stop], fields)
+        t = times.get(name, {})
+        fields['secs'] = '-'
+        if 'START' in t and 'END' in t:
+            dt = (datetime.datetime.fromisoformat(t['END'].replace('Z', '+00:00')) -
+                  datetime.datetime.fromisoformat(t['START'].replace('Z', '+00:00')))
+            fields['secs'] = f'{dt.total_seconds():.0f}'
+        fields['queue'] = f"lane {t['lane']}" if 'lane' in t else '-'
+        tiles.append((fields, steps))
+    return tiles
 
 
 COLUMNS = (('tile', 26), ('status', 11), ('secs', 7), ('max_mem_GiB', 11),
@@ -155,6 +202,10 @@ def main():
                 line += (f"   cores {c['cores']}, load {c['load']}, steal {c['steal_s']} s,"
                          f" throttled {c['throttled_s']} s")
             print(line)
+        for tile_fields, tile_steps in fields.get('_tiles', []):
+            print(' '.join(f'{tile_fields.get(name, "-"):>{width}}' for name, width in COLUMNS))
+            for label, (secs, gib) in tile_steps.items():
+                print(f"{'':26} {'step ' + label:>11} {secs:7.0f} {gib:11.2f}")
         if fields.get('_bench'):
             print(f"{'':26} {'bench':>11} " +
                   ' '.join(f'{k}={v}' for k, v in fields['_bench'].items()))

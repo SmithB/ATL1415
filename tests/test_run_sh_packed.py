@@ -194,3 +194,30 @@ def test_bad_tiles_stop_before_any_solve(job, argv, message):
     p, calls = job(*argv)
     assert p.returncode == 2 and message in p.stderr, p.stdout + p.stderr
     assert calls == []
+
+
+def load_collect_jobs(monkeypatch):
+    """collect_jobs.py checks sys.argv at import"""
+    import importlib.util
+    monkeypatch.setattr('sys.argv', ['collect_jobs.py', 'ledger.csv'])
+    spec = importlib.util.spec_from_file_location(
+        'collect_jobs', REPO / 'scripts' / 'maap' / 'collect_jobs.py')
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_collect_jobs_reads_a_packed_job_per_tile(job, monkeypatch):
+    p, _ = job('--x0', '0', '--y0', '0', '--step', 'prelim', '--tiles', TILES,
+               FAKE_NODATA='40000,0', FAKE_FAIL='0,40000')
+    cj = load_collect_jobs(monkeypatch)
+    tiles = cj.packed_tiles(p.stdout + p.stderr)
+    got = {f['tile'].strip(): (f['status'], f['queue'], sorted(steps)) for f, steps in tiles}
+    assert got == {'E0_N0': ('ok', 'lane 1', ['error', 'fit']),
+                   'E40_N0': ('nodata', 'lane 1', ['fit']),
+                   'E0_N40': ('failed', 'lane 2', ['fit']),
+                   'E-40_N-40': ('ok', 'lane 2', ['error', 'fit'])}
+    assert all(f['secs'] != '-' for f, _ in tiles)
+    # a one-tile job has no tile rows
+    p, _ = job('--x0', '0', '--y0', '0', '--step', 'prelim')
+    assert cj.packed_tiles(p.stdout + p.stderr) == []

@@ -35,7 +35,7 @@ written down is a worker-hour that cannot be collected, so:
     the run continues (Q11: record-and-continue, not retry).
 
 Usage:
-  submit_MAAP_jobs.py (--tile_list <f> | --xy_file <f>)
+  submit_MAAP_jobs.py (--tile_list <f> | --xy_file <f> | --pack_file <f>)
                       --step prelim|matched --args_url <uri|path>
                       [--ledger <f>] [--queue <q>] [--tag <prefix>]
                       [--tile_prefix <s3://...>]
@@ -53,6 +53,11 @@ Usage:
   --args_url       the composed input_args_<REGION>.txt, on the bucket
   --tag            identifier prefix; default "<REGION>_<step>", with REGION
                    read out of the args file's name
+  --pack_file      SEVERAL TILES PER JOB (plan_pack_tiles K4/K5): one job per
+                   line, lanes separated by '|', each lane's tile names by
+                   spaces, e.g. "E160_N-1640.h5 E160_N-1600.h5 | E200_N-1640.h5".
+                   Lanes run side by side, a lane's tiles in turn; the line's
+                   first tile is the job's x0/y0.  Ledger column `tiles`.
   --tile_prefix    where the job writes its tile / reads its neighbours.
                    Deployed since the 6978a8a registration; main() still
                    refuses it if the config or deployed CWL lacks it.
@@ -107,9 +112,11 @@ from ogc_jobs import (DEFAULT_QUEUE, DONE, POLL_S, JobStates, find_process,  # n
 sys.path.insert(1, os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..'))
 
 # task and out_prefix appended last (2026-10-01), as tile_prefix was: readers
-# go by column name, and older ledgers simply lack them.
+# go by column name, and older ledgers simply lack them.  tiles (2026-10-09,
+# plan_pack_tiles K5): a packed job's `tiles` input, "-" for a one-tile job.
 LEDGER_COLUMNS = ['identifier', 'x0', 'y0', 'step', 'queue', 'args_file',
-                  'job_id', 'submitted_utc', 'tile_prefix', 'task', 'out_prefix']
+                  'job_id', 'submitted_utc', 'tile_prefix', 'task', 'out_prefix',
+                  'tiles']
 
 TILE_STEPS = ('prelim', 'matched')
 MOSAIC_STEPS = ('mosaic200', 'mosaic', 'nc')
@@ -170,6 +177,50 @@ def read_tile_list(path):
             sys.exit(2)
         centers.append((int(m.group(1)) * 1000, int(m.group(2)) * 1000))
     return centers
+
+
+def read_pack_file(path):
+    """The pack file: ONE JOB PER LINE, its lanes separated by '|', each
+    lane's tiles (E<x km>_N<y km>.h5) by whitespace, run in that order:
+        E160_N-1640.h5 E160_N-1600.h5 | E200_N-1640.h5 E200_N-1600.h5
+    -> [[[(x, y), ...], ...], ...]: jobs, lanes, tile centers in meters.
+    plan_pack_tiles K4/K5.  The same rule as the other lists: a line that
+    does not parse is an error, not a skip; and a tile may appear only once
+    in the whole file, since two jobs writing one tile is a mistake in the
+    packing, never something to resolve by guessing.
+    """
+    jobs, seen = [], {}
+    for n, line in enumerate(open(path), 1):
+        text = line.strip()
+        if not text:
+            continue
+        lanes = []
+        for lane_text in text.split('|'):
+            names = lane_text.split()
+            if not names:
+                print(f'{path}:{n}: an empty lane: {text!r}', file=sys.stderr)
+                sys.exit(2)
+            lane = []
+            for name in names:
+                m = TILE_NAME.match(name)
+                if not m:
+                    print(f'{path}:{n}: not a tile name (E<x km>_N<y km>.h5): {name!r}',
+                          file=sys.stderr)
+                    sys.exit(2)
+                if name in seen:
+                    print(f'{path}:{n}: {name} is already in line {seen[name]}',
+                          file=sys.stderr)
+                    sys.exit(2)
+                seen[name] = n
+                lane.append((int(m.group(1)) * 1000, int(m.group(2)) * 1000))
+            lanes.append(lane)
+        jobs.append(lanes)
+    return jobs
+
+
+def tiles_input(lanes):
+    """run.sh's `tiles`: 'x,y;x,y|x,y' in meters."""
+    return '|'.join(';'.join(f'{x},{y}' for x, y in lane) for lane in lanes)
 
 
 def s3_names(prefix):
@@ -338,12 +389,33 @@ def wait_for_slot(maap, live, limit):
             time.sleep(POLL_S)
 
 
+def split_packs_by_prelim(packs, tile_prefix, lister=s3_names):
+    """split_by_prelim for packed jobs: (packs without the tiles that have no
+    prelim tile of their own, names of those tiles).  A lane left empty is
+    dropped, and a job left with no lane."""
+    present = lister(f'{tile_prefix.rstrip("/")}/prelim')
+    kept, missing = [], []
+    for lanes in packs:
+        new_lanes = []
+        for lane in lanes:
+            have = [xy for xy in lane if tile_name(*xy) in present]
+            missing += [tile_name(*xy) for xy in lane if tile_name(*xy) not in present]
+            if have:
+                new_lanes.append(have)
+        if new_lanes:
+            kept.append(new_lanes)
+    return kept, missing
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='Submit one DPS job per tile center for one region.')
     source = parser.add_mutually_exclusive_group()
     source.add_argument('--tile_list')
     source.add_argument('--xy_file')
+    source.add_argument('--pack_file',
+                        help='prelim/matched: several tiles per job, one job per line'
+                             ' (read_pack_file); needs the `tiles` input deployed')
     parser.add_argument('--step', required=True, choices=TILE_STEPS + MOSAIC_STEPS)
     parser.add_argument('--out_prefix',
                         help='mosaic steps: where the derived products go (default: --tile_prefix)')
@@ -369,10 +441,10 @@ def main():
     mosaic = args.step in MOSAIC_STEPS
     # the tile steps take their centers from a list; the mosaic steps work
     # theirs out (mosaic_tasks), and a list given to one would be ignored
-    if mosaic and (args.tile_list or args.xy_file):
-        parser.error(f'--step {args.step} lists its own jobs: no --tile_list / --xy_file')
-    if not mosaic and not (args.tile_list or args.xy_file):
-        parser.error(f'--step {args.step} needs --tile_list or --xy_file')
+    if mosaic and (args.tile_list or args.xy_file or args.pack_file):
+        parser.error(f'--step {args.step} lists its own jobs: no --tile_list / --xy_file / --pack_file')
+    if not mosaic and not (args.tile_list or args.xy_file or args.pack_file):
+        parser.error(f'--step {args.step} needs --tile_list, --xy_file or --pack_file')
     if mosaic and not args.tile_prefix:
         parser.error(f'--step {args.step} needs --tile_prefix: where the region\'s tiles are')
     if args.out_prefix and not mosaic:
@@ -418,13 +490,22 @@ def main():
             sys.exit(2)
         # x0/y0 are required CWL inputs that the mosaic steps ignore
         centers = [(0, 0)] * len(tasks)
+    elif args.pack_file:
+        source = args.pack_file
+        packs = read_pack_file(args.pack_file)
+        # x0/y0 are required CWL inputs: a packed job's are its first tile,
+        # which run.sh checks
+        centers = [lanes[0][0] for lanes in packs]
+        tasks = ['-'] * len(centers)
     else:
         source = args.tile_list or args.xy_file
         centers = read_tile_list(args.tile_list) if args.tile_list \
             else read_centers(args.xy_file)
         tasks = ['-'] * len(centers)
+    if not args.pack_file:
+        packs = [None] * len(centers)
     if args.limit:
-        centers, tasks = centers[:args.limit], tasks[:args.limit]
+        centers, tasks, packs = centers[:args.limit], tasks[:args.limit], packs[:args.limit]
 
     maap = MAAP(maap_host=os.environ.get('MAAP_API_HOST', 'api.maap-project.org'))
     config = load_config()
@@ -451,6 +532,18 @@ def main():
                   ' scripts/maap/check_build_id.py.', file=sys.stderr)
             sys.exit(2)
         inputs_common['tile_prefix'] = args.tile_prefix
+    if args.pack_file:
+        # refuse, as for tile_prefix above, rather than submit an input the
+        # deployed process would not accept
+        if not config_declares(config, 'tiles'):
+            print('--pack_file needs the input `tiles`, which algorithm_config.yml'
+                  ' does not declare.', file=sys.stderr)
+            sys.exit(2)
+        if deployed_declares(process, 'tiles') is False:
+            print(f'tiles is in algorithm_config.yml but {name}:{version} as DEPLOYED'
+                  ' does not have it: the registration has not built and deployed'
+                  ' yet.\n  Check with scripts/maap/check_build_id.py.', file=sys.stderr)
+            sys.exit(2)
     if mosaic:
         # the mosaic steps' inputs: refuse before submitting what the deployed
         # process would not accept, as for tile_prefix above
@@ -472,8 +565,15 @@ def main():
               ' them (plan_IS_run.sh I7).', file=sys.stderr)
         sys.exit(2)
     if args.step == 'matched':
-        n_listed = len(centers)
-        centers, missing = split_by_prelim(centers, args.tile_prefix)
+        if args.pack_file:
+            packs, missing = split_packs_by_prelim(packs, args.tile_prefix)
+            n_listed = sum(len(lane) for lanes in packs for lane in lanes) + len(missing)
+            centers = [lanes[0][0] for lanes in packs]
+            tasks = ['-'] * len(centers)
+        else:
+            n_listed = len(centers)
+            centers, missing = split_by_prelim(centers, args.tile_prefix)
+            packs = [None] * len(centers)
         if missing:
             print(f'SKIPPING {len(missing)} of {n_listed} centers: no prelim tile at'
                   f' {args.tile_prefix}/prelim/\n    ' + '\n    '.join(missing) +
@@ -492,13 +592,18 @@ def main():
     print(f'args  {args.args_url}')
     print(f'ledger {ledger}\n')
 
-    def identifier(x0, y0, task):
-        return f'{tag}_{task}' if mosaic else f'{tag}_E{int(x0 / 1000)}_N{int(y0 / 1000)}'
+    def identifier(x0, y0, task, lanes=None):
+        if mosaic:
+            return f'{tag}_{task}'
+        # a packed job is named by its first tile and its tile count
+        n = f'_n{sum(len(lane) for lane in lanes)}' if lanes else ''
+        return f'{tag}_E{int(x0 / 1000)}_N{int(y0 / 1000)}{n}'
 
     if args.dry_run:
-        for (x0, y0), task in zip(centers, tasks):
-            print(f'would submit {identifier(x0, y0, task)}'
-                  + (f'  task={task}' if mosaic else f'  x0={x0} y0={y0}'))
+        for (x0, y0), task, lanes in zip(centers, tasks, packs):
+            print(f'would submit {identifier(x0, y0, task, lanes)}'
+                  + (f'  task={task}' if mosaic else f'  x0={x0} y0={y0}')
+                  + (f'  tiles={tiles_input(lanes)}' if lanes else ''))
         print(f'\n--dry-run: nothing submitted ({len(centers)} jobs).')
         return
 
@@ -506,13 +611,15 @@ def main():
     with open(ledger, 'w', newline='') as fh:
         writer = csv.writer(fh)
         writer.writerow(LEDGER_COLUMNS)
-        for n, ((x0, y0), task) in enumerate(zip(centers, tasks), 1):
+        for n, ((x0, y0), task, lanes) in enumerate(zip(centers, tasks, packs), 1):
             if args.max_in_flight:
                 wait_for_slot(maap, live, args.max_in_flight)
-            ident = identifier(x0, y0, task)
+            ident = identifier(x0, y0, task, lanes)
             inputs = dict(inputs_common, x0=str(x0), y0=str(y0))
             if mosaic:
                 inputs['task'] = task
+            if lanes:
+                inputs['tiles'] = tiles_input(lanes)
             try:
                 r = maap.submit_job(pid, inputs, args.queue,
                                     dedup=False, tag=ident)
@@ -530,7 +637,8 @@ def main():
                              datetime.datetime.now(datetime.timezone.utc)
                              .isoformat(timespec='seconds'),
                              args.tile_prefix or '-', task,
-                             (args.out_prefix or '-') if mosaic else '-'])
+                             (args.out_prefix or '-') if mosaic else '-',
+                             tiles_input(lanes) if lanes else '-'])
             fh.flush()
             print(f'  {n:4}/{len(centers)}  {ident:34} {job_id}')
             if n < len(centers):
