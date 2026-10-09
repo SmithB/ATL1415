@@ -9,7 +9,8 @@
 # both conventions are accepted (see ARGUMENTS below).
 #
 # Usage: run.sh --x0 <m> --y0 <m> --step <step> --args_file <uri|path>
-#               [--tile_prefix <s3://...>] [--task <t>] [--out_prefix <s3://...>]  (OGC)
+#               [--tile_prefix <s3://...>] [--task <t>] [--out_prefix <s3://...>]
+#               [--tiles 'x,y;x,y|x,y;...']                       (OGC)
 #        run.sh <x0> <y0> <step>        (legacy DPS, local runs; args file in input/)
 #   x0, y0       tile center, in meters (polar stereographic; may be negative)
 #   step         prelim | matched | mosaic200 | mosaic | nc | build_id | bench
@@ -31,6 +32,9 @@
 #                nc 'ATL14'|'ATL15'.  "-" = none.
 #   out_prefix   mosaic steps only: s3:// root for the derived products (200 km
 #                tiles, mosaics, netCDFs).  "-" = tile_prefix.  See MOSAIC STEPS.
+#   tiles        prelim/matched only: several tiles in one job, ';' between
+#                tiles and '|' between lanes run side by side; x0/y0 must be
+#                the first tile.  "-" = the one tile x0/y0.  See PACKED JOBS.
 #
 # step=build_id prints the build stamp and exits 0 without solving anything, so
 # ONE cheap job says which commit the image was built from.  --build-id does the
@@ -292,25 +296,25 @@ done
 # LEGACY, and every local run: positionals, with the args file found in input/
 #     run.sh 220000 20000 prelim
 # Any --x0/--y0/--step/--args_file anywhere in argv selects the first.
-x0= ; y0= ; step= ; args_src= ; tile_prefix= ; task= ; out_prefix=
+x0= ; y0= ; step= ; args_src= ; tile_prefix= ; task= ; out_prefix= ; tiles=
 prefixed=false
 for arg in "$@"; do
     case "$arg" in
-        --x0|--x0=*|--y0|--y0=*|--step|--step=*|--args_file|--args_file=*|--tile_prefix|--tile_prefix=*|--task|--task=*|--out_prefix|--out_prefix=*) prefixed=true ;;
+        --x0|--x0=*|--y0|--y0=*|--step|--step=*|--args_file|--args_file=*|--tile_prefix|--tile_prefix=*|--task|--task=*|--out_prefix|--out_prefix=*|--tiles|--tiles=*) prefixed=true ;;
     esac
 done
 
 if $prefixed; then
     while [ "$#" -gt 0 ]; do
         case "$1" in
-            --x0|--y0|--step|--args_file|--tile_prefix|--task|--out_prefix)
+            --x0|--y0|--step|--args_file|--tile_prefix|--task|--out_prefix|--tiles)
                 if [ "$#" -lt 2 ]; then
                     echo "ERROR: $1 needs a value" >&2; exit 2
                 fi
                 # $2 is taken verbatim, so a negative coordinate is a value,
                 # not mistaken for another option.
                 name=${1#--}; value=$2; shift 2 ;;
-            --x0=*|--y0=*|--step=*|--args_file=*|--tile_prefix=*|--task=*|--out_prefix=*)
+            --x0=*|--y0=*|--step=*|--args_file=*|--tile_prefix=*|--task=*|--out_prefix=*|--tiles=*)
                 name=${1%%=*}; name=${name#--}; value=${1#*=}; shift ;;
             *)
                 echo "run.sh: ignoring unexpected argument '$1'"; shift; continue ;;
@@ -323,6 +327,7 @@ if $prefixed; then
             tile_prefix) tile_prefix=$value ;;
             task) task=$value ;;
             out_prefix) out_prefix=$value ;;
+            tiles) tiles=$value ;;
         esac
     done
 else
@@ -351,6 +356,10 @@ fi
 if [ "$out_prefix" = "-" ]; then
     out_prefix=
 fi
+# and for a packed job's tile list (PACKED JOBS, below)
+if [ "$tiles" = "-" ]; then
+    tiles=
+fi
 
 if [ -z "$x0" ] || [ -z "$y0" ] || [ -z "$step" ]; then
     echo "usage: run.sh --x0 <m> --y0 <m> --step <prelim|matched> --args_file <uri|path>" >&2
@@ -364,6 +373,41 @@ for v in "$x0" "$y0"; do
         echo "ERROR: tile center must be numeric meters, got '${v}'" >&2; exit 2
     fi
 done
+
+# --tiles 'x,y;x,y|x,y': lanes[] holds each lane's ';'-separated list,
+# tile_list[] every x,y in order.  x0/y0 are required inputs of the CWL, so
+# with --tiles they must name the FIRST tile: a job whose x0/y0 say one tile
+# and whose tiles say others is a submitter bug, not something to guess at.
+lanes=() ; tile_list=()
+if [ -n "$tiles" ]; then
+    case "$step" in
+        prelim|matched) ;;
+        *) echo "ERROR: --tiles is for steps prelim and matched, not '${step}'" >&2; exit 2 ;;
+    esac
+    num='-?[0-9]+(\.[0-9]+)?'
+    IFS='|' read -r -a lanes <<< "$tiles"
+    declare -A seen_tile=()
+    for lane in "${lanes[@]}"; do
+        if [ -z "$lane" ]; then
+            echo "ERROR: --tiles '${tiles}' has an empty lane" >&2; exit 2
+        fi
+        IFS=';' read -r -a lane_tiles <<< "$lane"
+        for xy in "${lane_tiles[@]}"; do
+            if ! [[ $xy =~ ^${num},${num}$ ]]; then
+                echo "ERROR: --tiles: '${xy}' is not <x>,<y> in meters (tiles '${tiles}')" >&2; exit 2
+            fi
+            if [ -n "${seen_tile[$xy]:-}" ]; then
+                echo "ERROR: --tiles: ${xy} appears twice (tiles '${tiles}')" >&2; exit 2
+            fi
+            seen_tile[$xy]=1
+            tile_list+=("$xy")
+        done
+    done
+    if [ "${tile_list[0]}" != "${x0},${y0}" ]; then
+        echo "ERROR: with --tiles, --x0/--y0 must be the first tile: got ${x0},${y0}, first tile ${tile_list[0]}" >&2
+        exit 2
+    fi
+fi
 
 # ===========================================================================
 # BENCH -- the same solve on every machine (docs/plan_dps_speed.sh D2).
@@ -491,7 +535,11 @@ threads=${ATL1415_THREADS:-$(physical_cores)}
 echo "=========================================================="
 echo "  ATL1415 DPS tile job"
 echo "  step        : ${step}"
-echo "  xy0         : ${x0} ${y0}"
+if [ "${#tile_list[@]}" -gt 0 ]; then
+    echo "  tiles       : ${#tile_list[@]} in ${#lanes[@]} lane(s): ${tiles}"
+else
+    echo "  xy0         : ${x0} ${y0}"
+fi
 echo "  args file   : ${args_file}"
 echo "  tile prefix : ${tile_prefix:-<none: tile stays in dps_output>}"
 case "$step" in
@@ -725,107 +773,222 @@ if [ -z "$tile_spacing" ]; then
     tile_spacing=$(sed -n 's/^-W=//p' "$args_file" | head -1 | tr -d '[:space:]')
 fi
 
-if [ "$step" = "prelim" ]; then
-    # Fit, then the error-calculation companion, mirroring the single queue line
-    # that make_ATL1415_queue.py writes for SLURM.  Tiles land in output/prelim/,
-    # which is what DPS uploads.
-    base_directory="${PWD}/output"
-    tile_name=$(awk -v x="$x0" -v y="$y0" 'BEGIN{printf "E%d_N%d.h5", int(x/1000), int(y/1000)}')
+# ===========================================================================
+# ONE TILE: solve_tile <x0> <y0> <threads> <work dir>.  The whole prelim or
+# matched job for one tile center.  A single-tile job calls it in the main
+# shell (its exits are the job's, as before packing); a packed job calls it in
+# a subshell per tile (PACKED JOBS, below).  <work dir> holds a matched tile's
+# input/prelim/ 3x3; output always goes to the job's ${job_dir}/output, which
+# the CWL collects.
+# ===========================================================================
+job_dir=$PWD
+solve_tile () {
+    local x0=$1 y0=$2 threads=$3 work=$4
+    local base_directory tile_name prelim_file prior_edge_include
+    if [ "$step" = "prelim" ]; then
+        # Fit, then the error-calculation companion, mirroring the single queue line
+        # that make_ATL1415_queue.py writes for SLURM.  Tiles land in output/prelim/,
+        # which is what DPS uploads.
+        base_directory="${job_dir}/output"
+        tile_name=$(awk -v x="$x0" -v y="$y0" 'BEGIN{printf "E%d_N%d.h5", int(x/1000), int(y/1000)}')
 
-    # --base_directory goes AFTER @${args_file}, unlike --THREADS: argparse takes
-    # the last occurrence, and setup_ATL1415_region.py writes '-b=<region_dir>'
-    # (the same dest as --base_directory) as the final line of the composed args
-    # file.  Passed before the args file it would be overridden by that ADE path,
-    # which does not exist on a worker.
-    run_solve fit --THREADS="${threads}" --xy0 "$x0" "$y0" --prelim \
-              "@${args_file}" --base_directory "$base_directory"
+        # --base_directory goes AFTER @${args_file}, unlike --THREADS: argparse takes
+        # the last occurrence, and setup_ATL1415_region.py writes '-b=<region_dir>'
+        # (the same dest as --base_directory) as the final line of the composed args
+        # file.  Passed before the args file it would be overridden by that ADE path,
+        # which does not exist on a worker.
+        run_solve fit --THREADS="${threads}" --xy0 "$x0" "$y0" --prelim \
+                  "@${args_file}" --base_directory "$base_directory"
 
-    # A tile with too little data is a normal outcome: ATL11_to_ATL15 returns 0
-    # without writing a file.  Running the error calculation on it would then
-    # exit 1 and mark the whole DPS job failed, which at a fan-out of thousands
-    # of tiles would bury the real failures.  Stop cleanly instead.
-    if [ ! -f "${base_directory}/prelim/${tile_name}" ]; then
-        echo "no fit written for ${tile_name} (insufficient data); skipping error calculation"
-        exit 0
-    fi
+        # A tile with too little data is a normal outcome: ATL11_to_ATL15 returns 0
+        # without writing a file.  Running the error calculation on it would then
+        # exit 1 and mark the whole DPS job failed, which at a fan-out of thousands
+        # of tiles would bury the real failures.  Stop cleanly instead.
+        if [ ! -f "${base_directory}/prelim/${tile_name}" ]; then
+            echo "no fit written for ${tile_name} (insufficient data); skipping error calculation"
+            exit 0
+        fi
 
-    run_solve error --THREADS="${threads}" --xy0 "$x0" "$y0" --prelim \
-              "@${args_file}" --base_directory "$base_directory" --calc_error_for_xy
+        run_solve error --THREADS="${threads}" --xy0 "$x0" "$y0" --prelim \
+                  "@${args_file}" --base_directory "$base_directory" --calc_error_for_xy
 
-    # AFTER the error step, not before: --calc_error_for_xy writes back into
-    # the same tile, so an upload in between would publish a half-finished one.
-    # AND ONLY IF THE TILE IS STILL THERE.  The error step DELETES it when it
-    # has no data (ATL11_to_ATL15.py, docs/plan_IS_run.sh I7a) and exits
-    # 0: that is a clean "this center has no tile", not a failure.  Uploading a
-    # file that is deliberately gone would fail the job in a new way, for the
-    # very tile the fix exists to let pass.
-    if [ -n "$tile_prefix" ] && [ -f "${base_directory}/prelim/${tile_name}" ]; then
-        s3_tiles put "${base_directory}/prelim/${tile_name}" "$tile_prefix" prelim
-    elif [ -n "$tile_prefix" ]; then
-        echo "no tile to upload for ${tile_name} (removed: no data for the uncertainty step)"
-    fi
-else
-    # --matched reads the tile's own prelim fit AND its neighbours', through
-    # prior_edge_include, so a matched job needs the surrounding prelim tiles
-    # localized into input/prelim/ (the tile itself plus its 8 neighbours at
-    # minimum).  base_directory therefore points at input/, not output/: that is
-    # where ATL11_to_ATL15 looks for <base>/prelim/E*_N*.h5.  Only the result is
-    # written to output/.
-    base_directory="${PWD}/input"
-    # Same name ATL11_to_ATL15 builds: 'E%d_N%d.h5' % (x0/1e3, y0/1e3), i.e.
-    # kilometers truncated toward zero.  awk int() truncates the same way.
-    tile_name=$(awk -v x="$x0" -v y="$y0" 'BEGIN{printf "E%d_N%d.h5", int(x/1000), int(y/1000)}')
+        # AFTER the error step, not before: --calc_error_for_xy writes back into
+        # the same tile, so an upload in between would publish a half-finished one.
+        # AND ONLY IF THE TILE IS STILL THERE.  The error step DELETES it when it
+        # has no data (ATL11_to_ATL15.py, docs/plan_IS_run.sh I7a) and exits
+        # 0: that is a clean "this center has no tile", not a failure.  Uploading a
+        # file that is deliberately gone would fail the job in a new way, for the
+        # very tile the fix exists to let pass.
+        if [ -n "$tile_prefix" ] && [ -f "${base_directory}/prelim/${tile_name}" ]; then
+            s3_tiles put "${base_directory}/prelim/${tile_name}" "$tile_prefix" prelim
+        elif [ -n "$tile_prefix" ]; then
+            echo "no tile to upload for ${tile_name} (removed: no data for the uncertainty step)"
+        fi
+    else
+        # --matched reads the tile's own prelim fit AND its neighbours', through
+        # prior_edge_include, so a matched job needs the surrounding prelim tiles
+        # localized into input/prelim/ (the tile itself plus its 8 neighbours at
+        # minimum).  base_directory therefore points at input/, not output/: that is
+        # where ATL11_to_ATL15 looks for <base>/prelim/E*_N*.h5.  Only the result is
+        # written to output/.
+        base_directory="${work}/input"
+        # Same name ATL11_to_ATL15 builds: 'E%d_N%d.h5' % (x0/1e3, y0/1e3), i.e.
+        # kilometers truncated toward zero.  awk int() truncates the same way.
+        tile_name=$(awk -v x="$x0" -v y="$y0" 'BEGIN{printf "E%d_N%d.h5", int(x/1000), int(y/1000)}')
 
-    # Fetch the 3x3 from the canonical tree.  A MISSING NEIGHBOUR IS NOT AN
-    # ERROR: on a small coastal region most tiles have fewer than 8, and a
-    # tile with too little data writes none at all, so s3_tiles names what it
-    # could not find and the solve proceeds with the priors it has (QI5b).
-    # The tile's OWN prelim file IS required -- the guard below, unchanged.
-    if [ -n "$tile_prefix" ]; then
-        if [ -z "$tile_spacing" ]; then
-            echo "ERROR: --tile_prefix given but neither --tile_spacing nor -W" >&2
-            echo "       is in ${args_file}; the neighbours cannot be named." >&2
+        # Fetch the 3x3 from the canonical tree.  A MISSING NEIGHBOUR IS NOT AN
+        # ERROR: on a small coastal region most tiles have fewer than 8, and a
+        # tile with too little data writes none at all, so s3_tiles names what it
+        # could not find and the solve proceeds with the priors it has (QI5b).
+        # The tile's OWN prelim file IS required -- the guard below, unchanged.
+        if [ -n "$tile_prefix" ]; then
+            if [ -z "$tile_spacing" ]; then
+                echo "ERROR: --tile_prefix given but neither --tile_spacing nor -W" >&2
+                echo "       is in ${args_file}; the neighbours cannot be named." >&2
+                exit 2
+            fi
+            mkdir -p "${work}/input/prelim"
+            s3_tiles get "$tile_prefix" prelim "$x0" "$y0" "$tile_spacing" "${work}/input/prelim"
+        fi
+
+        if [ ! -d "${work}/input/prelim" ]; then
+            echo "ERROR: --matched needs the prelim tiles for this tile and its" >&2
+            echo "       neighbours.  Give --tile_prefix so the job can fetch them," >&2
+            echo "       or localize them into input/prelim/ yourself." >&2
             exit 2
         fi
-        mkdir -p input/prelim
-        s3_tiles get "$tile_prefix" prelim "$x0" "$y0" "$tile_spacing" input/prelim
+        prelim_file="${base_directory}/prelim/${tile_name}"
+        if [ ! -f "$prelim_file" ]; then
+            echo "ERROR: prelim tile ${prelim_file} not found; localized files are:" >&2
+            ls -la "${work}/input/prelim" >&2 || true
+            exit 2
+        fi
+
+        # make_ATL1415_queue.py passes --prior_edge_include on every matched line
+        # (default 1000); ATL11_to_ATL15's own default is None, which silently drops
+        # the prior-edge constraints, so pass it here too.  Before @${args_file}, so
+        # an args file that sets it still wins.
+        prior_edge_include=${ATL1415_PRIOR_EDGE_INCLUDE:-1000}
+
+        # --no_data_group: a matched tile leaves out its per-point /data (80-92%
+        # of the file), which nothing downstream reads -- matched and error runs
+        # reread the PRELIM tile (docs/plan_dps_mosaic.sh D2b, Ben 2026-09-30).
+        # Here, not in the args file: prelim and matched share that file, and a
+        # prelim tile must keep /data (ATL11_to_ATL15 refuses the flag without
+        # --matched).
+        run_solve matched --THREADS="${threads}" --matched --no_data_group \
+                  --prior_edge_include "$prior_edge_include" \
+                  --data_file "$prelim_file" \
+                  "@${args_file}" \
+                  --out_name "${job_dir}/output/${tile_name}" \
+                  --base_directory "$base_directory"
+
+        if [ -n "$tile_prefix" ]; then
+            s3_tiles put "${job_dir}/output/${tile_name}" "$tile_prefix" matched
+        fi
     fi
 
-    if [ ! -d input/prelim ]; then
-        echo "ERROR: --matched needs the prelim tiles for this tile and its" >&2
-        echo "       neighbours.  Give --tile_prefix so the job can fetch them," >&2
-        echo "       or localize them into input/prelim/ yourself." >&2
-        exit 2
-    fi
-    prelim_file="${base_directory}/prelim/${tile_name}"
-    if [ ! -f "$prelim_file" ]; then
-        echo "ERROR: prelim tile ${prelim_file} not found; localized files are:" >&2
-        ls -la input/prelim >&2 || true
-        exit 2
-    fi
+}
 
-    # make_ATL1415_queue.py passes --prior_edge_include on every matched line
-    # (default 1000); ATL11_to_ATL15's own default is None, which silently drops
-    # the prior-edge constraints, so pass it here too.  Before @${args_file}, so
-    # an args file that sets it still wins.
-    prior_edge_include=${ATL1415_PRIOR_EDGE_INCLUDE:-1000}
+# ===========================================================================
+# PACKED JOBS -- several tiles in one job (plan_pack_tiles.sh K4).  MAAP's
+# start-up calls fail at a rate that grows with the jobs starting at once, and
+# they happen once per JOB, so N tiles per job divide them by N.
+#   --tiles 'x,y;x,y|x,y;x,y'  ';' separates tiles, '|' separates LANES.  The
+#   lanes run at the same time, each working through its own tiles in order;
+#   the submitter chooses the split from the tiles' predicted peak memory, so
+#   run.sh never has to guess which tiles fit on the node together.
+#   - Each tile is its own subshell, so one tile's failure ends only that
+#     tile; its log is output/tile_logs/<tile>.log and is printed after every
+#     lane has finished.
+#   - One line per tile, live and again in the summary:
+#       TILE_STATUS <E..._N...> ok|nodata|failed
+#     nodata = a prelim tile with too little data (no tile, as a single-tile
+#     job exiting 0); a matched tile that exits 0 without a tile is failed.
+#   - The job exits 1 if any tile failed: the driver resubmits per TILE.
+#   - Threads per tile: the physical cores shared among the lanes (at least
+#     1); ATL1415_THREADS still overrides.
+# ===========================================================================
+tile_label () {   # <x0> <y0> -> E<km>_N<km>, the name ATL11_to_ATL15 uses
+    awk -v x="$1" -v y="$2" 'BEGIN{printf "E%d_N%d", int(x/1000), int(y/1000)}'
+}
+run_lane () {   # <lane number> <x,y> ...
+    local lane=$1 xy x y name rc status
+    shift
+    for xy in "$@"; do
+        x=${xy%,*}; y=${xy#*,}
+        name=$(tile_label "$x" "$y")
+        echo "TILE_START ${name} lane ${lane} $(date -u +%FT%TZ)"
+        mkdir -p "${job_dir}/tile_work/${name}"
+        # NOT `if ( ... )`: a subshell tested by if/&&/|| runs with set -e
+        # OFF throughout, so a failed fit would fall through to "no tile" and
+        # read as nodata.  set +e out here, set -e in there.
+        set +e
+        ( set -e; cd "${job_dir}/tile_work/${name}"
+          solve_tile "$x" "$y" "$lane_threads" "${job_dir}/tile_work/${name}" ) \
+            > "${job_dir}/output/tile_logs/${name}.log" 2>&1
+        rc=$?
+        set -e
+        if [ "$rc" -ne 0 ]; then
+            status=failed
+        elif [ "$step" = prelim ] && [ -f "${job_dir}/output/prelim/${name}.h5" ]; then
+            status=ok
+        elif [ "$step" = matched ] && [ -f "${job_dir}/output/${name}.h5" ]; then
+            status=ok
+        elif [ "$step" = prelim ]; then
+            status=nodata
+        else
+            status=failed
+            echo "matched ${name} exited 0 but wrote no tile" >> "${job_dir}/output/tile_logs/${name}.log"
+        fi
+        echo "TILE_STATUS ${name} ${status}" | tee -a "${job_dir}/tile_status/lane${lane}"
+        echo "TILE_END ${name} lane ${lane} rc ${rc} $(date -u +%FT%TZ)"
+    done
+}
 
-    # --no_data_group: a matched tile leaves out its per-point /data (80-92%
-    # of the file), which nothing downstream reads -- matched and error runs
-    # reread the PRELIM tile (docs/plan_dps_mosaic.sh D2b, Ben 2026-09-30).
-    # Here, not in the args file: prelim and matched share that file, and a
-    # prelim tile must keep /data (ATL11_to_ATL15 refuses the flag without
-    # --matched).
-    run_solve matched --THREADS="${threads}" --matched --no_data_group \
-              --prior_edge_include "$prior_edge_include" \
-              --data_file "$prelim_file" \
-              "@${args_file}" \
-              --out_name "${PWD}/output/${tile_name}" \
-              --base_directory "$base_directory"
-
-    if [ -n "$tile_prefix" ]; then
-        s3_tiles put "${PWD}/output/${tile_name}" "$tile_prefix" matched
+if [ "${#lanes[@]}" -gt 0 ]; then
+    n_lanes=${#lanes[@]}
+    lane_threads=${ATL1415_THREADS:-$(( threads / n_lanes > 0 ? threads / n_lanes : 1 ))}
+    mkdir -p output/tile_logs tile_status
+    echo "packed job: ${#tile_list[@]} tiles in ${n_lanes} lane(s), ${lane_threads} thread(s) per tile"
+    pids=()
+    for i in "${!lanes[@]}"; do
+        # shellcheck disable=SC2086  (a lane is ';'-separated x,y pairs)
+        run_lane "$(( i + 1 ))" ${lanes[$i]//;/ } &
+        pids+=($!)
+    done
+    lane_failed=0
+    for pid in "${pids[@]}"; do
+        wait "$pid" || lane_failed=1
+    done
+    for xy in "${tile_list[@]}"; do
+        name=$(tile_label "${xy%,*}" "${xy#*,}")
+        echo "=================== TILE ${name} log ==================="
+        cat "output/tile_logs/${name}.log" 2>/dev/null || echo "(no log)"
+    done
+    echo "=========================================================="
+    echo "  packed job summary"
+    echo "=========================================================="
+    n_ok=0; n_nodata=0; n_failed=0
+    for xy in "${tile_list[@]}"; do
+        name=$(tile_label "${xy%,*}" "${xy#*,}")
+        line=$(grep -h "^TILE_STATUS ${name} " tile_status/lane* 2>/dev/null | tail -1) || line=
+        # a tile with no status line never ran to the end of its lane
+        line=${line:-TILE_STATUS ${name} failed}
+        echo "$line"
+        case "$line" in
+            *" ok") n_ok=$(( n_ok + 1 )) ;;
+            *" nodata") n_nodata=$(( n_nodata + 1 )) ;;
+            *) n_failed=$(( n_failed + 1 )) ;;
+        esac
+    done
+    echo "TILES: ${n_ok} ok, ${n_nodata} nodata, ${n_failed} failed, of ${#tile_list[@]}"
+    if [ "$n_failed" -gt 0 ] || [ "$lane_failed" -ne 0 ]; then
+        echo "ERROR: ${n_failed} of ${#tile_list[@]} tiles failed (TILE_STATUS above; logs in output/tile_logs/)" >&2
+        exit 1
     fi
+else
+    solve_tile "$x0" "$y0" "$threads" "$job_dir"
 fi
 
 echo "=== tile job complete; output/ contains: ==="

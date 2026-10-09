@@ -154,6 +154,14 @@ inputs:
     doc: s3:// root for a mosaic step's derived products (200 km tiles, mosaics, netCDFs); "-" (the default) means tile_prefix.
     type: string
     default: "-"
+  # PACKED JOBS (plan_pack_tiles.sh K4): several tiles per job, because
+  # MAAP's start-up calls fail once per JOB.  Default "-" for the reason above;
+  # with it, x0/y0 is the job's one tile, as before.
+  - name: tiles
+    label: tiles
+    doc: prelim/matched only -- several tile centers in one job, "x,y;x,y|x,y;x,y" in m, ';' between tiles run in turn, '|' between lanes run side by side.  x0/y0 must be the first tile.  "-" (the default) means the one tile x0/y0.
+    type: string
+    default: "-"
 
 outputs:
   - name: out
