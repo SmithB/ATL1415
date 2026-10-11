@@ -119,3 +119,13 @@ def test_dry_run_packs_and_submits_nothing(tmp_path, capsys):
     dp.main(base + ['--default_gib', '10', '--default_secs', '500'])
     assert sorted(dp.pack_tiles_of(f'{stem}_r0_pack.txt')) == ['E0_N0', 'E40_N0', 'E80_N0']
     assert not os.path.exists(f'{stem}_r0_jobs.csv')
+
+
+def test_tiles_that_shared_a_node_run_alone_next(tmp_path):
+    rows = [{'tiles': '0,0;40000,0|80000,0'}, {'tiles': '120000,0'}, {'tiles': '-'}]
+    assert dp.shared_node_tiles(rows) == {'E0_N0', 'E40_N0', 'E80_N0'}
+    # as the driver sets them: a peak of node_gib makes the packer put them in one lane
+    import pack_tiles
+    pred = {'E0_N0': (26., 500.), 'E40_N0': (10., 500.), 'E120_N0': (10., 500.)}
+    jobs, _, big = pack_tiles.pack(sorted(pred), pred, big_gib=13., big_secs=1e9)
+    assert big == ['E0_N0'] and jobs[0] == [['E0_N0']]

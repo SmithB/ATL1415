@@ -136,3 +136,9 @@ def test_duplicate_tiles_refused(tmp_path):
     with pytest.raises(SystemExit) as e:
         run_main(tmp_path, ['E0_N0', 'E0_N0'], [row('E0_N0', 10, 500)])
     assert 'more than once' in str(e.value)
+
+
+def test_overhead_is_added_after_the_slowdown(tmp_path):
+    a = write_csv(tmp_path / 'a.csv', [row('E0_N0', 10, 900, lane='1', ident='J'),
+                                       row('E0_N40', 10, 600, lane='2', ident='J')])
+    assert pk.read_predictions([a], 'prelim', 1.5, 25.)['E0_N0'] == (10., 625.)

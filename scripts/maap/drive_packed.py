@@ -18,7 +18,10 @@ Each round:
      PER TILE: DONE if its .h5 is under <tile_prefix>/<step>/ with a
      LastModified after the round's start, or (prelim) collect says nodata.
      Every other tile goes into the next round, packed again: a job that died
-     part-way loses only its unfinished tiles.
+     part-way loses only its unfinished tiles.  A tile that was not done
+     after sharing a node (a 2-lane job) runs ALONE next time (one lane, as
+     if its peak were --node_gib): an out-of-memory kill from two tiles that
+     were each predicted to fit must not repeat until the retries run out.
 After --max_retries rounds the tiles still not done are written to
 <stem>_still_failed_tile_list.txt.  The log ends with ALL_DONE, or STOPPED and
 the reason.
@@ -70,6 +73,11 @@ def ledger_tiles(row):
 def pack_tiles_of(path):
     """tile names in a pack file, in order, without .h5"""
     return [pack_tiles.tile_key(t) for line in open(path) for t in line.replace('|', ' ').split()]
+
+
+def shared_node_tiles(ledger_rows):
+    """tiles that ran in a job with more than one lane"""
+    return {t for r in ledger_rows if '|' in (r.get('tiles', '-') or '-') for t in ledger_tiles(r)}
 
 
 def outcome(tiles, new_h5, tile_rows, step):
@@ -191,7 +199,7 @@ def write_pack(path, tiles, pred, a):
 
 
 def predictions(a, tiles):
-    pred = pack_tiles.read_predictions(a.predict, a.step, a.slowdown)
+    pred = pack_tiles.read_predictions(a.predict, a.step, a.slowdown, a.overhead_secs)
     missing = [t for t in tiles if t not in pred]
     if missing and a.default_gib is None:
         stop(f'{len(missing)} tiles have no `ok` {a.step} row in --predict: {missing[:20]};'
@@ -223,6 +231,7 @@ def parse(argv):
     p.add_argument('--big_gib', type=float)
     p.add_argument('--big_secs', type=float)
     p.add_argument('--slowdown', type=float, default=1.5)
+    p.add_argument('--overhead_secs', type=float, default=0.)
     p.add_argument('--max_in_flight', type=int, default=100)
     p.add_argument('--max_retries', type=int, default=2)
     p.add_argument('--round_timeout', type=float, default=8 * 3600.)
@@ -278,6 +287,11 @@ def main(argv=None):
         if not todo:
             log('ALL_DONE: every tile is done')
             return
+        alone = sorted(set(todo) & shared_node_tiles(r.rows()))
+        for t in alone:
+            pred[t] = (a.node_gib, pred[t][1])
+        if alone:
+            log(f'round {n}: {len(alone)} of them shared a node; they run alone next round')
         tiles = todo
     open(f'{a.stem}_still_failed_tile_list.txt', 'w').write(''.join(f'{t}.h5\n' for t in tiles))
     log(f'ALL_DONE with {len(tiles)} tiles not done after {a.max_retries} retries:'

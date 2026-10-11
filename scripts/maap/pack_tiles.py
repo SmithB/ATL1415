@@ -8,7 +8,9 @@ STEP (prelim numbers never stand in for matched).  Per tile: its last `ok` row
 in the order the tables are given, so list the newest run last.  Time is
 solve_secs (the tile's rusage steps, measured the same way in one-tile and
 packed jobs); a row from a job that ran 2 lanes is divided by --slowdown, so
-every prediction is a one-lane time.  The instance type is not corrected for:
+every prediction is a one-lane time; --overhead_secs is added to each, for
+what a tile spends outside its solve steps (K6b matched: ~25 s fetching its
+neighbours; prelim ~5 s).  The instance type is not corrected for:
 the 32gb queue mixes r5.xlarge, m5.2xlarge and c5.4xlarge, ~1.5x apart.
 
 RULES (Ben 2026-10-11, QK7: "2 lanes per job, but run the slowest, largest
@@ -53,7 +55,7 @@ def read_tile_names(path):
     return keys
 
 
-def read_predictions(paths, step, slowdown):
+def read_predictions(paths, step, slowdown, overhead_secs=0.):
     """{tile: (peak GiB, one-lane secs)} from collect_jobs --csv tables."""
     rows = [r for p in paths for r in csv.DictReader(open(p))]
     lanes = {}
@@ -70,7 +72,7 @@ def read_predictions(paths, step, slowdown):
             continue
         if len(lanes.get(r['identifier'], ())) > 1:
             secs /= slowdown
-        pred[r['tile']] = (gib, secs)
+        pred[r['tile']] = (gib, secs + overhead_secs)
     return pred
 
 
@@ -128,6 +130,7 @@ def main(argv=None):
     p.add_argument('--big_gib', type=float, default=None, help='default --node_gib / 2')
     p.add_argument('--big_secs', type=float, default=None, help='default: p90 of the predictions')
     p.add_argument('--slowdown', type=float, default=1.5)
+    p.add_argument('--overhead_secs', type=float, default=0.)
     p.add_argument('--default_gib', type=float, default=None)
     p.add_argument('--default_secs', type=float, default=None)
     a = p.parse_args(argv)
@@ -138,7 +141,7 @@ def main(argv=None):
         p.error('--default_gib and --default_secs go together')
 
     tiles = read_tile_names(a.tile_list)
-    pred = read_predictions(a.predict, a.step, a.slowdown)
+    pred = read_predictions(a.predict, a.step, a.slowdown, a.overhead_secs)
     missing = [t for t in tiles if t not in pred]
     if missing and a.default_gib is None:
         sys.exit(f'{len(missing)} of {len(tiles)} tiles have no `ok` {a.step} row in --predict:'
