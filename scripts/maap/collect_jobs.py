@@ -49,11 +49,27 @@ Time and peak memory are what the job reports about ITSELF
 get_job_metrics() is used only for the wall clock, because its machine and
 memory fields come back null.
 
+ONE ROW PER TILE, MACHINE-READABLE (--csv, plan_pack_tiles K5a): the same
+numbers as the table, for one-tile and packed jobs alike -- the prediction
+table pack_tiles.py reads, and the per-tile outcome a driver resubmits from.
+Columns: tile (E<x>_N<y>, no .h5), step, status, secs, solve_secs,
+max_mem_GiB, instance, lane, identifier, job_id.
+  status  ok / nodata / failed for a tile that ran.  A one-tile job's tile is
+          ok when the job is successful, nodata when its log says it wrote no
+          tile; a tile that never reported (its job failed first, is still
+          running, or was not submitted) has the job's status -- except that a
+          successful packed job's unreported tile is failed, as run.sh says.
+  secs    a one-tile job: the job's wall time (start-up and stage-in
+          included); a packed tile: TILE_START to TILE_END (waiting for a
+          lane's earlier tiles not included).  solve_secs: the sum of the
+          tile's rusage steps, the same thing measured the same way in both.
+
 Usage:
-  collect_jobs.py <ledger.csv>
+  collect_jobs.py <ledger.csv> [--csv <out.csv>]
       ledger  the CSV the submitter wrote.  Required: defaulting it invited a
               run against the wrong region's ledger, which reads as a table of
               jobs that inexplicably will not advance.
+      --csv   also write one row per tile to <out.csv>.
 """
 import csv
 import datetime
@@ -66,10 +82,17 @@ from maap.maap import MAAP
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from ogc_jobs import read_logs, parse_worker, parse_cpu, parse_bench  # noqa: E402
 
-if len(sys.argv) != 2 or sys.argv[1].startswith('-'):
+
+
+def parse_argv(argv):
+    """(ledger, csv path or None); exits 2 with the usage on anything else."""
+    if len(argv) == 1 and not argv[0].startswith('-'):
+        return argv[0], None
+    if len(argv) == 3 and argv[1] == '--csv' and not argv[0].startswith('-'):
+        return argv[0], argv[2]
     print(__doc__.strip().rsplit('Usage:', 1)[-1], file=sys.stderr)
     sys.exit(2)
-LEDGER = sys.argv[1]
+
 
 N_RE   = re.compile(r'decimate_data: N_target:[^,]+, N=(\d+)')
 XO_RE  = re.compile(r'Decimate_data: N_AT=(\d+), N_XO=(\d+)')
@@ -77,6 +100,9 @@ RUSAGE = re.compile(r'=== rusage \[(\w+)\]: elapsed ([\d.]+) s, peak RSS ([\d.]+
 FIT_RE = re.compile(r'initial: (\d+):')
 ITER_RE = re.compile(r'starting qr solve for iteration (\d+)')
 BUILD_RE = re.compile(r'^BUILD_ID: (.*)$', re.M)
+# a one-tile prelim job that wrote no tile (run.sh: both no-data exits)
+NODATA_RE = re.compile(r'^no (fit written|tile to upload) for ', re.M)
+TILE_ID_RE = re.compile(r'E-?\d+_N-?\d+$')
 # a packed job (run.sh --tiles, plan_pack_tiles K4): each tile's log is printed
 # after its banner, and the summary repeats one TILE_STATUS line per tile
 TILE_LOG_RE = re.compile(r'^=+ TILE (\S+) log =+$', re.M)
@@ -107,6 +133,7 @@ def collect(maap, row):
     text, _, _ = read_logs(json_or_empty(maap.get_job_result(jid)))
     steps = solve_fields(text, out)
     out['_tiles'] = packed_tiles(text)
+    out['_nodata'] = bool(NODATA_RE.search(text))
     build = BUILD_RE.search(text)
     fields = dict(f.split('=', 1) for f in build.group(1).split() if '=' in f) if build else {}
     out['commit'] = fields.get('commit', '-')[:7]
@@ -169,21 +196,76 @@ def packed_tiles(text):
     return tiles
 
 
+CSV_COLUMNS = ('tile', 'step', 'status', 'secs', 'solve_secs', 'max_mem_GiB',
+               'instance', 'lane', 'identifier', 'job_id')
+
+
+def ledger_tiles(row):
+    """A ledger row's tiles as E<x>_N<y> names, in its order: the `tiles`
+    column of a packed job, else the identifier's own tile."""
+    packed = row.get('tiles', '-') or '-'
+    if packed != '-':
+        return ['E%d_N%d' % (int(float(x) / 1000), int(float(y) / 1000))
+                for lane in packed.split('|') for pair in lane.split(';')
+                for x, y in [pair.split(',')]]
+    m = TILE_ID_RE.search(row['identifier'])
+    return [m.group(0)] if m else [row['identifier']]
+
+
+def tile_rows(row, fields, steps):
+    """One ledger row and what collect() found -> the --csv rows, one per tile."""
+    base = {'step': row.get('step', '-'), 'identifier': row['identifier'],
+            'job_id': row.get('job_id', '-'), 'instance': fields.get('instance', '-')}
+    job_status = fields.get('status', '?')
+    names = ledger_tiles(row)
+    if (row.get('tiles', '-') or '-') == '-':
+        status = job_status
+        if job_status == 'successful':
+            status = 'nodata' if fields.get('_nodata') else 'ok'
+        solve = f'{sum(t for t, _ in steps.values()):.0f}' if steps else '-'
+        return [dict(base, tile=names[0], status=status, secs=fields.get('secs', '-'),
+                     solve_secs=solve, max_mem_GiB=fields.get('max_mem_GiB', '-'), lane='-')]
+    ran = {f['tile'].strip(): (f, st) for f, st in fields.get('_tiles', [])}
+    rows = []
+    for name in names:
+        if name in ran:
+            f, st = ran[name]
+            solve = f'{sum(t for t, _ in st.values()):.0f}' if st else '-'
+            rows.append(dict(base, tile=name, status=f['status'], secs=f.get('secs', '-'),
+                             solve_secs=solve, max_mem_GiB=f.get('max_mem_GiB', '-'),
+                             lane=f.get('queue', '-').replace('lane ', '')))
+        else:
+            rows.append(dict(base, tile=name,
+                             status='failed' if job_status == 'successful' else job_status,
+                             secs='-', solve_secs='-', max_mem_GiB='-', lane='-'))
+    return rows
+
+
 COLUMNS = (('tile', 26), ('status', 11), ('secs', 7), ('max_mem_GiB', 11),
            ('N_ATL11', 9), ('N_AT', 8), ('N_XO', 7), ('N_fit', 8), ('iters', 5),
            ('commit', 7), ('queue', 22), ('instance', 12))
 
 
 def main():
+    ledger, csv_path = parse_argv(sys.argv[1:])
     maap = MAAP(maap_host=os.environ.get('MAAP_API_HOST', 'api.maap-project.org'))
     print(' '.join(f'{name:>{width}}' for name, width in COLUMNS))
     builds, no_pgt, workers = {}, [], {}
-    for row in csv.DictReader(open(LEDGER)):
+    out_csv = None
+    if csv_path:
+        csv_file = open(csv_path, 'w', newline='')
+        out_csv = csv.DictWriter(csv_file, fieldnames=CSV_COLUMNS)
+        out_csv.writeheader()
+    for row in csv.DictReader(open(ledger)):
         try:
             fields, steps = collect(maap, row)
         except Exception as exc:
             print(f"{row['identifier'][-26:]:>26} <collect failed: {type(exc).__name__}: {exc}>")
+            if out_csv:
+                out_csv.writerows(tile_rows(row, {'status': 'collect failed'}, {}))
             continue
+        if out_csv:
+            out_csv.writerows(tile_rows(row, fields, steps))
         if fields.get('commit_full', '-') != '-':
             key = (fields['commit_full'], fields['version'], fields['built'])
             builds[key] = builds.get(key, 0) + 1
@@ -221,6 +303,8 @@ def main():
                   f"  vcpus={w.get('vcpus', '-')} threads_per_core={w.get('threads_per_core', '-')}"
                   f"  cpu_quota={w.get('cpu_quota', '-')}  blas={w.get('blas', '-')}"
                   f"  {len(tiles)} job(s)")
+    if out_csv:
+        csv_file.close()
     if no_pgt:
         print('\nWARNING: MAAP_PGT WAS UNSET on the workers for: ' + ', '.join(no_pgt) +
               ' -- they could not get NSIDC credentials.')
