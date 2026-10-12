@@ -1304,6 +1304,7 @@ def resolve_run_config(args):
         args.E_d2z0dx2 = np.minimum(1.e-2, np.maximum(1.e-4, E_d2z0dx2.z[row,col]))
         if np.isnan(args.E_d2z0dx2):
             args.E_d2z0dx2=1.e-2
+        E_RMS['d2z0_dx2'] = args.E_d2z0dx2
 
     if args.calc_error_file is not None:
         dest_dir=os.path.dirname(args.calc_error_file)

@@ -33,6 +33,11 @@ detached, with the python that has maap-py:
   cd ~/git_repos/ATL1415 && setsid nohup /srv/conda/envs/notebook/bin/python -u \\
       scripts/maap/drive_packed.py <options> >> <stem>_driver.log 2>&1 &
 
+STOPPING: setsid makes the driver a process-group leader; stop the whole group
+with `kill -- -<pgid>` (ps -o pgid= -p <pid>).  Killing only the driver's pid
+leaves its submit_MAAP_jobs.py child submitting.  Then dismiss what it
+submitted.
+
 --dry-run packs round 0, prints the summary and stops: nothing is submitted.
 """
 import argparse
