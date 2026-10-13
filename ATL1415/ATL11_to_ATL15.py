@@ -1301,7 +1301,7 @@ def resolve_run_config(args):
         E_d2z0dx2=pc.grid.data().from_geotif(args.E_d2z0dx2_file)#, bounds=[args.xy0[0]+np.array([-1, 1])*args.Width, args.xy0[1]+np.array([-1, 1])*args.Width])
         col = np.argmin(np.abs(E_d2z0dx2.x-args.xy0[0]))
         row = np.argmin(np.abs(E_d2z0dx2.y-args.xy0[1]))
-        args.E_d2z0dx2 = np.minimum(1.e-2, np.maximum(1.e-4, E_d2z0dx2.z[row,col]))
+        args.E_d2z0dx2 = np.minimum(2.e-2, np.maximum(1.e-4, E_d2z0dx2.z[row,col]))
         if np.isnan(args.E_d2z0dx2):
             args.E_d2z0dx2=1.e-2
         E_RMS['d2z0_dx2'] = args.E_d2z0dx2
