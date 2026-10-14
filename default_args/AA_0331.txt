@@ -2,7 +2,7 @@
 --tide_mask_file=Antarctic/BedMachineAntarcticaOceanv2.tif
 --tide_model=CATS2008-v2023
 --region=AA
---d2z0_file=Antarctic/AA_Ed2z0dx2.tif
+--E_d2z0dx2_file=Antarctic/AA_Ed2z0dx2.tif
 --tide_adjustment_file=Antarctic/ATL11_0314_tide_adj_scale_200m.tif
 --tide_adjustment_format=geotif
 --tide_adjustment
