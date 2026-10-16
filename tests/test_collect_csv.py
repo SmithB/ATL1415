@@ -81,6 +81,40 @@ def test_collect_failed_row(cj):
     assert [r['status'] for r in rows] == ['collect failed'] * 4
 
 
+class Answer:
+    def __init__(self, body):
+        self.body = body
+
+    def json(self):
+        return self.body
+
+
+class Maap:
+    def get_job_status(self, jid):
+        return Answer({'status': 'failed'})
+
+    def get_job_metrics(self, jid):
+        return Answer({})
+
+    def get_job_result(self, jid):
+        return Answer({})
+
+
+@pytest.mark.parametrize('text,names,want', [
+    # a start-up failure: the container's log was read and no tile started
+    ('Traceback ...\nConnectTimeout: api.maap-project.org\n', ['_stdout.txt', '_stderr.txt'], set()),
+    ('TILE_START E0_N0 lane 1 2026-10-16T19:00:00Z\nTILE_START E40_N0 lane 2 2026-10-16T19:00:01Z\n'
+     'TILE_END E0_N0 lane 1 rc 1 2026-10-16T19:05:00Z\n', ['_stderr.txt'], {'E0_N0', 'E40_N0'}),
+    # only the runner's chatter, or nothing at all: nobody knows what ran
+    ('runner chatter\n', ['_stdout.txt'], None),
+    ('', [], None)])
+def test_started_tiles(cj, monkeypatch, text, names, want):
+    """plan_pack_tiles K10: the tiles a job started, from its TILE_START lines."""
+    monkeypatch.setattr(cj, 'read_logs', lambda result: (text, 's3://x', names))
+    fields, _ = cj.collect(Maap(), PACKED)
+    assert fields['_started'] == want
+
+
 def test_nodata_lines(cj):
     assert cj.NODATA_RE.search('x\nno fit written for E0_N0.h5 (insufficient data); skipping\n')
     assert cj.NODATA_RE.search('no tile to upload for E0_N0.h5 (removed: no data ...)')

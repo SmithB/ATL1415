@@ -20,7 +20,12 @@ EACH POLL (every --poll_secs):
      later runs) and decided PER TILE in <stem>_decisions.csv: DONE if its
      .h5 is under <tile_prefix>/<step>/ with a LastModified after THAT JOB was
      submitted, NODATA (prelim) if collect says so, else RETRY -- or GAVE_UP
-     once the tile has had 1 + --max_retries jobs.  A tile that was not done
+     once the tile has had 1 + --max_retries jobs that STARTED it (K10): a
+     failed submit, or a job whose log shows no TILE_START for the tile (a
+     start-up failure: the runner could not reach the MAAP API), is recorded
+     as 'NOT SUBMITTED' / 'not started' and does not count -- up to
+     --max_unstarted such jobs per tile, so an outage cannot resubmit a tile
+     forever.  A job with no readable log counts.  A tile that was not done
      after sharing a node (a 2-lane job) runs ALONE from then on (one lane, as
      if its peak were --node_gib): an out-of-memory kill from two tiles that
      were each predicted to fit must not repeat;
@@ -69,6 +74,9 @@ DECISION_COLUMNS = ('job', 'job_id', 'tile', 'attempt', 'decision', 'tile_status
                     'shared', 'decided_utc')
 TILE_COLUMNS = ('tile', 'step', 'status', 'secs', 'solve_secs', 'max_mem_GiB',
                 'instance', 'lane', 'identifier', 'job_id')     # = collect_jobs.CSV_COLUMNS
+# a decision's tile_status when the job never ran the tile: not an attempt (K10)
+NOT_STARTED = 'not started'
+NOT_RUN = ('NOT SUBMITTED', NOT_STARTED)
 
 
 def log(*a):
@@ -136,7 +144,9 @@ def s3_mtimes(prefix):
 
 
 def collect_rows(maap, rows):
-    """collect_jobs' --csv rows (one per tile) for each ledger row."""
+    """collect_jobs' --csv rows (one per tile) for each ledger row, each with
+    `started`: False if the job's log was read and has no TILE_START for the
+    tile, else True (an unreadable log counts as started)."""
     import collect_jobs
     out = []
     for r in rows:
@@ -145,7 +155,9 @@ def collect_rows(maap, rows):
         except Exception as exc:
             log(f'collect failed for {r["identifier"]}: {type(exc).__name__}: {exc}')
             fields, steps = {'status': 'collect failed'}, {}
-        out.append(collect_jobs.tile_rows(r, fields, steps))
+        started = fields.get('_started')
+        out.append([dict(x, started=started is None or x['tile'] in started)
+                    for x in collect_jobs.tile_rows(r, fields, steps)])
     return out
 
 
@@ -191,19 +203,28 @@ class Run:
         return out
 
     def tiles(self, jobs, decided):
-        """{tile: (jobs so far, its latest job's decision row or None)}"""
+        """{tile: (attempts, its latest job's decision row or None, unstarted)}:
+        attempts = its jobs so far, except those decided as never having run
+        it; unstarted = those (K10).  A job not decided yet is an attempt."""
         latest = {}
         for key, r in jobs:
             for t in ledger_tiles(r):
-                latest[t] = (latest.get(t, (0, None))[0] + 1, key)
-        return {t: (n, decided.get(key, {}).get(t)) for t, (n, key) in latest.items()}
+                n, _, free = latest.get(t, (0, None, 0))
+                d = decided.get(key, {}).get(t)
+                if d is not None and d['tile_status'] in NOT_RUN:
+                    free += 1
+                else:
+                    n += 1
+                latest[t] = (n, key, free)
+        return {t: (n, decided.get(key, {}).get(t), free) for t, (n, key, free) in latest.items()}
 
     def alone(self):
         """tiles not done after sharing a node: one lane from then on"""
         if not os.path.exists(self.decisions_file):
             return set()
         return {r['tile'] for r in csv.DictReader(open(self.decisions_file))
-                if r['decision'] in ('retry', 'gave_up') and r['shared'] == '1'}
+                if r['decision'] in ('retry', 'gave_up') and r['shared'] == '1'
+                and r['tile_status'] not in NOT_RUN}
 
     def decide(self, new, tiles):
         """collect the newly final jobs and decide each of their tiles"""
@@ -213,13 +234,22 @@ class Run:
         out = []
         for (key, r), trows in zip(new, rows):
             status = {x['tile']: x['status'] for x in trows}
+            started = {x['tile']: x.get('started', True) for x in trows}
             shared = '|' in (r.get('tiles', '-') or '-')
             for t in ledger_tiles(r):
                 d = decide_tile(t, r, status.get(t, '-'), mtimes, self.a.step)
+                n, _, free = tiles[t]
+                tile_status = status.get(t, '-')
                 if d is None:
-                    d = 'gave_up' if tiles[t][0] > self.a.max_retries else 'retry'
-                out.append({'job': key, 'job_id': r['job_id'], 'tile': t, 'attempt': tiles[t][0],
-                            'decision': d, 'tile_status': status.get(t, '-'),
+                    if submit_failed(r) or not started.get(t, True):
+                        # never ran here: not an attempt (tiles() counted this
+                        # job as one while it was undecided)
+                        n, free = n - 1, free + 1
+                        tile_status = 'NOT SUBMITTED' if submit_failed(r) else NOT_STARTED
+                    d = ('gave_up' if n > self.a.max_retries or free > self.a.max_unstarted
+                         else 'retry')
+                out.append({'job': key, 'job_id': r['job_id'], 'tile': t, 'attempt': n,
+                            'decision': d, 'tile_status': tile_status,
                             'shared': int(shared), 'decided_utc': utcnow().isoformat(timespec='seconds')})
         append_csv(self.decisions_file, DECISION_COLUMNS, out)
         for (key, r) in new:
@@ -233,7 +263,7 @@ class Run:
 
     def pending(self, tiles):
         """pack lines to submit, retries first, then the plan's untouched jobs"""
-        retry = sorted(t for t, (_, d) in tiles.items() if d is not None and d['decision'] == 'retry')
+        retry = sorted(t for t, (_, d, _) in tiles.items() if d is not None and d['decision'] == 'retry')
         lines = []
         if retry:
             pred = dict(self.pred)
@@ -280,7 +310,7 @@ class Run:
         in_flight = [r['job_id'] for k, r in jobs if k not in done_jobs]
         lines, n_retry = self.pending(tiles)
         counts = {}
-        for _, d in tiles.values():
+        for _, d, _ in tiles.values():
             key = d['decision'] if d is not None else 'running'
             counts[key] = counts.get(key, 0) + 1
         seen = set(tiles)
@@ -292,7 +322,7 @@ class Run:
             self.submit(lines[:free], min(n_retry, sum(len(line_tiles(x)) for x in lines[:free])))
             return False, True
         if not lines and not in_flight:
-            failed = sorted(t for t, (_, d) in tiles.items() if d['decision'] == 'gave_up')
+            failed = sorted(t for t, (_, d, _) in tiles.items() if d['decision'] == 'gave_up')
             if failed:
                 open(f'{self.a.stem}_still_failed_tile_list.txt', 'w').write(
                     ''.join(f'{t}.h5\n' for t in failed))
@@ -349,7 +379,11 @@ def parse(argv):
     p.add_argument('--slowdown', type=float, default=1.5)
     p.add_argument('--overhead_secs', type=float, default=0.)
     p.add_argument('--max_in_flight', type=int, default=100)
-    p.add_argument('--max_retries', type=int, default=2, help='jobs per tile after its first')
+    p.add_argument('--max_retries', type=int, default=2,
+                   help='jobs per tile after its first, counting only jobs that started it')
+    p.add_argument('--max_unstarted', type=int, default=5,
+                   help='jobs per tile that never started it (failed submit or start-up) before it'
+                        ' gives up anyway')
     p.add_argument('--stall_secs', type=float, default=8 * 3600.,
                    help='STOP if jobs are unfinished and none has ended or been submitted for this long')
     p.add_argument('--poll_secs', type=float, default=120.)

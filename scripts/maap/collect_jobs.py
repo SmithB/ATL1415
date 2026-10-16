@@ -130,7 +130,13 @@ def collect(maap, row):
     secs = json_or_empty(maap.get_job_metrics(jid)).get('job_duration_seconds')
     out['secs'] = f'{float(secs):.0f}' if secs is not None else '-'
 
-    text, _, _ = read_logs(json_or_empty(maap.get_job_result(jid)))
+    text, _, names = read_logs(json_or_empty(maap.get_job_result(jid)))
+    # the tiles the job started (run.sh prints TILE_START before each), for a
+    # driver that must not charge a start-up failure to a tile's attempts
+    # (plan_pack_tiles K10).  None if the container's log (_stderr.txt) was
+    # not read: then nobody knows what ran.
+    out['_started'] = ({name for kind, name, _, _ in TILE_TIME_RE.findall(text) if kind == 'START'}
+                       if '_stderr.txt' in names else None)
     steps = solve_fields(text, out)
     out['_tiles'] = packed_tiles(text)
     out['_nodata'] = bool(NODATA_RE.search(text))

@@ -56,6 +56,7 @@ class Fake:
 
     def __init__(self, monkeypatch):
         self.n, self.now, self.status, self.h5, self.batches = 0, NOW, {}, {}, []
+        self.started = {}       # job id -> the tiles its log shows started (K10)
         monkeypatch.setattr(dp.subprocess, 'run', self.submit)
         monkeypatch.setattr(dp, 'collect_rows', self.collect)
         monkeypatch.setattr(dp, 's3_mtimes', lambda prefix: dict(self.h5))
@@ -81,7 +82,8 @@ class Fake:
 
     def collect(self, maap, rows):
         return [[{'tile': t, 'status': self.status.get(r['job_id'], 'ok'), 'step': 'prelim',
-                  'identifier': r['identifier'], 'job_id': r['job_id']}
+                  'identifier': r['identifier'], 'job_id': r['job_id'],
+                  'started': t in self.started.get(r['job_id'], {t})}
                  for t in dp.ledger_tiles(r)] for r in rows]
 
     def write(self, tile, ago=-5):
@@ -162,7 +164,10 @@ def test_nodata_and_submit_failures(tmp_path, monkeypatch):
     f.status['j1'] = 'nodata'
     assert run.tick({'j1': 'successful'}) == (False, True)
     assert f.batches[1] == ['E40_N0.h5\n']
-    assert decisions(tmp_path) == [('E0_N0', '1', 'nodata', '0'), ('E40_N0', '1', 'retry', '0')]
+    # K10: a failed submit is not an attempt
+    assert decisions(tmp_path) == [('E0_N0', '1', 'nodata', '0'), ('E40_N0', '0', 'retry', '0')]
+    assert list(csv.DictReader(open(tmp_path / 'run_decisions.csv')))[1]['tile_status'] == \
+        'NOT SUBMITTED'
 
 
 def test_a_half_written_decision_is_decided_again(tmp_path, monkeypatch):
@@ -225,3 +230,66 @@ def test_tiles_that_shared_a_node_run_alone_next(tmp_path):
     pred = {'E0_N0': (26., 500.), 'E40_N0': (10., 500.), 'E120_N0': (10., 500.)}
     jobs, _, big = pack_tiles.pack(sorted(pred), pred, big_gib=13., big_secs=1e9)
     assert big == ['E0_N0'] and jobs[0] == [['E0_N0']]
+
+
+def test_start_up_failures_do_not_use_attempts(tmp_path, monkeypatch):
+    """K10: a job whose log shows no TILE_START for a tile never ran it -- not
+    an attempt, and not "ran shared, so run alone"; one that started it is."""
+    a = args(tmp_path, '--max_retries', '1')
+    plan(tmp_path, 'E0_N0.h5 | E40_N0.h5\n')
+    pred = {'E0_N0': (10., 500.), 'E40_N0': (10., 500.)}
+    f = Fake(monkeypatch)
+    run = dp.Run(a, pred)
+    run.tick({})
+    for k in range(1, 4):                       # three start-up failures in a row
+        f.started[f'j{k}'] = set()
+        f.now += datetime.timedelta(minutes=5)
+        assert run.tick({f'j{i}': 'failed' for i in range(1, k + 1)}) == (False, True)
+    # still two lanes: a tile that did not start did not share a node
+    assert f.batches[-1] == ['E0_N0.h5 | E40_N0.h5\n']
+    assert decisions(tmp_path)[-2:] == [('E0_N0', '0', 'retry', '1'), ('E40_N0', '0', 'retry', '1')]
+    assert {r['tile_status'] for r in csv.DictReader(open(tmp_path / 'run_decisions.csv'))} == \
+        {'not started'}
+    # j4 starts E0_N0 only (lane 2 never began): E0_N0 used its first attempt
+    # and, having run on a shared node, runs alone next; E40_N0 has used none
+    f.started['j4'] = {'E0_N0'}
+    f.now += datetime.timedelta(minutes=5)
+    run.tick({f'j{i}': 'failed' for i in range(1, 5)})
+    assert decisions(tmp_path)[-2:] == [('E0_N0', '1', 'retry', '1'), ('E40_N0', '0', 'retry', '1')]
+    assert sorted(f.batches[-1]) == ['E0_N0.h5\n', 'E40_N0.h5\n']
+    # j5 (E0_N0 alone) starts it and fails: out of attempts
+    f.now += datetime.timedelta(minutes=5)
+    run.tick(dict({f'j{i}': 'failed' for i in range(1, 6)}, j6='running'))
+    assert decisions(tmp_path)[-1] == ('E0_N0', '2', 'gave_up', '0')
+
+
+def test_unknown_logs_count_and_unstarted_jobs_are_capped(tmp_path, monkeypatch):
+    a = args(tmp_path, '--max_retries', '5', '--max_unstarted', '2')
+    plan(tmp_path, 'E0_N0.h5\n')
+    f = Fake(monkeypatch)
+    run = dp.Run(a, {'E0_N0': (10., 500.)})
+    run.tick({})
+    # j1: no log could be read (collect's default: started) -> an attempt
+    f.now += datetime.timedelta(minutes=5)
+    run.tick({'j1': 'failed'})
+    assert decisions(tmp_path)[-1] == ('E0_N0', '1', 'retry', '0')
+    # then start-up failures: free up to --max_unstarted, then it gives up
+    for k in (2, 3, 4):
+        f.started[f'j{k}'] = set()
+        f.now += datetime.timedelta(minutes=5)
+        run.tick({f'j{i}': 'failed' for i in range(1, k + 1)})
+    assert [d[2] for d in decisions(tmp_path)] == ['retry', 'retry', 'retry', 'gave_up']
+    assert [d[1] for d in decisions(tmp_path)] == ['1', '1', '1', '1']
+
+
+def test_restart_reads_unstarted_rows(tmp_path, monkeypatch):
+    """the counts come from the decisions file, so a restarted driver agrees"""
+    a = args(tmp_path, '--max_retries', '0')
+    plan(tmp_path, 'E0_N0.h5\n')
+    f = Fake(monkeypatch)
+    run = dp.Run(a, {'E0_N0': (10., 500.)})
+    run.tick({})
+    f.started['j1'] = set()
+    run.tick({'j1': 'failed'})
+    tiles = dp.Run(a, {'E0_N0': (10., 500.)}).tiles(run.jobs(), run.decided())
+    assert tiles['E0_N0'][0] == 1 and tiles['E0_N0'][2] == 1      # j2 in flight; j1 free
