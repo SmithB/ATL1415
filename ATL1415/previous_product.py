@@ -118,10 +118,10 @@ def _search_cloud(short_name, release, cycles, bbox, resolution=None):
         from pointCollection.scripts.query_ATL11_cloud import find_ATL11_granules
         granules = find_ATL11_granules(bbox, short_name=short_name, version=release)
     else:
-        import earthaccess
         from pointCollection.scripts.query_ATL11_cloud import _try_earthaccess_login
         _try_earthaccess_login()
-        granules = earthaccess.search_data(short_name=short_name, version=release)
+        # retried on transient CMR errors (502s), like find_ATL11_granules
+        granules = pc.io_utils.search_data(short_name=short_name, version=release)
 
     urls = []
     for granule in granules:
