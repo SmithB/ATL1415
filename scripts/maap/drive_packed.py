@@ -34,6 +34,13 @@ EACH POLL (every --poll_secs):
      one batch, <stem>_b<k>_{pack.txt,jobs.csv,submit.log}.
 So a start-up failure is resubmitted within a poll of going final, not after
 the slowest job of a round (K7c: near-pole tiles waited ~90 min for that).
+
+SECOND QUEUE (Ben 2026-10-18: "make a second queue for jobs likely to need the
+64gb queue"): with --big_queue <queue> --big_queue_gib <G>, a tile predicted
+to peak above G GiB runs ALONE (one tile per job, its retries too) on <queue>;
+every other tile is packed and submitted as before on --queue.  A batch that
+holds both kinds is submitted as two ledgers, one per queue.  (AA 2026-10-17:
+two 44 km tiles peaked at 30.5-30.7 GiB, over the ~30.4 GiB a 32gb node has.)
 The log ends ALL_DONE (every tile done, or "with N tiles not done": their
 names in <stem>_still_failed_tile_list.txt) or STOPPED and the reason.
 
@@ -178,6 +185,24 @@ def pack_lines(jobs):
     return [' | '.join(' '.join(f'{t}.h5' for t in lane) for lane in job) + '\n' for job in jobs]
 
 
+def big_queue_tiles(a, pred):
+    """the tiles that go to --big_queue: predicted peak over --big_queue_gib"""
+    if a.big_queue is None:
+        return set()
+    return {t for t, (gib, _) in pred.items() if gib > a.big_queue_gib}
+
+
+def pack_split(tiles, pred, a, bigq):
+    """jobs for `tiles`: the --big_queue ones one tile per job, first; the
+    rest by pack_tiles.pack.  Returns (jobs, the packer's big tiles)."""
+    mine = sorted((t for t in tiles if t in bigq), key=lambda t: (-pred[t][1], t))
+    rest = [t for t in tiles if t not in bigq]
+    jobs, big = [], []
+    if rest:
+        jobs, _, big = pack_tiles.pack(rest, pred, a.target_secs, a.big_gib, a.big_secs, a.slowdown)
+    return [[[t]] for t in mine] + jobs, big
+
+
 class Run:
     """One step's state, rebuilt from the files at every poll."""
 
@@ -185,6 +210,22 @@ class Run:
         self.a, self.pred, self.maap = a, pred, maap
         self.plan = [line for line in open(f'{a.stem}_plan_pack.txt') if line.strip()]
         self.decisions_file = f'{a.stem}_decisions.csv'
+        self.bigq = big_queue_tiles(a, pred)
+        for line in self.plan:
+            self.queue_of(line)          # a plan packed without --big_queue stops here
+
+    def queue_of(self, line):
+        """the queue a pack line goes to; a line that mixes --big_queue tiles
+        with others cannot be placed, and stops the driver"""
+        ts = line_tiles(line)
+        n = sum(t in self.bigq for t in ts)
+        if n == 0:
+            return self.a.queue
+        if n == len(ts) == 1:
+            return self.a.big_queue
+        stop(f'pack line {line.strip()!r} puts a tile predicted over --big_queue_gib'
+             f' {self.a.big_queue_gib:g} in a job with others: the plan was packed without'
+             ' this --big_queue setting.  Use a new --stem.')
 
     def jobs(self):
         """[(key, row)] for every ledger row, oldest batch first; key =
@@ -269,27 +310,35 @@ class Run:
             pred = dict(self.pred)
             for t in self.alone() & set(retry):
                 pred[t] = (self.a.node_gib, pred[t][1])
-            jobs, _, _ = pack_tiles.pack(retry, pred, self.a.target_secs, self.a.big_gib,
-                                         self.a.big_secs, self.a.slowdown)
+            jobs, _ = pack_split(retry, pred, self.a, self.bigq)
             lines = pack_lines(jobs)
         seen = set(tiles)
-        return lines + [line for line in self.plan if not seen.intersection(line_tiles(line))], len(retry)
+        return lines + [line for line in self.plan if not seen.intersection(line_tiles(line))], set(retry)
 
-    def submit(self, lines, n_retry):
+    def submit(self, lines, retried):
+        """submit pack lines, one batch (ledger) per queue; `retried` = the
+        tiles among them being retried, for the log"""
         a = self.a
-        k = len(glob.glob(f'{a.stem}_b*_jobs.csv'))
-        stem = f'{a.stem}_b{k}'
-        open(f'{stem}_pack.txt', 'w').writelines(lines)
-        cmd = [sys.executable, f'{HERE}/submit_MAAP_jobs.py', '--pack_file', f'{stem}_pack.txt',
-               '--step', a.step, '--args_url', a.args_url, '--tile_prefix', a.tile_prefix,
-               '--queue', a.queue, '--tag', f'{a.tag}_b{k}', '--ledger', f'{stem}_jobs.csv']
-        t0 = time.time()
-        p = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
-        open(f'{stem}_submit.log', 'a').write(p.stdout + p.stderr)
-        log(f'batch {k}: {len(lines)} jobs ({n_retry} retried tiles first) exit {p.returncode}'
-            f' in {time.time() - t0:.0f} s; {(p.stdout.strip().splitlines() or ["-"])[-3:]}')
-        if not os.path.exists(f'{stem}_jobs.csv'):
-            stop(f'batch {k} wrote no ledger; see {stem}_submit.log')
+        queues = [a.queue] + ([a.big_queue] if a.big_queue else [])
+        for queue in queues:
+            mine = [line for line in lines if self.queue_of(line) == queue]
+            if not mine:
+                continue
+            n_retry = sum(t in retried for line in mine for t in line_tiles(line))
+            k = len(glob.glob(f'{a.stem}_b*_jobs.csv'))
+            stem = f'{a.stem}_b{k}'
+            open(f'{stem}_pack.txt', 'w').writelines(mine)
+            cmd = [sys.executable, f'{HERE}/submit_MAAP_jobs.py', '--pack_file', f'{stem}_pack.txt',
+                   '--step', a.step, '--args_url', a.args_url, '--tile_prefix', a.tile_prefix,
+                   '--queue', queue, '--tag', f'{a.tag}_b{k}', '--ledger', f'{stem}_jobs.csv']
+            t0 = time.time()
+            p = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True)
+            open(f'{stem}_submit.log', 'a').write(p.stdout + p.stderr)
+            log(f'batch {k}: {len(mine)} jobs ({n_retry} retried tiles first)'
+                f'{f" on {queue}" if queue != a.queue else ""} exit {p.returncode}'
+                f' in {time.time() - t0:.0f} s; {(p.stdout.strip().splitlines() or ["-"])[-3:]}')
+            if not os.path.exists(f'{stem}_jobs.csv'):
+                stop(f'batch {k} wrote no ledger; see {stem}_submit.log')
 
     def tick(self, states):
         """One poll, given {job_id: status}.  Returns (finished, changed)."""
@@ -308,7 +357,7 @@ class Run:
             done_jobs = whole()
             tiles = self.tiles(jobs, decided)
         in_flight = [r['job_id'] for k, r in jobs if k not in done_jobs]
-        lines, n_retry = self.pending(tiles)
+        lines, retried = self.pending(tiles)
         counts = {}
         for _, d, _ in tiles.values():
             key = d['decision'] if d is not None else 'running'
@@ -319,7 +368,7 @@ class Run:
         log(f'{len(jobs)} jobs, {len(in_flight)} unfinished; tiles {dict(sorted(counts.items()))}')
         free = self.a.max_in_flight - len(in_flight)
         if lines and free > 0:
-            self.submit(lines[:free], min(n_retry, sum(len(line_tiles(x)) for x in lines[:free])))
+            self.submit(lines[:free], retried)
             return False, True
         if not lines and not in_flight:
             failed = sorted(t for t, (_, d, _) in tiles.items() if d['decision'] == 'gave_up')
@@ -335,12 +384,19 @@ class Run:
 
 
 def write_pack(path, tiles, pred, a):
-    jobs, _, big = pack_tiles.pack(tiles, pred, a.target_secs, a.big_gib, a.big_secs, a.slowdown)
+    bigq = big_queue_tiles(a, pred) & set(tiles)
+    jobs, big = pack_split(tiles, pred, a, bigq)
     open(path, 'w').writelines(pack_lines(jobs))
-    walls = [pack_tiles.job_wall(j, pred, a.slowdown) for j in jobs]
-    log(f'packed {len(tiles)} tiles -> {len(jobs)} jobs ({len(big)} big tiles in one lane);'
-        f' predicted wall per job max {max(walls):.0f} s;'
-        f' node peak max {max(pack_tiles.job_peak(j, pred) for j in jobs):.1f} GiB -> {path}')
+    rest = jobs[len(bigq):]
+    if rest:
+        walls = [pack_tiles.job_wall(j, pred, a.slowdown) for j in rest]
+        log(f'packed {len(tiles) - len(bigq)} tiles -> {len(rest)} jobs ({len(big)} big tiles in one lane);'
+            f' predicted wall per job max {max(walls):.0f} s;'
+            f' node peak max {max(pack_tiles.job_peak(j, pred) for j in rest):.1f} GiB -> {path}')
+    if a.big_queue is not None:
+        log(f'{len(bigq)} tiles predicted over {a.big_queue_gib:g} GiB -> one tile per job on'
+            f' {a.big_queue}' + (f': {", ".join(f"{t} {pred[t][0]:g} GiB" for t in sorted(bigq))}'
+                                 if bigq else ''))
     return jobs
 
 
@@ -367,6 +423,10 @@ def parse(argv):
     p.add_argument('--args_url', required=True)
     p.add_argument('--tile_prefix', required=True)
     p.add_argument('--queue', required=True)
+    p.add_argument('--big_queue', help='second queue, for tiles predicted over --big_queue_gib'
+                                       ' (one tile per job), e.g. maap-dps-worker-64gb')
+    p.add_argument('--big_queue_gib', type=float,
+                   help='predicted peak (GiB) above which a tile goes to --big_queue')
     p.add_argument('--tag', required=True)
     p.add_argument('--stem', required=True, help='ledger path stem, e.g. maap_ledgers/GL_0332_prelim')
     p.add_argument('--predict', required=True, nargs='+')
@@ -394,6 +454,10 @@ def parse(argv):
         p.error(f'--big_gib {a.big_gib} would let two lanes need more than --node_gib {a.node_gib}')
     if (a.default_gib is None) != (a.default_secs is None):
         p.error('--default_gib and --default_secs go together')
+    if (a.big_queue is None) != (a.big_queue_gib is None):
+        p.error('--big_queue and --big_queue_gib go together')
+    if a.big_queue is not None and a.big_queue == a.queue:
+        p.error(f'--big_queue is --queue ({a.queue})')
     return a
 
 

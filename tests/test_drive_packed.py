@@ -56,6 +56,7 @@ class Fake:
 
     def __init__(self, monkeypatch):
         self.n, self.now, self.status, self.h5, self.batches = 0, NOW, {}, {}, []
+        self.queues = []        # the --queue of each batch
         self.started = {}       # job id -> the tiles its log shows started (K10)
         monkeypatch.setattr(dp.subprocess, 'run', self.submit)
         monkeypatch.setattr(dp, 'collect_rows', self.collect)
@@ -65,6 +66,7 @@ class Fake:
         pack, ledger = cmd[cmd.index('--pack_file') + 1], cmd[cmd.index('--ledger') + 1]
         lines = [line for line in open(pack) if line.strip()]
         self.batches.append(lines)
+        self.queues.append(cmd[cmd.index('--queue') + 1])
         xy = lambda t: '%d,%d' % (int(t.split('_N')[0][1:]) * 1000, int(t.split('_N')[1]) * 1000)
         with open(ledger, 'w', newline='') as f:
             w = csv.DictWriter(f, fieldnames=('identifier', 'job_id', 'submitted_utc', 'tiles'))
@@ -193,7 +195,40 @@ def test_a_round_driver_stem_is_refused(tmp_path):
                  '--stem', str(tmp_path / 'run'), '--predict', 'p.csv'])
 
 
-@pytest.mark.parametrize('extra', [['--big_gib', '14'], ['--default_secs', '600']])
+def test_big_queue_tiles_run_alone_on_the_second_queue(tmp_path, monkeypatch):
+    """Ben 2026-10-18: tiles likely to need the 64gb queue go there, one per job"""
+    a = args(tmp_path, '--big_queue', 'q64', '--big_queue_gib', '27', '--max_retries', '1')
+    pred = {'E0_N0': (30.7, 3900.), 'E40_N0': (10., 500.), 'E80_N0': (10., 500.)}
+    dp.write_pack(f'{a.stem}_plan_pack.txt', sorted(pred), pred, a)
+    assert open(f'{a.stem}_plan_pack.txt').read() == 'E0_N0.h5\nE40_N0.h5 | E80_N0.h5\n'
+    f = Fake(monkeypatch)
+    run = dp.Run(a, pred)
+    assert run.tick({}) == (False, True)
+    # one batch (ledger) per queue
+    assert list(zip(f.queues, f.batches)) == [('q', ['E40_N0.h5 | E80_N0.h5\n']),
+                                              ('q64', ['E0_N0.h5\n'])]
+    # j2 (E0_N0) fails; j1 fails too: E0_N0 goes back to q64 alone, the
+    # others (shared a node) alone on q
+    f.now += datetime.timedelta(minutes=5)
+    assert run.tick({'j1': 'failed', 'j2': 'failed'}) == (False, True)
+    assert list(zip(f.queues[2:], f.batches[2:])) == [('q', ['E40_N0.h5 E80_N0.h5\n']),
+                                                      ('q64', ['E0_N0.h5\n'])]
+    # a restart sees the same split: nothing is sent twice
+    assert dp.Run(a, pred).tick({'j1': 'failed', 'j2': 'failed', 'j3': 'running',
+                                 'j4': 'running'}) == (False, False)
+    assert len(f.batches) == 4
+
+
+def test_a_plan_packed_without_the_big_queue_is_refused(tmp_path):
+    a = args(tmp_path, '--big_queue', 'q64', '--big_queue_gib', '27')
+    plan(tmp_path, 'E0_N0.h5 | E40_N0.h5\n')
+    with pytest.raises(SystemExit):
+        dp.Run(a, {'E0_N0': (30.7, 3900.), 'E40_N0': (10., 500.)})
+
+
+@pytest.mark.parametrize('extra', [['--big_gib', '14'], ['--default_secs', '600'],
+                                   ['--big_queue', 'q64'], ['--big_queue_gib', '27'],
+                                   ['--big_queue', 'q', '--big_queue_gib', '27']])
 def test_bad_options(tmp_path, extra):
     with pytest.raises(SystemExit) as e:
         args(tmp_path, *extra)
