@@ -267,26 +267,28 @@ def _expand_reference_files(ATL14_reference_file):
     Resolve --ATL14_reference_file into a non-empty list of files.
 
     It is a glob pattern in the Antarctic, where a tile can overlap several
-    quadrants, and a single file everywhere else.  glob.glob() returns [] for a
-    URI and [] for a pattern that matches nothing, and pc.grid.mosaic().from_list([])
-    then yields an empty reference DEM that silently removes every data point --
+    quadrants (the sectors A1-A4), and a single file everywhere else.  A URI
+    pattern is expanded by listing the bucket (pc.io_utils.glob_remote; Ben
+    2026-10-18: AA monthly reads its sectors' ATL14s from S3 with from_list).
+    A pattern that matches nothing is an error: pc.grid.mosaic().from_list([])
+    would yield an empty reference DEM that silently removes every data point --
     the same shape of silent failure as Q27 W1, by a different route (W5).
 
     inputs:
-        ATL14_reference_file (str): a path, a glob pattern, or a URI
+        ATL14_reference_file (str): a path, a glob pattern, a URI, or a URI
+            pattern
     output:
-        list of files to mosaic
+        list of files to mosaic, sorted
     '''
     if pc.io_utils.is_remote_path(ATL14_reference_file):
-        if glob.has_magic(ATL14_reference_file):
-            raise ValueError(
-                f'--ATL14_reference_file={ATL14_reference_file} is a URI containing a '
-                'wildcard, which cannot be expanded: a URI has no directory listing '
-                'here.  Name the granules explicitly, one --ATL14_reference_file each.')
-        # a single remote granule: from_nc() reads a URI directly since
-        # pointCollection PR #53 (Q27 W2), so pass it through unglobbed
-        return [ATL14_reference_file]
-    files = sorted(glob.glob(ATL14_reference_file))
+        if not glob.has_magic(ATL14_reference_file):
+            # a single remote granule: from_nc() reads a URI directly since
+            # pointCollection PR #53 (Q27 W2), so pass it through unglobbed
+            return [ATL14_reference_file]
+        files = pc.io_utils.glob_remote(ATL14_reference_file,
+                                        fs=pc.io_utils.get_s3fs(daac=None))
+    else:
+        files = sorted(glob.glob(ATL14_reference_file))
     if not files:
         raise RuntimeError(
             f'--ATL14_reference_file={ATL14_reference_file} matched no files.  The '
