@@ -2,10 +2,10 @@
 # The discover/SLURM variant is docs/howto_AA.sh.  Reasoning, the transect
 # record and open design work: ~/ATL14_processing/dev/ (howto_long/howto_MAAP_AA.sh,
 # plans/plan_pack_tiles.sh, plan_rerun_timing.sh).
-# STATUS: only transect tiles have run on MAAP.  Steps 1-6 follow the GL
-# procedure (howto_MAAP_GL.sh) and are [UNTESTED] at AA scale (~8944 centers
-# in two halves); steps 7-10 are [NOT YET ON DPS]: the ADE cannot hold AA's
-# tiles (150 GB home quota), so they need DPS steps that do not exist yet.
+# STATUS: rel006 0332 quarterly ran through step 9 on MAAP (2026-10-15..18;
+# dev/plans/plan_full_run_iceCaps.sh A0-A6, plan_AA_mosaic_dps.sh).  Steps 1-6
+# ran with dev drivers (drive_packed.py), not the commands below, which keep
+# their [UNTESTED] tags.  Step 10 (monthly) has not run.
 # Before a full run: plan_pack_tiles.sh K4-K8 (several tiles per job,
 # start-up cap) -- AA's job count makes start-up failures the main risk.
 
@@ -73,9 +73,41 @@ done
 
 # 6. [UNTESTED at scale] Matched: step 5 with --step matched.
 
-# 7. [NOT YET ON DPS] 200 km tiles per half (make_200km_tiles.py; 60 km half
-#    --min_xy 360000, 44 km half --W 44000 --spacing 40000 --max_xy 440000).
-# 8. [NOT YET ON DPS] The four sectors (setup_AA_sectors.py) and their mosaics
-#    (make_200km_to_mosaic_jobs.py).
-# 9. [NOT YET ON DPS] netCDF per sector (ATL14 + ATL15).
-# 10. [NEEDS CODE] Monthly: a multi-file --ATL14_reference_file; one partition.
+# 7. [OK] The four sectors (A1-A4), once both halves' prelim tiles are complete:
+#    bounds, args, tile manifest (prelim_tiles.txt: a tile belongs to the 200 km
+#    cell holding its center) and each half's 200 km cells, then publish them.
+s3_sec=$s3_root/ATL14_processing/rel$rel/south                  # sector files
+s3_prod=$s3_root/ATL14_processing/rel${rel}_${cyc}_testing/south  # 200 km tiles, mosaics, nc
+scripts/maap/setup_AA_sectors_s3.py $south --tiles_60km $s3_sec/AA --tiles_44km $s3_sec/AA_44km
+for n in 1 2 3 4; do
+    aws s3 cp $south/A$n/bounds.txt $s3_sec/A$n/
+    aws s3 cp $south/A$n/prelim_tiles.txt $s3_sec/A$n/
+    aws s3 cp $south/A$n/input_args_A$n.txt $s3_root/ATL1415/run_args/rel$rel/south/A$n/
+done
+
+# 8. [OK] 200 km tiles, each half's cells written into their sector; then the
+#    mosaics per sector (A4 z0 fits 16gb).  422 + 164 jobs.
+for n in 1 2 3 4; do for h in 60km 44km; do half $h
+    $sub --out_prefix $s3_prod/A$n --step mosaic200 --queue maap-dps-worker-16gb \
+        --tag ${tag}_mosaic200_A$n --ledger ${L}_mosaic200_A${n}_jobs.csv --max_in_flight 60 \
+        $(sed 's/^/--task=/' $south/A$n/mosaic200_tasks_$h.txt)
+done; done
+sector () {   # sector <n>: submit for sector n
+    scripts/maap/submit_MAAP_jobs.py --args_url $s3_root/ATL1415/run_args/rel$rel/south/A$1/input_args_A$1.txt \
+        --tile_prefix $s3_sec/A$1 --out_prefix $s3_prod/A$1 "${@:2}"
+}
+for n in 1 2 3 4; do
+    sector $n --step mosaic --queue maap-dps-worker-16gb --tag AA_rel${rel}_${cyc}_mosaic_A$n \
+        --ledger $ledgers/AA_${cyc}_mosaic_A${n}_jobs.csv
+done
+
+# 9. [OK] netCDF per sector (ATL14 peaks 17 GiB): needs a build with the sector
+#    manifest (a0e157b or later).  Checks as howto_MAAP_GL.sh step 9.
+for n in 1 2 3 4; do
+    sector $n --step nc --queue maap-dps-worker-32gb --tag AA_rel${rel}_${cyc}_nc_A$n \
+        --ledger $ledgers/AA_${cyc}_nc_A${n}_jobs.csv
+done
+
+# 10. [UNTESTED] Monthly: one partition (all centers, 60 km), reference = the
+#     quarterly sectors' ATL14s, read with from_list (an s3 glob is allowed):
+#     --ATL14_reference_file=$s3_prod/A?/ATL14_A?_${cyc}_100m_${rel}_02.nc
