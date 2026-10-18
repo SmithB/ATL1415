@@ -172,3 +172,49 @@ def test_process_pool_gives_the_same_records(tmp_path):
     a = json.loads((tmp_path / 'a' / 'all.json').read_text())['tiles']
     b = json.loads((tmp_path / 'b' / 'all.json').read_text())['tiles']
     assert a == b and len(a) == len(NAMES)
+
+
+def test_a_manifest_gathers_a_sector_from_two_prefixes(tmp_path, bucket):  # noqa: F811
+    """plan_AA_mosaic_dps.sh M0: an Antarctic sector's tiles are under the 60 km and the
+    44 km prefixes; its manifest lists them, and the records of the 200 km jobs (one
+    meta dir per sector, written from each half) must match it exactly"""
+    tiles = make_tiles(tmp_path / 'prelim', np.random.default_rng(11))
+    # E0_N-1000, E40_N-1000, E0_N-960 from one half; E200_N-1000, E240_N-760 from the other
+    half_a, half_b = tmp_path / 'a', tmp_path / 'b'
+    for d, names in ((half_a, NAMES[:3]), (half_b, NAMES[3:])):
+        d.mkdir()
+        for n in names:
+            os.link(tiles / n, d / n)
+    pa = bucket(half_a, 'memory://bucket/rel006/south/AA/prelim')
+    pb = bucket(half_b, 'memory://bucket/rel006/south/AA_44km/prelim')
+    meta = 'memory://bucket/rel006_0332_testing/south/A4/tile_meta'
+    assert tile_meta.main(['write', pa, f'{meta}/100000_-900000.json', '--center', '100000', '-900000',
+                           '--workers', '1']) == 0
+    for c in ('300000 -900000', '300000 -700000'):
+        cx, cy = c.split()
+        assert tile_meta.main(['write', pb, f'{meta}/{cx}_{cy}.json', '--center', cx, cy,
+                               '--workers', '1']) == 0
+    import pointCollection as pc
+    fs = pc.io_utils.get_s3fs()
+    manifest = 'memory://bucket/rel006/south/A4/prelim_tiles.txt'
+    fs.pipe(manifest, ''.join(f'{p}/{n}\n' for p, ns in ((pb, NAMES[3:]), (pa, NAMES[:3]))
+                              for n in ns).encode())
+    from ATL1415.paths import list_tiles
+    assert [os.path.basename(t) for t in list_tiles(manifest)] == \
+        sorted(NAMES[:3]) + sorted(NAMES[3:])            # sorted by full path: AA/ before AA_44km/
+    direct = lineage(SimpleNamespace(tiles_dir=str(tiles)))
+    assert lineage(SimpleNamespace(tiles_dir=manifest, tile_meta_dir=meta)) == direct
+    # a tile the manifest lists but no record holds stops the writer
+    tile_meta._CACHE.clear()
+    fs.pipe(manifest, fs.cat(manifest) + f'{pa}/E999_N999.h5\n'.encode())
+    fs.pipe(f'{pa}/E999_N999.h5', (tiles / NAMES[0]).read_bytes())
+    with pytest.raises(RuntimeError, match='1 with no record: E999_N999.h5'):
+        tile_meta.tile_records(SimpleNamespace(tiles_dir=manifest, tile_meta_dir=meta))
+
+
+def test_a_manifest_naming_a_tile_twice_is_refused(tmp_path):
+    from ATL1415.paths import list_tiles
+    m = tmp_path / 'prelim_tiles.txt'
+    m.write_text('/x/AA/prelim/E0_N0.h5\n/x/AA_44km/prelim/E0_N0.h5\n')
+    with pytest.raises(ValueError, match='more than once'):
+        list_tiles(str(m))

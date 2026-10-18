@@ -121,22 +121,25 @@ def tile_record(path):
 
 def tile_listing(tiles_dir, pattern='*.h5'):
     """
-    {name: stamp} for the tiles in tiles_dir; a stamp is 'size|modified',
-    which changes when the tile is rewritten.  Local or remote.
+    {name: (path, stamp)} for the tiles in tiles_dir (a directory, a prefix,
+    or a manifest of tiles in several -- ATL1415.paths.list_tiles); a stamp is
+    'size|modified', which changes when the tile is rewritten.  Local or remote.
     """
     from ATL1415.paths import list_tiles
     paths = list_tiles(tiles_dir, pattern)
-    fs = _fs_for(tiles_dir)
     out = {}
-    if fs is None:
-        for p in paths:
+    details = {}           # remote: {directory: {name: ls detail}}, one listing each
+    for p in paths:
+        fs = _fs_for(p)
+        if fs is None:
             st = os.stat(p)
             out[os.path.basename(p)] = (p, f'{st.st_size}|{st.st_mtime_ns}')
-        return out
-    details = {os.path.basename(d['name']): d
-               for d in fs.ls(tiles_dir.rstrip('/'), detail=True)}
-    for p in paths:
-        d = details.get(os.path.basename(p), {})
+            continue
+        parent = os.path.dirname(p)
+        if parent not in details:
+            details[parent] = {os.path.basename(d['name']): d
+                               for d in fs.ls(parent.rstrip('/'), detail=True)}
+        d = details[parent].get(os.path.basename(p), {})
         mod = d.get('LastModified', d.get('mtime', d.get('created', '')))
         out[os.path.basename(p)] = (p, f"{d.get('size', '')}|{mod}")
     return out

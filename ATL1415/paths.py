@@ -83,15 +83,49 @@ def exists(path):
     return os.path.exists(path)
 
 
+def is_tile_manifest(tiles_dir):
+    """True if tiles_dir names a manifest (a .txt list of tiles), not a directory"""
+    return tiles_dir.rstrip('/').endswith('.txt')
+
+
+def read_tile_manifest(manifest):
+    """
+    The tiles a manifest lists, SORTED: one local path or URI per line.
+
+    An Antarctic sector's tiles live under two prefixes on S3 (the 60 km and
+    44 km halves) and S3 has no symlinks to gather them in one directory as
+    setup_AA_sectors.py does on discover, so a sector names its tiles in a
+    manifest instead (plan_AA_mosaic_dps.sh M0).  The writers key tiles by
+    file name, so a name listed twice is an error, not a silent choice.
+    """
+    if pc.io_utils.is_remote_path(manifest):
+        text = pc.io_utils.get_s3fs(daac=None).cat(manifest).decode('utf-8')
+    else:
+        with open(manifest) as fh:
+            text = fh.read()
+    tiles = sorted(line.strip() for line in text.splitlines() if line.strip())
+    seen, dup = set(), set()
+    for name in (os.path.basename(t) for t in tiles):
+        (dup if name in seen else seen).add(name)
+    if dup:
+        raise ValueError(f'{manifest} lists {len(dup)} tile name(s) more than once: {sorted(dup)[:10]}')
+    return tiles
+
+
 def list_tiles(tiles_dir, pattern='*.h5'):
     """
-    The tile files in a local directory or under a URI prefix, SORTED.
+    The tile files in a local directory, under a URI prefix, or listed in a
+    manifest (read_tile_manifest), SORTED.
 
     On MAAP the netCDF writers read the prelim tiles in place on the bucket
     (docs/plan_dps_mosaic.sh D2): nothing is copied to /home, whose quota is
-    150 GB.  Sorted in both cases, so what is read first -- and so which tile
+    150 GB.  Sorted in all cases, so what is read first -- and so which tile
     set_lineage names for a granule -- does not depend on the filesystem.
     """
+    if is_tile_manifest(tiles_dir):
+        import fnmatch
+        return [t for t in read_tile_manifest(tiles_dir)
+                if fnmatch.fnmatch(os.path.basename(t), pattern)]
     if pc.io_utils.is_remote_path(tiles_dir):
         return pc.io_utils.glob_remote(tiles_dir.rstrip('/') + '/' + pattern,
                                        fs=pc.io_utils.get_s3fs(daac=None))

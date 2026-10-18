@@ -711,10 +711,22 @@ mosaic_step_and_exit () {
             if [ "$via_200km" = yes ]; then
                 meta_opt=(--tile_meta_dir "${out%/}/tile_meta")
             fi
+            # an Antarctic sector (A1-A4) has no prelim directory of its own:
+            # its tiles are under the two halves' prefixes, named in the
+            # manifest beside its bounds.txt (plan_AA_mosaic_dps.sh M0).  No
+            # manifest is an error, not a fall-back to a directory that is not there
+            local tiles_dir="${tile_prefix%/}/prelim"
+            case "$region" in
+                A1|A2|A3|A4)
+                    in_env python "${repo_dir}/scripts/s3_tiles.py" get_glob "$tile_prefix" prelim_tiles.txt \
+                        "${PWD}/manifest" --require \
+                        || { echo "ERROR: region ${region} needs its tile manifest ${tile_prefix%/}/prelim_tiles.txt" >&2; exit 1; }
+                    tiles_dir="${PWD}/manifest/prelim_tiles.txt" ;;
+            esac
             # -b AFTER the args file, whose last line is the ADE's -b
             "${repo_dir}/scripts/run_with_rusage.py" "$task" \
                 conda run --no-capture-output -n "$env_name" "${task}_write2nc.py" "@${args_file}" \
-                -b "$work" --tiles_dir "${tile_prefix%/}/prelim" ${meta_opt[@]+"${meta_opt[@]}"} \
+                -b "$work" --tiles_dir "$tiles_dir" ${meta_opt[@]+"${meta_opt[@]}"} \
                 || { echo "ERROR: ${task}_write2nc.py failed; nothing uploaded" >&2; exit 1; }
             if ! compgen -G "${work}/*.nc" > /dev/null; then
                 echo "ERROR: ${task}_write2nc.py wrote no .nc in ${work}" >&2; exit 1
