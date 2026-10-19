@@ -13,6 +13,10 @@ jobs write straight into the sector they belong to:
   <south_dir>/A<n>/mosaic200_tasks_60km.txt the 200 km cells this sector takes from
   <south_dir>/A<n>/mosaic200_tasks_44km.txt   each half, '<x>_<y>' (submit --task)
 
+ONE PARTITION (no --tiles_44km; the monthly run, plan_AA_monthly_dps.sh AM1): every
+cell and every tile from --tiles_60km, as setup_AA_sectors.py --near_pole_radius 0
+does on discover; only mosaic200_tasks_60km.txt is written.
+
 THE RULES, each from where it already lives:
   - the 200 km cells: ATL1415/resources/AA/200km_tile_list.txt (422);
   - which half makes a cell: make_200km_tiles.select_200km_tiles with the
@@ -32,7 +36,7 @@ The files are written locally; upload them (aws s3 cp) to <tiles root>/A<n>/
 (bounds.txt, prelim_tiles.txt) and run_args/.../A<n>/ (input_args_A<n>.txt).
 
 usage: setup_AA_sectors_s3.py <south_dir> --tiles_60km s3://.../rel006/south/AA
-                              --tiles_44km s3://.../rel006/south/AA_44km [--dry-run]
+                              [--tiles_44km s3://.../rel006/south/AA_44km] [--dry-run]
   <south_dir> holds AA/input_args_AA.txt (the 60 km half's args, == S3's).
 """
 import argparse
@@ -47,6 +51,7 @@ from ATL1415.scripts.setup_AA_sectors import (N_SECTORS, get_quadrant, write_sec
                                                write_sector_input_args)
 
 HALVES = {'60km': dict(min_xy=360000.), '44km': dict(max_xy=440000.)}   # howto_MAAP_AA.sh step 3
+ONE_PARTITION = {'60km': {}}        # monthly: the whole canonical list, no limits (howto_AA.sh)
 BOUNDS_PAD = 4.e4      # setup_AA_sectors.py --bounds_pad default
 
 
@@ -58,24 +63,26 @@ def task_name(c):
     return f'{int(c[0])}_{int(c[1])}'
 
 
-def plan(names, prefixes):
+def plan(names, prefixes, limits=HALVES):
     """
-    names {half: [tile file names]}, prefixes {half: tile prefix} ->
+    names {half: [tile file names]}, prefixes {half: tile prefix}, limits {half: its
+    select_200km_tiles limits} (HALVES or ONE_PARTITION) ->
     {sector: {'tiles': [uri, ...], 'tasks': {half: [cell, ...]}}}, raising on any gate.
     """
     centers = [cell_key(c) for c in read_200km_centers('AA')]
-    cells = {h: {cell_key(c) for c in select_200km_tiles(centers, **lim)} for h, lim in HALVES.items()}
-    if cells['60km'] & cells['44km'] or (cells['60km'] | cells['44km']) != set(centers):
-        raise RuntimeError('the halves\' 200 km cells do not partition the canonical list:'
-                           f' {len(cells["60km"])} + {len(cells["44km"])} of {len(centers)},'
-                           f' {len(cells["60km"] & cells["44km"])} in both')
+    cells = {h: {cell_key(c) for c in select_200km_tiles(centers, **lim)} for h, lim in limits.items()}
+    union = set().union(*cells.values())
+    if sum(len(cs) for cs in cells.values()) != len(union) or union != set(centers):
+        raise RuntimeError('the halves\' 200 km cells do not partition the canonical list: '
+                           + ' + '.join(f'{len(cs)} ({h})' for h, cs in cells.items())
+                           + f' of {len(centers)}, {len(union)} distinct')
     half_of = {c: h for h, cs in cells.items() for c in cs}
     sector_of = {c: int(get_quadrant(np.array(c))[0]) for c in centers}
-    out = {n: {'tiles': [], 'tasks': {h: [] for h in HALVES}} for n in range(1, N_SECTORS + 1)}
+    out = {n: {'tiles': [], 'tasks': {h: [] for h in limits}} for n in range(1, N_SECTORS + 1)}
     for c in centers:
         out[sector_of[c]]['tasks'][half_of[c]].append(c)
     stray = []
-    for h in HALVES:
+    for h in limits:
         for name in names[h]:
             owner = centers_200km([name])
             c = cell_key(owner[0]) if owner else None
@@ -86,7 +93,7 @@ def plan(names, prefixes):
     if stray:
         raise RuntimeError(f'{len(stray)} tiles are in no canonical 200 km cell: {stray[:10]}')
     listed = [os.path.basename(t) for s in out.values() for t in s['tiles']]
-    expected = set(names['60km']) | set(names['44km'])
+    expected = set().union(*(names[h] for h in limits))
     if len(listed) != len(set(listed)) or set(listed) != expected:
         raise RuntimeError(f'the sectors list {len(listed)} tiles ({len(set(listed))} names) but the'
                            f' halves have {len(expected)} centers: missing'
@@ -128,22 +135,25 @@ def main(argv=None):
                                 formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument('south_dir')
     p.add_argument('--tiles_60km', required=True)
-    p.add_argument('--tiles_44km', required=True)
+    p.add_argument('--tiles_44km', help='the 44 km half; without it, one partition (monthly)')
     p.add_argument('--dry-run', action='store_true')
     a = p.parse_args(argv)
     if not os.path.isfile(os.path.join(a.south_dir, 'AA', 'input_args_AA.txt')):
         sys.exit(f'{a.south_dir}/AA/input_args_AA.txt not found: the sectors\' args are made from it')
-    prefixes = {'60km': a.tiles_60km, '44km': a.tiles_44km}
+    if a.tiles_44km:
+        limits, prefixes = HALVES, {'60km': a.tiles_60km, '44km': a.tiles_44km}
+    else:
+        limits, prefixes = ONE_PARTITION, {'60km': a.tiles_60km}
     names = {h: list_prelim(pfx) for h, pfx in prefixes.items()}
-    for h in HALVES:
+    for h in limits:
         if not names[h]:
             sys.exit(f'no prelim tiles under {prefixes[h]}/prelim/')
-    sectors = plan(names, prefixes)
+    sectors = plan(names, prefixes, limits)
     for n, s in sectors.items():
         print(f'A{n}: {len(s["tiles"])} tiles; 200 km cells: '
               + ', '.join(f'{len(cs)} from {h}' for h, cs in s['tasks'].items()))
-    print(f'{sum(len(s["tiles"]) for s in sectors.values())} tiles in all'
-          f' ({len(names["60km"])} 60 km + {len(names["44km"])} 44 km prelim tiles listed)')
+    print(f'{sum(len(s["tiles"]) for s in sectors.values())} tiles in all ('
+          + ' + '.join(f'{len(names[h])} {h}' for h in limits) + ' prelim tiles listed)')
     if a.dry_run:
         print('--dry-run: nothing written')
         return 0

@@ -93,3 +93,25 @@ def test_bounds_and_args_are_setup_AA_sectors_own(names, tmp_path):
     assert sorted(tasks) == ['-100000_-100000', '-100000_-300000', '-300000_-100000', '-300000_-300000']
     listed = (mine / 'A2' / 'prelim_tiles.txt').read_text().split()
     assert listed == sorted(listed) and all(t.startswith('s3://b/rel006/south/AA') for t in listed)
+
+
+def test_one_partition_takes_every_cell_and_tile(names, tmp_path):
+    # the monthly run (plan_AA_monthly_dps.sh AM1): 60 km everywhere, as setup_AA_sectors.py
+    # --near_pole_radius 0
+    every = sorted(set(names['60km']) | set(names['44km']))
+    one = {'60km': every}
+    sectors = s3s.plan(one, {'60km': PREFIXES['60km']}, s3s.ONE_PARTITION)
+    cells = {n: {h: len(c) for h, c in s['tasks'].items()} for n, s in sectors.items()}
+    assert cells == {1: {'60km': 131}, 2: {'60km': 94}, 3: {'60km': 65}, 4: {'60km': 132}}
+    tiles = [t for s in sectors.values() for t in s['tiles']]
+    assert len(tiles) == 8944 and all(t.startswith(PREFIXES['60km'] + '/prelim/') for t in tiles)
+    for n, s in sectors.items():
+        for t in s['tiles']:
+            c = np.floor(np.array(xy_km(os.path.basename(t))) / 200.) * 200 + 100
+            assert setup_AA_sectors.get_quadrant(c)[0] == n
+    (tmp_path / 'AA').mkdir()
+    (tmp_path / 'AA' / 'input_args_AA.txt').write_text('-b=/x/rel006/south_monthly/AA\n--region=AA\n')
+    s3s.write(str(tmp_path), sectors, every)
+    assert sorted(p.name for p in (tmp_path / 'A1').iterdir()) == [
+        'bounds.txt', 'input_args_A1.txt', 'mosaic200_tasks_60km.txt', 'prelim_tiles.txt']
+
