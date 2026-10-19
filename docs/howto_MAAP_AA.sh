@@ -5,7 +5,8 @@
 # STATUS: rel006 0332 quarterly ran through step 9 on MAAP (2026-10-15..18;
 # dev/plans/plan_full_run_iceCaps.sh A0-A6, plan_AA_mosaic_dps.sh).  Steps 1-6
 # ran with dev drivers (drive_packed.py), not the commands below, which keep
-# their [UNTESTED] tags.  Step 10 (monthly) has not run.
+# their [UNTESTED] tags.  Monthly (step 10) ran 2026-10-19
+# (dev/plans/plan_AA_monthly_dps.sh).
 # Before a full run: plan_pack_tiles.sh K4-K8 (several tiles per job,
 # start-up cap) -- AA's job count makes start-up failures the main risk.
 
@@ -108,6 +109,43 @@ for n in 1 2 3 4; do
         --ledger $ledgers/AA_${cyc}_nc_A${n}_jobs.csv
 done
 
-# 10. [UNTESTED] Monthly: one partition (all centers, 60 km), reference = the
-#     quarterly sectors' ATL14s, read with from_list (an s3 glob is allowed):
-#     --ATL14_reference_file=$s3_prod/A?/ATL14_A?_${cyc}_100m_${rel}_02.nc
+# 10. [OK] Monthly: one partition (every center at 60 km, no 44 km half),
+#     reference = the quarterly sectors' ATL14s, read with from_list (an s3
+#     glob is allowed).  Prelim and matched ran with drive_packed.py, as steps
+#     5-6, over the whole $tile_list on 32gb (peaks 11.6 / 9.0 GiB).
+south_m=$ATL14_root/rel$rel/south_monthly
+s3_run_m=$s3_root/ATL1415/run_args/rel$rel/south_monthly
+s3_sec_m=$s3_root/ATL14_processing/rel$rel/south_monthly
+s3_prod_m=$s3_root/ATL14_processing/rel${rel}_${cyc}_testing/south_monthly
+setup_ATL1415_region.py default_args/MAAP_dps.txt $rel_file \
+    default_args/AA_latest.txt default_args/monthly.txt --Hemisphere=-1 \
+    --ATL14_reference_file="$s3_prod/A?/ATL14_A?_${cyc}_100m_${rel}_02.nc"
+aws s3 cp $south_m/AA/input_args_AA.txt $s3_run_m/AA/
+#     (prelim, matched: --args_url $s3_run_m/AA/input_args_AA.txt --tile_prefix $s3_sec_m/AA)
+#     Sectors: without --tiles_44km every cell comes from the 60 km tiles.
+scripts/maap/setup_AA_sectors_s3.py $south_m --tiles_60km $s3_sec_m/AA
+for n in 1 2 3 4; do
+    aws s3 cp $south_m/A$n/bounds.txt $s3_sec_m/A$n/
+    aws s3 cp $south_m/A$n/prelim_tiles.txt $s3_sec_m/A$n/
+    aws s3 cp $south_m/A$n/input_args_A$n.txt $s3_run_m/A$n/
+done
+#     422 mosaic200 jobs, 176 mosaic (no z0 at 1 month), 4 nc (ATL15 only, 2.6-3.8 GiB).
+for n in 1 2 3 4; do
+    scripts/maap/submit_MAAP_jobs.py --args_url $s3_run_m/AA/input_args_AA.txt \
+        --tile_prefix $s3_sec_m/AA --out_prefix $s3_prod_m/A$n --step mosaic200 \
+        --queue maap-dps-worker-16gb --tag AA_rel${rel}_${cyc}_monthly_mosaic200_A${n}_60km \
+        --ledger $ledgers/AA_${cyc}_monthly_sectors_mosaic200_A${n}_60km_jobs.csv \
+        --max_in_flight 60 $(sed 's/^/--task=/' $south_m/A$n/mosaic200_tasks_60km.txt)
+done
+msector () {   # msector <n>: submit for monthly sector n
+    scripts/maap/submit_MAAP_jobs.py --args_url $s3_run_m/A$1/input_args_A$1.txt \
+        --tile_prefix $s3_sec_m/A$1 --out_prefix $s3_prod_m/A$1 "${@:2}"
+}
+for n in 1 2 3 4; do
+    msector $n --step mosaic --queue maap-dps-worker-16gb --tag AA_rel${rel}_${cyc}_monthly_mosaic_A$n \
+        --ledger $ledgers/AA_${cyc}_monthly_sectors_mosaic_A${n}_jobs.csv --max_in_flight 60
+done
+for n in 1 2 3 4; do
+    msector $n --step nc --task ATL15 --queue maap-dps-worker-32gb --tag AA_rel${rel}_${cyc}_monthly_nc_A$n \
+        --ledger $ledgers/AA_${cyc}_monthly_sectors_nc_A${n}_jobs.csv
+done
