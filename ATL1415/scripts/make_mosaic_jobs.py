@@ -120,7 +120,7 @@ def make_mosaic_jobs(base, region, lags,
             for field in field_list:
                 cmd = (
                     f"make_mosaic.py {crop} {this_replace} "
-                    f"-d {base} -g {glob_str} -p {pad} -f {feather} "
+                    f"-w -d {base} -g {glob_str} -p {pad} -f {feather} "
                     f"-O {base}/z0.h5 --in_group {group}/ -F {field}"
                 )
                 this_replace=""

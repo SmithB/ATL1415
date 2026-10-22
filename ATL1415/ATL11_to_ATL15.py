@@ -401,6 +401,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
             tide_adjustment_file=None,\
             tide_adjustment_format=None,\
             tide_model=None,\
+            tide_mask_only_val=None,\
             firn_correction=None, \
             firn_directory=None,\
             firn_version=None,\
@@ -445,6 +446,7 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
         tide_adjustment_file: (string)  File for adjusting tide and dac values for ice shelf flexure
         tide_adjustment_format: (string) file format of the scaling factor grid
         tide_model: (string)  Name of the tide model to use for a given domain
+        tide_mask_only_val: (float) fit only points for which the tide mask matches this value
         E_d3zdx2dt_scale_file: (string) Filename containing scaling to be applied to the d3zdx2dt parameter
         avg_scales: (list of floats) scales over which the output grids will be averaged and errors will be calculated
         error_res_scale: (float) If errors are calculated, the grid resolution will be coarsened by this factor
@@ -509,6 +511,15 @@ def ATL11_to_ATL15(xy0, Wxy=4e4, ATL11_index=None, \
                 rock=rock_mask.interp(mask_data.x, mask_data.y, gridded=True, field='reject') > 0.5
                 for band in range(mask_data.z.shape[2]):
                     mask_data.z[:,:,band] *= (rock==0)
+            if tide_mask_only_val is not None:
+                tide_mask = pc.grid.data().from_file(tide_mask_file, bounds=mask_data.bounds())
+                tide_mask.z = np.nan_to_num(tide_mask.z)
+                tide_mask_keep = np.abs(tide_mask.interp(mask_data.x, mask_data.y, gridded=True) - tide_mask_only_val) < 0.5
+                tide_mask_mean_before = np.mean(mask_data.z)
+                for band in range(mask_data.z.shape[2]):
+                    mask_data.z[:,:,band] *= tide_mask_keep
+                if verbose:
+                    print(f'\t ATL11_to_ATL15: before masking, mask frac = {tide_mask_mean_before:2.2f}, after = {np.mean(mask_data.z):2.2f}')
             if mask_data.t is not None:
                 while mask_data.t[-1] < ctr['t']+W['t']/2:
                     # append a copy of the last field in the mask data to the end of the mask data
@@ -909,6 +920,7 @@ def parse_args(argv=None):
     parser.add_argument('--tide_adjustment_file', type=lambda p: os.path.abspath(os.path.expanduser(p)), help="File for adjusting tide and dac values for ice shelf flexure")
     parser.add_argument('--tide_adjustment_format', type=str, choices=('geotif','h5','nc'), default='h5', help="File format of the scaling factor grid")
     parser.add_argument('--tide_model', type=str)
+    parser.add_argument('--tide_mask_only_val', type=int, help='fit only for tide mask equal to this value')
     parser.add_argument('--firn_directory', type=str, help='directory containing firn model')
     parser.add_argument('--firn_model', type=str, help='firn model name')
     parser.add_argument('--firn_version', type=str, help='firn version')
@@ -1078,6 +1090,7 @@ def build_fit_kwargs(args, cfg):
            tide_adjustment_file=args.tide_adjustment_file, \
            tide_adjustment_format=args.tide_adjustment_format, \
            tide_model=args.tide_model, \
+           tide_mask_only_val = args.tide_mask_only_val, \
            firn_directory=args.firn_directory,\
            firn_version=args.firn_version,\
            firn_correction=args.firn_model,\
