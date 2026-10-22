@@ -157,12 +157,19 @@ def main():
 
     tile_list=None
     if args.tile_list_file is not None:
-        tile_list=[]
+        xg, yg = [], []
+        tile_re=re.compile('E(.*)_N(.*).h5')
         with open(args.tile_list_file,'r') as fh:
             for line in fh:
-                tile_list += [line.rstrip()]
-
-    if args.xy_list_file is not None:
+                if line[0] == '#':
+                    continue
+                xgi, ygi = [*map(float, tile_re.search(os.path.basename(line)).groups())]
+                xg += [xgi*1000]
+                yg += [ygi*1000]
+        print(f'found {len(xg)} tiles')
+        xg, yg = map(np.array, [xg, yg])
+        good=np.ones_like(xg, dtype=bool)
+    elif args.xy_list_file is not None:
         print("reading xy_list_file : " + args.xy_list_file)
         # if a list file exists, read it to get the initial centers
         xg, yg = [], []
@@ -218,7 +225,6 @@ def main():
             xg=xg.ravel()[mask_G.z.ravel()==1]
             yg=yg.ravel()[mask_G.z.ravel()==1]
             good=np.ones_like(xg, dtype=bool)
-
 
 
     if XR is not None:
