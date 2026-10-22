@@ -12,8 +12,7 @@ import re
 import sys
 
 def safe_interp(x, x0_in, y0_in, loglog=False):
-    y=np.NaN
-    
+    y=np.nan
     if x0_in[-1] < x0_in[0]:
         x0=x0_in[::-1]
         y0=y0_in[::-1]
@@ -35,24 +34,20 @@ def safe_interp(x, x0_in, y0_in, loglog=False):
     return y
 
 def read_ATL11_file(file, mask_file, num_pairs=3, EPSG=3413):
-    
     if num_pairs==3:
         pairs=[1, 2, 3]
     else:
         pairs=[1]
-        
+
     D11s=[]
     for pair in pairs:
         try:
             D11=pc.ATL11.data().from_h5(file, pair=pair)
-            with h5py.File(file,'r') as h5f:
-                qs=np.array(h5f[f'/pt{pair}/ref_surf/fit_quality'])
-            D11.assign({'ref_surf_quality':qs})
             D11.get_xy(EPSG=EPSG)
             XR=np.array([np.nanmin(D11.x), np.nanmax(D11.x)])
             YR=np.array([np.nanmin(D11.y), np.nanmax(D11.y)])
             mask=pc.grid.data().from_geotif(mask_file, bounds=[XR, YR]).interp(D11.x[:,0], D11.y[:,0]) > 0.5
-            D11.index(mask & (D11.ref_surf_quality <1))
+            D11.index(np.all(mask[:, None] & (D11.fit_quality <1), axis=1))
             D11s += [D11]
         except Exception as e:
             print(e)
@@ -124,7 +119,7 @@ def find_best_wxx0(D11, W_domain, mask_file, DEBUG=False):
              'd2z_dxdt': E_d3zdx2dt*data_gap_scale,
              'd2z_dt2': E_d2zdt2}
             try:
-                S.append(smooth_xytb_fit(data=D, ctr=ctr, W=W, spacing=spacing, E_RMS=E_RMS,
+                S.append(smooth_fit(data=D, ctr=ctr, W=W, spacing=spacing, E_RMS=E_RMS,
                              reference_epoch=1, N_subset=None, compute_E=False,
                              max_iterations=5,
                              VERBOSE=False))
@@ -141,12 +136,11 @@ def find_best_wxx0(D11, W_domain, mask_file, DEBUG=False):
             L_curve['N'].append(d_ed.size)
         for key in L_curve.keys():
             L_curve[key] = np.array(L_curve[key])
-        try:         
+        try:
             N0 = safe_interp(1, L_curve['sigma_hat_s'], L_curve['N'], loglog=True)
-            
             if DEBUG and np.nanmin(L_curve['sigma_hat_s'] > 1):
                 return D, ii, bc, pt0, L_curve
-            
+
             w_for_r_of_1 = safe_interp(1, L_curve['sigma_hat_s'], L_curve['wzz0'], loglog=True)
             w_for_r_10pct_above_min = \
                 safe_interp(1.1*L_curve['sigma_hat_s'].min(), L_curve['sigma_hat_s'], L_curve['wzz0'], loglog=True)
