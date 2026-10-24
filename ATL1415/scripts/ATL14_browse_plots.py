@@ -26,6 +26,14 @@ import cartopy.feature as cfeature
 import imageio.v2
 import datetime as dt
 
+def read_every_nth(var, step, block_rows=2000):
+    # every step-th row and column of a 2-D netCDF variable.  Reads blocks of
+    # whole rows and strides them in memory: a strided netCDF read of the GL
+    # grid took over 10 minutes, this takes 15 s.
+    rows = step*max(1, block_rows//step)
+    return np.concatenate([np.array(var[i0:i0+rows, :][::step, ::step])
+                           for i0 in range(0, var.shape[0], rows)])
+
 def ATL14_browse_plots(args):
     # set the color map
 #    cmap = _usgs()
@@ -54,13 +62,16 @@ def ATL14_browse_plots(args):
     pngfile = args.base_dir.rstrip('/') + '/ATL14_' + args.region + '_' + args.cycles + '_100m_' + args.Release + '_' + args.version + '_BRW'
 
     ds = Dataset(filein)
-    x = ds['x']
-    y = ds['y']
+    # plot every step-th cell: plotting a whole 100-m grid takes ~80 bytes per
+    # cell (12 GiB for GL), and the browse images are ~1000 pixels across
+    step = int(np.ceil(max(ds['h'].shape)/args.max_plot_size))
+    x = ds['x'][:][::step]
+    y = ds['y'][:][::step]
     extent=[np.min(x),np.max(x),np.min(y),np.max(y)]
 
-    h = np.array(ds['h'])
+    h = read_every_nth(ds['h'], step)
     h[h==ds['h']._FillValue] = np.nan
-    h_sigma = np.array(ds['h_sigma'])
+    h_sigma = read_every_nth(ds['h_sigma'], step)
     h_sigma[h_sigma==ds['h_sigma']._FillValue] = np.nan
 
     if ~np.any(h.ravel()):   # convert to numpy array so can use ravel and other .methods()
@@ -159,6 +170,7 @@ def main():
     parser.add_argument('--out_path', '-o', type=str, help='default is ATL15_file path')
     parser.add_argument('--pdf', action='store_true', default=False, help='write images to .pdf file')
     parser.add_argument('--nolog', action='store_true', default=False, help='no writing errors to .log file')
+    parser.add_argument('--max_plot_size', type=int, default=5000, help='plot every Nth cell of h and h_sigma, with N chosen so that neither axis has more than this many cells')
     args, unknown = parser.parse_known_args()
     print(args)
 
