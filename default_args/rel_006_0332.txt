@@ -10,7 +10,7 @@
 --max_iterations=3
 --cycles=0332
 --Release=006
---version=02
+--version=03
 --ATL11_release=007_cycle_03_32_v05
 --ATL11xo_version=007_cycle_03_30_v03
 --previous_product_top=/discover/nobackup/projects/icesat2/ATL14_processing/rel005_0329/
